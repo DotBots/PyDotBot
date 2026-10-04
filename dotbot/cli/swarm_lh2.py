@@ -764,6 +764,8 @@ def _reframe(ctx, calibration, site_name, shift, rotate):
         Rigid2D,
         is_free_mode,
         place_calibration,
+        save_placed,
+        site_tags,
     )
 
     site, _ = site_from_context(ctx, site_name)
@@ -776,13 +778,17 @@ def _reframe(ctx, calibration, site_name, shift, rotate):
         source = read_calibration_file(resolve_calibration_path(calibration))
         if is_free_mode(source):
             reframed = place_calibration(
-                source, site, Rigid2D(shift[0], shift[1], rotate)
+                source,
+                site,
+                Rigid2D(shift[0], shift[1], rotate),
+                taken_tags=site_tags(site.name),
             )
+            reframed, path = save_placed(source, reframed)
         else:
             reframed = reframe_calibration(source, site, shift, rotate)
+            path = write_calibration(reframed)
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
-    path = write_calibration(reframed)
     click.echo(
         f"Reframed {source.id8} (site {source.site.name}) into site {site.name}: "
         f"shift {shift[0]:g},{shift[1]:g} mm, rotate {rotate:g} deg"

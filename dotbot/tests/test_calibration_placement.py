@@ -18,6 +18,7 @@ from dotbot.calibration.placement import (
     overlay,
     place_calibration,
     placed_tag,
+    save_placed,
     spin_centres,
 )
 from dotbot.site import Site
@@ -126,6 +127,43 @@ def test_a_corner_calibration_is_refused_unless_re_anchored(spun):
 def test_a_move_below_zero_is_refused(spun):
     with pytest.raises(PlacementRefused, match="below zero"):
         place_calibration(spun, SITE, Rigid2D(0, 0, 90))
+
+
+def test_a_turn_that_puts_the_fence_below_zero_is_refused(spun):
+    top = max(y for _, y in _centres(spun).values())
+    # Every centre lands at x >= 1, but the fence round them does not
+    with pytest.raises(PlacementRefused, match="rectangle"):
+        place_calibration(spun, SITE, Rigid2D(math.ceil(top) + 1, 0, 90))
+
+
+def test_a_re_anchored_calibration_without_tracks_is_held_to_zero_too(spun):
+    corner = dataclasses.replace(
+        spun,
+        tracks=[],
+        stations=[
+            dataclasses.replace(st, solved_from="direct") for st in spun.stations
+        ],
+    )
+    bare = Site(name="hand", anchor="the door's left jamb")
+    with pytest.raises(PlacementRefused, match="below zero"):
+        place_calibration(corner, bare, Rigid2D(0, 0, 180), reanchor=True)
+
+
+def test_saving_a_placement_never_overwrites(spun, tmp_path, monkeypatch):
+    from dotbot.calibration import lighthouse2
+
+    monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path / "home")
+    same_site = Site(name=spun.site.name, anchor="the door's left jamb")
+    unmoved = place_calibration(spun, same_site, Rigid2D())
+    if unmoved.id == spun.id:
+        with pytest.raises(PlacementRefused, match="nothing to write"):
+            save_placed(spun, unmoved)
+    first, path = save_placed(spun, place_calibration(spun, SITE, Rigid2D(10, 0, 0)))
+    written = path.read_bytes()
+    again = place_calibration(spun, SITE, Rigid2D(10, 0, 0), taken_tags=[first.tag])
+    second, same = save_placed(spun, again)
+    assert same == path and path.read_bytes() == written
+    assert second.tag == first.tag == "spin-hand"
 
 
 def test_the_tag_is_suffixed_with_the_site_and_never_reused():

@@ -6,8 +6,7 @@
 A free-mode calibration (`collect --spin`) defines its own frame, metric
 through the spin radius. `place_calibration` turns and shifts every station
 of it by one `Rigid2D`, so the stations keep their geometry relative to one
-another and the scale is never touched. The site editor's placement and
-`calibrate-lh2 reframe` of a spin calibration both go through it.
+another and the scale is never touched.
 """
 
 from __future__ import annotations
@@ -16,9 +15,11 @@ import dataclasses
 import math
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 
+from dotbot.calibration import lighthouse2
 from dotbot.calibration.conics import Track, fit_tracks
 from dotbot.calibration.lighthouse2 import Calibration, StationSolution
 from dotbot.site import Site
@@ -94,12 +95,7 @@ class Rigid2D:
 
 
 def is_free_mode(calibration: Calibration) -> bool:
-    """Whether every station was solved in the calibration's own frame.
-
-    Read from the stations' solvers rather than the anchor: a placed
-    calibration takes its site's anchor, which a controller checks it
-    against, and stays movable.
-    """
+    """Whether every station was solved in the calibration's own frame."""
     return bool(calibration.stations) and all(
         st.solved_from in FREE_SOLVERS for st in calibration.stations
     )
@@ -182,7 +178,7 @@ def overlay(calibration: Calibration) -> dict:
 
 def placed_tag(tag: str, site_name: str, taken: Iterable[str] = ()) -> str:
     """The moved calibration's tag: `tag` suffixed with the site, then a
-    number if that tag is taken, so the two files answer to different tags."""
+    number if that tag is taken."""
     if not tag:
         return ""
     base = tag if tag.endswith(f"-{site_name}") else f"{tag}-{site_name}"
@@ -210,8 +206,9 @@ def place_calibration(
     modified.
 
     A corner-collected calibration is tied to the floor through the site's
-    anchor and is refused unless `reanchor`. A move that puts a spin centre
-    or a station's rectangle below zero is refused: robots carry positions as
+    anchor and is refused unless `reanchor`. A move that puts a spin centre,
+    a station's rectangle (its own, else the calibration's fence) or a
+    placement's point below zero is refused: robots carry positions as
     unsigned millimetres.
     """
     if not calibration.stations:
@@ -235,11 +232,18 @@ def place_calibration(
             changes["valid_mm"] = transform.box(rect)
         stations.append(dataclasses.replace(st, **changes))
 
+    fence = transform.box(calibration.valid_mm)
     below = [
         f"station {st.index} (channel {st.index + 1})'s rectangle "
-        f"{list(station_rect(st))}"
+        f"{list(station_rect(st) or fence)}"
         for st in stations
-        if station_rect(st) is not None and min(station_rect(st)[:2]) < 0
+        if min((station_rect(st) or fence)[:2]) < 0
+    ]
+    below += [
+        f"placement {n}'s point ({x:.0f}, {y:.0f})"
+        for n, placement in enumerate(calibration.placements)
+        for x, y in transform.apply(placement.points_mm)
+        if x < 0 or y < 0
     ]
     for index, circles in spin_centres(
         dataclasses.replace(calibration, stations=stations)
@@ -270,7 +274,11 @@ def place_calibration(
     elif site.valid_mm is not None:
         valid_mm = site.valid_mm
     else:
-        valid_mm = transform.box(calibration.valid_mm)
+        valid_mm = fence
+    try:
+        lighthouse2.valid_mm_as_bytes(valid_mm)
+    except ValueError as exc:
+        raise PlacementRefused(f"the moved calibration's fence: {exc}") from exc
     placements = [
         dataclasses.replace(
             placement,
@@ -293,3 +301,44 @@ def place_calibration(
         tag=placed_tag(calibration.tag, site.name, taken_tags),
         robot=calibration.robot,
     )
+
+
+def site_tags(site_name: str, paths: Iterable[Path] | None = None) -> list[str]:
+    """The tags of the calibrations of `site_name` among `paths`, by default
+    the files in its calibration folder."""
+    if paths is None:
+        paths = lighthouse2.site_dir(site_name).glob(lighthouse2.CALIBRATION_TOML_GLOB)
+    tags = []
+    for path in paths:
+        meta = lighthouse2._file_metadata(path)
+        if meta.get("tag") and _file_site(path) == site_name:
+            tags.append(meta["tag"])
+    return tags
+
+
+def _file_site(path: Path) -> str:
+    import tomllib
+
+    try:
+        with open(path, "rb") as handle:
+            return tomllib.load(handle).get("site", {}).get("name", "")
+    except (OSError, tomllib.TOMLDecodeError):
+        return ""
+
+
+def save_placed(source: Calibration, placed: Calibration) -> tuple[Calibration, Path]:
+    """Write `placed` beside its site's calibrations, or, when a file of its
+    id is there already, leave that file as it is; return what is on disk.
+
+    A placement with the source's own id would overwrite the source, and is
+    refused.
+    """
+    if placed.id == source.id:
+        raise PlacementRefused(
+            f"the move leaves calibration {source.id8} where it is; nothing to write"
+        )
+    for path in lighthouse2.site_dir(placed.site.name).glob(f"*-{placed.id8}.toml"):
+        existing = lighthouse2.read_calibration_file(path)
+        if existing.id == placed.id:
+            return existing, path
+    return placed, lighthouse2.write_calibration(placed)

@@ -112,6 +112,21 @@ def test_a_corner_calibration_is_refused_unless_re_anchored(client, spun):
     assert any("re-anchored" in w for w in moved.json()["warnings"])
 
 
+def test_placing_twice_the_same_way_keeps_the_first_file(client, spun, home):
+    move = {"dx_mm": 100, "dy_mm": 200, "theta_deg": 0}
+    first = client.post(f"/api/calibrations/{spun.id8}/place", json=move).json()
+    written = (home / "arena" / first["path"].split("/")[-1]).read_bytes()
+    second = client.post(f"/api/calibrations/{spun.id8}/place", json=move).json()
+    assert (second["id"], second["tag"], second["path"]) == (
+        first["id"],
+        first["tag"],
+        first["path"],
+    )
+    assert len(list((home / "arena").glob("*.toml"))) == 1
+    assert (home / "arena" / first["path"].split("/")[-1]).read_bytes() == written
+    assert client.get(f"/api/calibrations/{first['tag']}").status_code == 200
+
+
 def test_a_placement_below_zero_is_refused(client, spun):
     refused = client.post(
         f"/api/calibrations/{spun.id8}/place", json={"theta_deg": 180}
