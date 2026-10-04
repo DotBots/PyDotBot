@@ -78,9 +78,22 @@ def site_model(doc: TOMLDocument) -> dict[str, Any]:
     }
 
 
-def _barriers_model(doc: TOMLDocument, key: str) -> list[dict[str, Any]]:
-    items = doc.get(key)
+def _barriers_table(doc: TOMLDocument, key: str) -> AoT | None:
+    if key not in doc:
+        return None
+    items = doc[key]
     if not isinstance(items, AoT):
+        raise SiteTomlError(
+            f"the site editor edits {key} written as [[{key}]] tables; this file "
+            "writes them otherwise (inline), so edit it by hand or rewrite them "
+            "that way first"
+        )
+    return items
+
+
+def _barriers_model(doc: TOMLDocument, key: str) -> list[dict[str, Any]]:
+    items = _barriers_table(doc, key)
+    if items is None:
         return []
     return [
         {
@@ -284,6 +297,20 @@ def _normal(model: dict[str, Any]) -> dict[str, Any]:
             )
             for area in model.get("areas") or []
         ),
+        **{
+            key: sorted(
+                repr(
+                    (
+                        item.get("name") or None,
+                        [[int(x), int(y)] for x, y in item.get("points") or []],
+                        (item.get("comment") or "").strip() or None,
+                    )
+                )
+                for item in model.get(key) or []
+            )
+            for key in BARRIERS
+            if key in model
+        },
     }
 
 
@@ -293,8 +320,8 @@ def _patch_barriers(doc: TOMLDocument, key: str, items: list[dict[str, Any]]) ->
     for item in items:
         if len(item.get("points") or []) < least:
             raise SiteTomlError(f"each of {key} needs at least {least} points")
-    table = doc.get(key)
-    if not isinstance(table, AoT):
+    table = _barriers_table(doc, key)
+    if table is None:
         if not items:
             return
         table = tomlkit.aot()
@@ -305,6 +332,13 @@ def _patch_barriers(doc: TOMLDocument, key: str, items: list[dict[str, Any]]) ->
     if any(was >= len(table) for was in kept):
         raise SiteTomlError(f"{key} changed in the file since the page loaded it")
     for index in sorted(set(range(len(table))) - set(kept), reverse=True):
+        # The comments ending an entry head whatever follows it
+        tail = _split_trailing(table[index])
+        if index:
+            _split_trailing(table[index - 1])
+            _end_with(table[index - 1], tail)
+        else:
+            _set_heading(doc, key, tail)
         del table[index]
     position = {was: k for k, was in enumerate(kept)}
     for item in items:
@@ -315,7 +349,12 @@ def _patch_barriers(doc: TOMLDocument, key: str, items: list[dict[str, Any]]) ->
                 entry["name"] = item["name"]
             entry["points"] = points
             _set_comment(entry, item.get("comment"))
+            tail = ""
+            if len(table):
+                tail = _split_trailing(table[-1])
+                _end_with(table[-1], "\n")
             table.append(entry)
+            _end_with(entry, tail)
             continue
         entry = table[position[item["was"]]]
         _set(entry, "name", item.get("name") or None)
@@ -374,7 +413,9 @@ def patched_text(text: str, model: dict[str, Any]) -> str:
     `model`; SiteTomlError when the patch cannot be made faithfully."""
     result = tomlkit.dumps(patch(parse(text), model))
     validate(result)
-    if _normal(site_model(parse(result))) != _normal(model):
+    want = _normal(model)
+    got = _normal(site_model(parse(result)))
+    if {key: got[key] for key in want} != want:
         raise SiteTomlError(
             "the edit could not be written into site.toml as it is laid out; "
             "edit the file by hand"

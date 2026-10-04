@@ -57,8 +57,9 @@ class SiteModel(BaseModel):
     anchor: str | None = None
     extent_mm: tuple[int, int] | None = None
     areas: list[AreaModel] = Field(default_factory=list)
-    walls: list[BarrierModel] = Field(default_factory=list)
-    obstacles: list[BarrierModel] = Field(default_factory=list)
+    # None leaves the file's table as it is
+    walls: list[BarrierModel] | None = None
+    obstacles: list[BarrierModel] | None = None
 
 
 class SaveRequest(BaseModel):
@@ -155,7 +156,11 @@ def _write_atomic(path: Path, text: str) -> None:
 def _model_dict(model: SiteModel) -> dict:
     data = model.model_dump()
     data["extent_mm"] = list(model.extent_mm) if model.extent_mm else None
-    return data
+    return {
+        key: value
+        for key, value in data.items()
+        if value is not None or key in ("anchor", "extent_mm")
+    }
 
 
 def create_app(
