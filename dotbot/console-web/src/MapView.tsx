@@ -1213,8 +1213,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                 <title>{a.name}</title>
               </rect>
             ))}
-            {/* The site's walls and obstacles, solid: they are the floor's,
-                not a view of it. */}
+            {/* The site's walls and obstacles */}
             {(props.site?.obstacles ?? []).map((o, i) => (
               <polygon
                 key={`obstacle-${i}`}
