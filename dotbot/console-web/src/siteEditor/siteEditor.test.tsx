@@ -104,4 +104,18 @@ describe("SiteEditor", () => {
     expect(screen.getByLabelText("x")).toHaveValue(1200);
     expect(screen.getByLabelText("y")).toHaveValue(0);
   });
+
+  it("leaves an off-grid area where it is when a click selects it", async () => {
+    const offGrid = loaded();
+    offGrid.site.areas[1] = { ...offGrid.site.areas[1], x: 1073, y: 7 };
+    server(offGrid, { status: 200, body: {} });
+    render(<SiteEditor />);
+    const corner = await screen.findByTestId("edit-area-dev-corner");
+    fireEvent.pointerDown(corner, { button: 0, clientX: 300, clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(screen.getByTestId("site-canvas"), { clientX: 301, clientY: 101, pointerId: 1 });
+    fireEvent.pointerUp(screen.getByTestId("site-canvas"), { clientX: 301, clientY: 101, pointerId: 1 });
+    expect(screen.getByLabelText("x")).toHaveValue(1073);
+    expect(screen.getByLabelText("y")).toHaveValue(7);
+    expect(screen.queryByText(/unsaved/)).toBeNull();
+  });
 });

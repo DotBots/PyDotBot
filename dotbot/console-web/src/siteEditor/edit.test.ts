@@ -89,6 +89,15 @@ describe("siteIssues", () => {
     expect(siteIssues(arena())).toEqual([]);
   });
 
+  it("refuses a coordinate or an extent that is not a number", () => {
+    const site = arena();
+    site.areas[1].x = NaN;
+    site.extent_mm = [Infinity, 4000];
+    const errors = siteIssues(site).filter((i) => i.level === "error").map((i) => i.message);
+    expect(errors.some((m) => /must be numbers/.test(m))).toBe(true);
+    expect(errors.some((m) => /extent needs/.test(m))).toBe(true);
+  });
+
   it("refuses a second field, as the schema does", () => {
     const site = arena();
     site.areas[1].role = "field";
