@@ -988,6 +988,13 @@ def _anchored(
         rectangles[s] = _rect_around(
             np.array([t.centre_mm for t in sol.tracks], dtype=float), rect_margin_mm
         )
+        rect = rectangles[s]
+        if rect[0] >= rect[2] or rect[1] >= rect[3]:
+            raise ValueError(
+                f"{station_label(s)}: the anchors put its circles below the "
+                f"site's zero, leaving the rectangle {list(rect)}; check the "
+                "anchors' points"
+            )
     valid = union_rect(rectangles.values())
     warnings = list(joint.warnings)
     span = _spread(want)
