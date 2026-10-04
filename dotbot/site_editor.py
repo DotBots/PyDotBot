@@ -26,6 +26,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from dotbot import site_backdrops, site_placement, site_toml
+from dotbot.config import ObjectKind
 from dotbot.site import PACK_CALIBRATIONS
 from dotbot.site_packs import PACK_FILE
 
@@ -55,7 +56,7 @@ class BarrierModel(BaseModel):
 
 class ObjectModel(BaseModel):
     name: str
-    kind: Literal["charger", "dock", "landmark", "camera"]
+    kind: ObjectKind
     x: int
     y: int
     heading_deg: float = 0.0
