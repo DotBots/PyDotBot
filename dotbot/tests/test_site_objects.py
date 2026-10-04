@@ -150,3 +150,16 @@ def test_a_robot_with_a_learned_battery_model_charges_on_a_charger_too(monkeypat
         sim.step()
     assert sim.battery[0] > INITIAL_BATTERY_VOLTAGE / 2
 
+
+def test_an_object_name_may_hold_a_comma():
+    from dotbot.site_toml import patched_text
+
+    model = {
+        "anchor": None,
+        "extent_mm": None,
+        "areas": [],
+        "objects": [
+            {"name": "pad, east", "kind": "charger", "x": 1, "y": 1, "was": None}
+        ],
+    }
+    assert '[objects."pad, east"]' in patched_text("", model)

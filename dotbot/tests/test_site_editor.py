@@ -366,3 +366,17 @@ def test_a_save_that_leaves_out_the_walls_keeps_them(client, pack):
     )
     assert response.status_code == 200
     assert "[[walls]]" in (pack / "site.toml").read_text()
+
+
+def test_a_save_that_leaves_out_the_objects_keeps_them(client, pack):
+    (pack / "site.toml").write_text(
+        ARENA + '\n[objects.pad]\nkind = "charger"\nx = 1\ny = 1\n'
+    )
+    body = _loaded(client)
+    site = {k: v for k, v in body["site"].items() if k != "objects"}
+    site["anchor"] = "moved"
+    response = client.put(
+        "/api/site", json={"revision": body["revision"], "site": site}
+    )
+    assert response.status_code == 200
+    assert "[objects.pad]" in (pack / "site.toml").read_text()
