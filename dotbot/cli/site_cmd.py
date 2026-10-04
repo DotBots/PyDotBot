@@ -682,22 +682,19 @@ def _render_site_pack(site, source_id8: str) -> str:
     )
 
 
-def _serve_editor(name: str, pack: Path, port: int, headless: bool) -> None:
-    """Serve the editor on `pack` at 127.0.0.1 until Ctrl-C or Done."""
+def _editor_socket(port: int):
+    """A socket listening on 127.0.0.1:`port` for the editor, once its page
+    is known to be built."""
     import socket
-    import threading
-    import webbrowser
 
-    import uvicorn
-
-    from dotbot.calibration.lighthouse2 import calibration_root
-    from dotbot.site_editor import EDITOR_DIR, EDITOR_PAGE, EditorState, create_app
+    from dotbot.site_editor import EDITOR_DIR, EDITOR_PAGE
 
     if not (EDITOR_DIR / EDITOR_PAGE).is_file():
         raise click.ClickException(
             f"the site editor page is not built ({EDITOR_DIR / EDITOR_PAGE} is "
-            "missing). Build it with: npm --prefix dotbot/console-web install && "
-            "npm --prefix dotbot/console-web run build"
+            "missing). From a PyDotBot checkout, build it with: npm --prefix "
+            "dotbot/console-web install && npm --prefix dotbot/console-web run "
+            "build"
         )
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
@@ -706,6 +703,19 @@ def _serve_editor(name: str, pack: Path, port: int, headless: bool) -> None:
         sock.close()
         raise click.ClickException(f"cannot listen on 127.0.0.1:{port}: {exc}") from exc
     sock.listen()
+    return sock
+
+
+def _serve_editor(name: str, pack: Path, sock, headless: bool) -> None:
+    """Serve the editor on `pack` from `sock` until Ctrl-C or Done."""
+    import threading
+    import webbrowser
+
+    import uvicorn
+
+    from dotbot.calibration.lighthouse2 import calibration_root
+    from dotbot.site_editor import EditorState, create_app
+
     url = f"http://127.0.0.1:{sock.getsockname()[1]}/"
     state = EditorState(name, pack, [calibration_root() / name])
     server = None
@@ -727,7 +737,7 @@ def _serve_editor(name: str, pack: Path, port: int, headless: bool) -> None:
 
 _PORT = click.option(
     "--port",
-    type=int,
+    type=click.IntRange(0, 65535),
     default=0,
     show_default="a free port",
     help="Port on 127.0.0.1 to serve the editor on.",
@@ -862,22 +872,32 @@ def new(ctx, name, field_spec, port, headless):
     at once. It starts as `dotbot config init` starts a site: a field with
     floor round it and a staging strip below. It is not made the active site.
     """
+    from dotbot.calibration.lighthouse2 import site_name_as_bytes
     from dotbot.cli.config_cmd import default_site_toml, parse_field_size
     from dotbot.site_packs import site_homes
 
+    config = (ctx.obj or {}).get("config")
     try:
         check_site_name(name)
-    except ValueError as exc:
+        site_name_as_bytes(name)  # the push carries the name to the robots
+        existing = resolve_site_entry(config, name)
+    except (ValueError, ConfigError) as exc:
         raise click.ClickException(str(exc)) from exc
+    if existing is not None:
+        raise click.ClickException(
+            f"site {name} already exists ({existing.pack}); open it with "
+            f"`dotbot site edit {name}`, or pick another name"
+        )
     field_mm = parse_field_size(field_spec)
-    _, home = site_homes((ctx.obj or {}).get("config"))[0]
+    _, home = site_homes(config)[0]
     target = home / name
     if target.exists():
         raise click.ClickException(f"{target} already exists")
+    sock = _editor_socket(port)
     target.mkdir(parents=True)
     (target / PACK_FILE).write_text(default_site_toml(field_mm))
     click.echo(f"Wrote {target / PACK_FILE}")
-    _serve_editor(name, target, port, headless)
+    _serve_editor(name, target, sock, headless)
     click.echo(f"Work in it with `dotbot site use {name}`, or --site {name}.")
 
 
@@ -899,12 +919,14 @@ def edit(ctx, site, port, headless):
             entry = pack_at(site)
         except ConfigError as exc:
             raise click.ClickException(str(exc)) from exc
-        _serve_editor(entry.name, entry.pack, port, headless)
+        _serve_editor(entry.name, entry.pack, _editor_socket(port), headless)
         return
     if site is None:
         active = active_site(ctx)
         if active.entry is not None:
-            _serve_editor(active.name, active.entry.pack, port, headless)
+            _serve_editor(
+                active.name, active.entry.pack, _editor_socket(port), headless
+            )
             return
         site = active.name
     name = site
@@ -914,4 +936,4 @@ def edit(ctx, site, port, headless):
             f"unknown site {name!r}; `dotbot site list` names the known ones, "
             "and `dotbot site new` makes one"
         )
-    _serve_editor(name, entry.pack, port, headless)
+    _serve_editor(name, entry.pack, _editor_socket(port), headless)

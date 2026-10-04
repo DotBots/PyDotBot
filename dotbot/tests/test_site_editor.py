@@ -129,10 +129,11 @@ def test_done_runs_the_callback(pack, page):
 @pytest.fixture
 def served(monkeypatch):
     calls = []
+    monkeypatch.setattr(site_cmd, "_editor_socket", lambda port: port)
     monkeypatch.setattr(
         site_cmd,
         "_serve_editor",
-        lambda name, pack, port, headless: calls.append((name, pack, headless)),
+        lambda name, pack, sock, headless: calls.append((name, pack, headless)),
     )
     return calls
 
@@ -168,6 +169,44 @@ def test_site_new_refuses_an_existing_folder(tmp_path, monkeypatch, served):
     result = CliRunner().invoke(site_cmd.cmd, ["new", "lab"], obj={})
     assert result.exit_code != 0 and "already exists" in result.output
     assert served == []
+
+
+def test_site_new_writes_nothing_when_the_page_is_not_built(tmp_path, monkeypatch):
+    monkeypatch.setattr("dotbot.site_packs.USER_SITES_DIR", tmp_path / "home-sites")
+    monkeypatch.setattr("dotbot.site_editor.EDITOR_DIR", tmp_path / "no-dist")
+    result = CliRunner().invoke(site_cmd.cmd, ["new", "lab", "--headless"], obj={})
+    assert result.exit_code != 0 and "not built" in result.output
+    assert not (tmp_path / "home-sites" / "lab").exists()
+
+
+def test_site_new_refuses_a_port_that_cannot_be(served):
+    result = CliRunner().invoke(site_cmd.cmd, ["new", "lab", "--port", "70000"])
+    assert result.exit_code == 2
+    assert served == []
+
+
+def test_site_new_refuses_a_name_too_long_to_reach_a_robot(
+    tmp_path, monkeypatch, served
+):
+    monkeypatch.setattr("dotbot.site_packs.USER_SITES_DIR", tmp_path)
+    result = CliRunner().invoke(site_cmd.cmd, ["new", "a_very_long_site_name"], obj={})
+    assert result.exit_code != 0 and "to reach a robot" in result.output
+    assert served == [] and not (tmp_path / "a_very_long_site_name").exists()
+
+
+def test_site_new_refuses_a_name_another_home_has(tmp_path, monkeypatch, served):
+    from dotbot.config import load_discovered
+
+    monkeypatch.setattr("dotbot.site_packs.USER_SITES_DIR", tmp_path / "home-sites")
+    (tmp_path / "home-sites" / "lab").mkdir(parents=True)
+    (tmp_path / "home-sites" / "lab" / "site.toml").write_text(ARENA)
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "dotbot.toml").write_text("")
+    config = load_discovered(environ={}, start_dir=project)
+    result = CliRunner().invoke(site_cmd.cmd, ["new", "lab"], obj={"config": config})
+    assert result.exit_code != 0 and "dotbot site edit lab" in result.output
+    assert served == [] and not (project / "sites" / "lab").exists()
 
 
 def test_site_edit_takes_a_pack_folder(pack, served):
