@@ -253,7 +253,6 @@ export function useFleet(): {
         shapesRef.current = (event.data as RobotShapes | null) ?? {};
         rebuildNextFrame();
       } else if (event.event === "site" && event.data) {
-        // The site editor panel saved the pack and the controller reloaded it
         setSite(event.data as Site);
       } else if (event.event === "calibration_session") {
         setSession((event.data as CalibrationSession | null) ?? null);
