@@ -708,18 +708,22 @@ class DotBotSimulatorCommunicationInterface:
 
     def use_site(self, site: Optional[Site]) -> None:
         """Take a changed site's walls, obstacles and chargers, robots where they are."""
-        self.plant.barriers = Barriers.from_site(site)
+        barriers = Barriers.from_site(site)
         chargers = site.objects_of("charger") if site is not None else []
-        self._chargers = (
+        positions = (
             np.array([[c.x, c.y] for c in chargers], dtype=float) if chargers else None
         )
+        # Each a single assignment: the tick thread reads either the old or the new
+        self.plant.barriers = barriers
+        self._chargers = positions
 
     def on_charger(self) -> np.ndarray:
         """Whether each robot's axle midpoint is on one of the site's chargers."""
-        if self._chargers is None:
+        chargers = self._chargers
+        if chargers is None:
             return np.zeros(self.plant.count, dtype=bool)
-        dx = self.plant.x[:, None] - self._chargers[None, :, 0]
-        dy = self.plant.y[:, None] - self._chargers[None, :, 1]
+        dx = self.plant.x[:, None] - chargers[None, :, 0]
+        dy = self.plant.y[:, None] - chargers[None, :, 1]
         return (dx * dx + dy * dy < CHARGER_REACH_MM**2).any(axis=1)
 
     def _charged(self) -> np.ndarray:

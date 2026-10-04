@@ -1061,23 +1061,50 @@ class Controller:
         return None if point is None else point.mm
 
     def reload_site(self) -> None:
-        """Read the site's pack again, as after the site editor saved it: the
-        map (a `site` event) and a running simulator take the change at once."""
+        """Read the site's pack again: the map (a `site` event), the
+        calibration session and a running simulator take the change at once.
+        A pack that no longer reads leaves the site as it was."""
+        from dotbot.calibration.lighthouse2 import check_calibration_site
         from dotbot.site import site_from_table
         from dotbot.site_packs import read_pack
 
         if self.site.pack is None:
             return
-        self.site = site_from_table(
-            self.site.name, read_pack(self.site.pack), self.site.pack
-        )
-        self.settings.site = self.site
+        try:
+            site = site_from_table(
+                self.site.name, read_pack(self.site.pack), self.site.pack
+            )
+            model = DotBotSiteModel.from_site(site, self.calibration)
+        except Exception as exc:  # noqa: BLE001
+            self.logger.warning(
+                "Site pack no longer reads; keeping the site as it was",
+                pack=str(self.site.pack),
+                error=str(exc),
+            )
+            return
+        if self.calibration is not None:
+            try:
+                check_calibration_site(
+                    self.calibration.site, site, self.calibration.path
+                )
+            except ValueError as exc:
+                self.logger.warning(
+                    "Site reloaded against its calibration", error=str(exc)
+                )
+            if site.valid_mm != self.site.valid_mm:
+                self.logger.warning(
+                    "Site extent changed; robots keep the fence of the calibration "
+                    "they hold until a new one is pushed",
+                    site=site.name,
+                )
+        self.site = site
+        self.settings.site = site
+        self.calibration_session.site = site
         simulator = getattr(self.adapter, "simulator", None)
         if hasattr(simulator, "use_site"):
-            simulator.use_site(self.site)
-        model = DotBotSiteModel.from_site(self.site, self.calibration)
+            simulator.use_site(site)
         self.set_event("site", "site", model.model_dump(mode="json"))
-        self.logger.info("Site reloaded from its pack", site=self.site.name)
+        self.logger.info("Site reloaded from its pack", site=site.name)
 
     async def _notify_calibration_session(self, state):
         """A `calibration_session` event per session state change.
