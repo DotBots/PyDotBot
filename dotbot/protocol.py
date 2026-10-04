@@ -25,7 +25,7 @@ AXLE_UNKNOWN = 0xFFFF
 
 # The advertised `calibrated` bitmask of a robot that holds no per-station
 # homographies at all, such as one running a sandbox app.
-CALIBRATED_NOT_APPLICABLE = 0xFF
+CALIBRATED_NOT_APPLICABLE = 0xFFFF
 
 
 class PayloadType(IntEnum):
@@ -114,7 +114,7 @@ class PayloadDotBotAdvertisement(Payload):
 
     metadata: list[PayloadFieldMetadata] = dataclasses.field(
         default_factory=lambda: [
-            PayloadFieldMetadata(name="calibrated", disp="cal."),
+            PayloadFieldMetadata(name="calibrated", disp="cal.", length=2),
             PayloadFieldMetadata(name="direction", disp="dir.", length=2, signed=True),
             PayloadFieldMetadata(name="pos_x", disp="x", length=4),
             PayloadFieldMetadata(name="pos_y", disp="y", length=4),
@@ -140,7 +140,7 @@ class PayloadDotBotAdvertisement(Payload):
         ]
     )
 
-    calibrated: int = 0x00  # Bitmask: first lighthouse = 0x01, second lighthouse = 0x02
+    calibrated: int = 0x00  # bit i: the robot holds station i's homography
     direction: int = 0xFFFF
     pos_x: int = 0xFFFFFFFF
     pos_y: int = 0xFFFFFFFF
