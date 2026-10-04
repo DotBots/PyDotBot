@@ -1292,10 +1292,10 @@ def next_round_lines(targets: Sequence[SpinTarget]) -> list[str]:
         return ["next round: nothing to suggest"]
     lines = [f"next round, {len(targets)} spin(s), in this calibration's frame:"]
     for t in targets:
-        seen = ", ".join(str(s) for s in t.stations)
+        seen = ", ".join(station_label(s) for s in t.stations)
         lines.append(
-            f"  ({t.point_mm[0]:6.0f}, {t.point_mm[1]:6.0f}) mm, seen by station(s) "
-            f"{seen}: {t.why}"
+            f"  ({t.point_mm[0]:6.0f}, {t.point_mm[1]:6.0f}) mm, seen by {seen}: "
+            f"{t.why}"
         )
     return lines
 

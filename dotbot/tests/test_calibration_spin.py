@@ -662,4 +662,5 @@ def test_show_next_round_says_where_to_spin(monkeypatch, lab):
     )
     assert shown.exit_code == 0, shown.output
     assert "next round, 3 spin(s), in this calibration's frame:" in shown.output
-    assert shown.output.count("mm, seen by station(s)") == 3
+    assert shown.output.count("mm, seen by station ") == 3
+
