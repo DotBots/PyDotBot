@@ -562,7 +562,8 @@ def test_a_robot_given_a_heading_starts_tracking_it_where_it_was_put(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "calibrated, expected", [(None, [0xFF, 0x05]), (0b11, [0b11, 0x05])]
+    "calibrated, expected",
+    [(None, [0xFFFF, 0x05]), (0b11, [0b11, 0x05]), (0x0104, [0x0104, 0x05])],
 )
 def test_a_robot_holds_the_controllers_stations_unless_its_file_says(
     calibrated, expected
