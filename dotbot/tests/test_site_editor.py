@@ -252,3 +252,66 @@ def test_a_request_from_an_ipv6_loopback_client_is_taken(pack, page):
     for address in ("::1", "::ffff:127.0.0.1"):
         local = TestClient(app, base_url="http://localhost", client=(address, 5))
         assert local.get("/api/site").status_code == 200
+
+
+def test_a_pack_the_editor_cannot_draw_is_a_422(pack, client):
+    (pack / "site.toml").write_text(
+        "areas = { field = { x = 0, y = 0, w = 1, h = 1 } }\n"
+    )
+    response = client.get("/api/site")
+    assert response.status_code == 422
+    assert "edit it by hand" in response.json()["detail"]
+    (pack / "site.toml").write_bytes(b"anchor = '\xff'\n")
+    assert client.get("/api/site").status_code == 422
+    (pack / "site.toml").write_text("[areas.field\n")
+    assert client.get("/api/site").status_code == 422
+
+
+def test_two_saves_against_one_revision_take_one(client, pack, monkeypatch):
+    import threading
+    import time
+
+    from dotbot import site_toml
+
+    patched = site_toml.patched_text
+
+    def slow(text, model):
+        time.sleep(0.2)
+        return patched(text, model)
+
+    monkeypatch.setattr(site_toml, "patched_text", slow)
+    body = _loaded(client)
+    statuses = []
+
+    def save(x):
+        site = {**body["site"], "areas": [dict(a) for a in body["site"]["areas"]]}
+        site["areas"][0]["x"] = x
+        statuses.append(
+            client.put(
+                "/api/site", json={"revision": body["revision"], "site": site}
+            ).status_code
+        )
+
+    threads = [threading.Thread(target=save, args=(x,)) for x in (100, 200)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert sorted(statuses) == [200, 409]
+
+
+def test_a_save_through_a_symlink_writes_its_target(tmp_path, page):
+    pack = tmp_path / "linked"
+    pack.mkdir()
+    target = tmp_path / "checkout.toml"
+    target.write_text(ARENA)
+    (pack / "site.toml").symlink_to(target)
+    client = local_client(create_app(EditorState("linked", pack), page))
+    body = _loaded(client)
+    body["site"]["anchor"] = "moved"
+    response = client.put(
+        "/api/site", json={"revision": body["revision"], "site": body["site"]}
+    )
+    assert response.status_code == 200
+    assert (pack / "site.toml").is_symlink()
+    assert 'anchor = "moved"' in target.read_text()
