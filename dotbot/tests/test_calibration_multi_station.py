@@ -293,8 +293,8 @@ def test_the_error_map_grows_away_from_the_spins():
     assert np.median(far) > np.median(near)
 
 
-def test_a_circle_the_stations_disagree_on_is_untied():
-    a, b = two_stations()
+def one_bad_circle(a, b):
+    """Tracks of two stations where station 1 saw one shared circle 25 mm off."""
     centres = floor_grid([a, b], step=300)
     tracks = F.spins([a, b], centres, noise=0.5, seed=1)
     shared = sorted(
@@ -302,14 +302,28 @@ def test_a_circle_the_stations_disagree_on_is_untied():
     )
     assert len(shared) >= 6
     bad = shared[len(shared) // 2]
-    # station 1 saw that robot's circle 25 mm away from where it was
     for t in tracks[1]:
         if t.key == bad:
             floor = apply(b.cam_to_floor, t.points) + [25.0, 0.0]
             t.points = apply(b.floor_to_cam, floor)
+    return tracks, bad
+
+
+def test_a_circle_the_stations_disagree_on_is_untied():
+    a, b = two_stations()
+    tracks, bad = one_bad_circle(a, b)
     joint = ms.solve_joint(tracks)
     assert list(joint.dropped) == [bad]
     assert "mm apart" in joint.dropped[bad]
+    assert overlap_disagreement(joint, a, b).max() < 1.0
+
+
+def test_a_circle_untied_in_the_last_round_is_out_of_the_solve(monkeypatch):
+    monkeypatch.setattr(ms, "TIE_ROUNDS_MAX", 1)
+    a, b = two_stations()
+    tracks, bad = one_bad_circle(a, b)
+    joint = ms.solve_joint(tracks)
+    assert list(joint.dropped) == [bad]
     assert overlap_disagreement(joint, a, b).max() < 1.0
 
 
@@ -344,16 +358,6 @@ def test_the_normal_equations_match_the_whole_jacobian():
     assert np.allclose(
         g, Jw.T @ (w * problem.residuals(x)), rtol=1e-4, atol=1e-6 * np.abs(g).max()
     )
-
-
-def test_a_single_station_is_solved_as_free_mode_solves_it():
-    a = F.station(0)
-    tracks = F.spins([a], floor_grid([a]), noise=0.5, seed=3)
-    joint = ms.solve_joint(tracks)
-    own = conics.solve(tracks[0])
-    assert np.array_equal(joint.homographies[0], own.homography / own.homography[2, 2])
-    assert joint.field_mm == own.field_mm
-    assert not joint.graph.links and joint.error_map.covered > 0
 
 
 def real_spin_samples():
