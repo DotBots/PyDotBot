@@ -16,7 +16,7 @@ from typing import Any
 
 import tomlkit
 from pydantic import ValidationError
-from tomlkit.items import InlineTable, SingleKey, Table
+from tomlkit.items import AoT, Comment, InlineTable, Table, Whitespace
 from tomlkit.toml_document import TOMLDocument
 
 from dotbot.config import SiteSection
@@ -39,8 +39,17 @@ def _comment(item: Any) -> str | None:
 
 
 def _areas_table(doc: TOMLDocument) -> Table | None:
-    areas = doc.get("areas")
-    return areas if isinstance(areas, Table) else None
+    if "areas" not in doc:
+        return None
+    areas = doc["areas"]
+    if not isinstance(areas, Table):
+        raise SiteTomlError(
+            "the site editor edits areas written as one run of [areas.<name>] "
+            "tables, or as one [areas] table; this file writes them otherwise "
+            "(split by another table, as dotted keys or inline), so edit it by "
+            "hand or gather them first"
+        )
+    return areas
 
 
 def site_model(doc: TOMLDocument) -> dict[str, Any]:
@@ -75,8 +84,15 @@ def _set(container: Any, key: str, value: Any) -> None:
         container[key] = value
 
 
+def _clean_comment(comment: str | None) -> str | None:
+    if comment is not None and ("\n" in comment or "\r" in comment):
+        raise SiteTomlError("a comment is one line")
+    return (comment or "").strip() or None
+
+
 def _set_comment(item: Any, comment: str | None) -> None:
-    if _comment(item) == (comment or None):
+    comment = _clean_comment(comment)
+    if _comment(item) == comment:
         return
     if comment:
         if not item.trivia.comment_ws:
@@ -114,6 +130,75 @@ def _check_names(areas: list[dict[str, Any]]) -> None:
         seen.add(name)
 
 
+def _split_trailing(table: Table) -> str:
+    """Take the comments and blank lines ending `table`, which head whatever
+    follows it in the file, out of it; return them as text."""
+    body = table.value.body
+    end = len(body)
+    while end and body[end - 1][0] is None:
+        if not isinstance(body[end - 1][1], (Comment, Whitespace)):
+            break
+        end -= 1
+    text = "".join(item.as_string() for _, item in body[end:])
+    del body[end:]
+    return text
+
+
+def _end_with(table: Table, text: str) -> None:
+    if text:
+        table.value.body.append((None, Whitespace(text)))
+
+
+def _set_heading(doc: TOMLDocument, key: str, text: str) -> None:
+    """Make `text` the comments and blank lines just above the top-level `key`."""
+    body = doc.body
+    index = next(i for i, (k, _) in enumerate(body) if k is not None and k == key)
+    start = index
+    while start and body[start - 1][0] is None:
+        start -= 1
+    if start < index:
+        body[start] = (None, Whitespace(text))
+        for i in range(start + 1, index):
+            body[i] = (None, Whitespace(""))
+        return
+    before = body[index - 1][1] if index else None
+    if isinstance(before, AoT) and before.body:
+        before = before.body[-1]
+    if isinstance(before, Table):
+        _split_trailing(before)
+        _end_with(before, text)
+
+
+def _delete_table(doc: TOMLDocument, parent: str, table: Table, name: str) -> None:
+    """Delete `table[name]`, keeping the comments that head the next table."""
+    names = list(table)
+    index = names.index(name)
+    item = table[name]
+    if isinstance(item, Table):
+        tail = _split_trailing(item)
+        previous = table[names[index - 1]] if index else None
+        if isinstance(previous, Table):
+            _split_trailing(previous)
+            _end_with(previous, tail)
+        elif index == 0:
+            _set_heading(doc, parent, tail)
+    del table[name]
+
+
+def _rename(table: Table, was: str, name: str) -> None:
+    # tomlkit has no public rename; this keeps the area's place, comment and
+    # layout, the header written in the plain form
+    item = table[was]
+    body = item.value.body if isinstance(item, Table) else None
+    length = len(body) if body is not None else 0
+    table.value._replace(was, name, item)
+    if isinstance(item, Table):
+        if len(body) == length + 1 and body[-1][1].as_string() == "\n":
+            body.pop()
+        item.display_name = None
+        item.name = name
+
+
 def _patch_areas(doc: TOMLDocument, areas: list[dict[str, Any]]) -> None:
     table = _areas_table(doc)
     if table is None:
@@ -129,24 +214,34 @@ def _patch_areas(doc: TOMLDocument, areas: list[dict[str, Any]]) -> None:
     }
     kept = {area.get("was") or area["name"] for area in areas}
     for name in [name for name in table if name not in kept]:
-        del table[name]
-    for was, name in renames.items():
+        _delete_table(doc, "areas", table, name)
+    for was in renames:
         if was not in table:
             raise SiteTomlError(f"area {was!r} is not in the file")
-        # tomlkit has no public rename; this keeps the area's place, comment
-        # and layout
-        item = table[was]
-        table.value._replace(was, name, item)
-        if isinstance(item, Table) and item.display_name:
-            old_key = SingleKey(was).as_string()
-            prefix = item.display_name.removesuffix(old_key)
-            item.display_name = prefix + SingleKey(name).as_string()
-        if isinstance(item, Table):
-            item.name = name
+    # A swap or a chain goes through names no area has, so it never meets itself
+    clash = any(name in table for name in renames.values())
+    passing = {
+        was: f"\0rename-{i}" if clash else name
+        for i, (was, name) in enumerate(renames.items())
+    }
+    try:
+        for was, through in passing.items():
+            _rename(table, was, through)
+        for was, through in passing.items():
+            if through != renames[was]:
+                _rename(table, through, renames[was])
+    except (KeyError, ValueError) as exc:
+        raise SiteTomlError(f"could not rename the areas in this file: {exc}") from exc
     for area in areas:
         name = area["name"]
         if name not in table:
+            last = table[list(table)[-1]] if table else None
+            tail = _split_trailing(last) if isinstance(last, Table) else ""
             table[name] = _new_area(inline, area)
+            if isinstance(table[name], Table):
+                _end_with(table[name], tail)
+            elif isinstance(last, Table):
+                _end_with(last, tail)
             continue
         item = table[name]
         _set(item, "role", area.get("role"))
@@ -155,6 +250,24 @@ def _patch_areas(doc: TOMLDocument, areas: list[dict[str, Any]]) -> None:
         _set_comment(item, area.get("comment"))
     if not table:
         del doc["areas"]
+
+
+def _normal(model: dict[str, Any]) -> dict[str, Any]:
+    """The parts of a model a written file must give back."""
+    extent = model.get("extent_mm")
+    return {
+        "anchor": model.get("anchor") or None,
+        "extent_mm": [int(v) for v in extent] if extent is not None else None,
+        "areas": sorted(
+            (
+                area["name"],
+                *(int(area[key]) for key in AREA_KEYS),
+                area.get("role"),
+                (area.get("comment") or "").strip() or None,
+            )
+            for area in model.get("areas") or []
+        ),
+    }
 
 
 def patch(doc: TOMLDocument, model: dict[str, Any]) -> TOMLDocument:
@@ -190,9 +303,21 @@ def validate(text: str) -> SiteSection:
         raise SiteTomlError(str(exc)) from exc
 
 
+def parse(text: str) -> TOMLDocument:
+    try:
+        return tomlkit.parse(text)
+    except tomlkit.exceptions.ParseError as exc:
+        raise SiteTomlError(f"not valid TOML: {exc}") from exc
+
+
 def patched_text(text: str, model: dict[str, Any]) -> str:
-    """`text` with `model` written into it, validated."""
-    doc = tomlkit.parse(text)
-    result = tomlkit.dumps(patch(doc, model))
+    """`text` with `model` written into it, validated, and read back as
+    `model`; SiteTomlError when the patch cannot be made faithfully."""
+    result = tomlkit.dumps(patch(parse(text), model))
     validate(result)
+    if _normal(site_model(parse(result))) != _normal(model):
+        raise SiteTomlError(
+            "the edit could not be written into site.toml as it is laid out; "
+            "edit the file by hand"
+        )
     return result
