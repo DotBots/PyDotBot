@@ -30,7 +30,7 @@ const site: Site = {
 };
 
 const info = (over: Partial<SwarmitDeviceInfo> = {}): SwarmitDeviceInfo => ({
-  info_version: 3,
+  info_version: 4,
   bl_version: "1.25.0",
   net_version: "1.25.0",
   boot_count: 3,
