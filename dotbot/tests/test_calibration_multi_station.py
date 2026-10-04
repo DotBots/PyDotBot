@@ -313,6 +313,39 @@ def test_a_circle_the_stations_disagree_on_is_untied():
     assert overlap_disagreement(joint, a, b).max() < 1.0
 
 
+def test_the_normal_equations_match_the_whole_jacobian():
+    a, b = two_stations()
+    tracks = F.spins([a, b], floor_grid([a, b]), noise=1.0, seed=6, points=40)
+    joint = ms.solve_joint(tracks)
+    kept = {
+        s: [t for t in tracks[s] if t.key in {f.key for f in sol.tracks}]
+        for s, sol in joint.solutions.items()
+    }
+    world = {
+        s: {t.key: np.array(t.centre_mm) for t in sol.tracks}
+        for s, sol in joint.solutions.items()
+    }
+    tied = {}
+    for s, centres in world.items():
+        for k in centres:
+            tied.setdefault(k, set()).add(s)
+    problem, x = ms._build_problem(kept, world, tied, joint.homographies, 0)
+    w = np.random.default_rng(0).uniform(0.5, 1.5, len(problem.residuals(x)))
+    step = 1e-6 * np.maximum(np.abs(x), 1e-3)
+    J = np.column_stack(
+        [
+            (problem.residuals(x + dx) - problem.residuals(x - dx)) / (2 * dx[i])
+            for i, dx in enumerate(np.diag(step))
+        ]
+    )
+    A, g = problem.normal(x, w)
+    Jw = J * w[:, None]
+    assert np.allclose(A, Jw.T @ Jw, rtol=1e-4, atol=1e-6 * np.abs(A).max())
+    assert np.allclose(
+        g, Jw.T @ (w * problem.residuals(x)), rtol=1e-4, atol=1e-6 * np.abs(g).max()
+    )
+
+
 def test_a_single_station_is_solved_as_free_mode_solves_it():
     a = F.station(0)
     tracks = F.spins([a], floor_grid([a]), noise=0.5, seed=3)
