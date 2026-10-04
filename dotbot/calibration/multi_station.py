@@ -71,8 +71,10 @@ ERROR_MAP_LIMIT_MM = 10.0
 # Largest share a station's own scale may differ from the joint one.
 SCALE_RATIO_TOLERANCE = 0.02
 # A tied circle whose station centres are further apart than this many
-# times the typical disagreement is untied; the scale has this floor.
+# times the typical disagreement is untied.
 TIE_GATE_SIGMAS = 3.0
+# Least per-axis centre disagreement the tie gate and a link's yaw sigma
+# assume, mm: a fit to two or three circles leaves almost none to measure.
 TIE_SIGMA_FLOOR_MM = 1.0
 # Tied circles needed before the typical disagreement means anything.
 TIE_GATE_MIN = 4
@@ -209,15 +211,17 @@ def _spread(points: np.ndarray) -> float:
 def _tie_stats(pa: np.ndarray, pb: np.ndarray) -> tuple[float, float]:
     """rms distance between paired centres, and the relative yaw it leaves.
 
-    The yaw sigma is that of a rigid fit on the pairs: per-axis noise over
-    the root of the centres' second moment about their mean.
+    The yaw sigma is that of a rigid fit on the pairs: per-axis noise, at
+    least `TIE_SIGMA_FLOOR_MM`, over the root of the centres' second moment
+    about their mean.
     """
     d = np.linalg.norm(pa - pb, axis=1)
     rms = float(np.sqrt(np.mean(d**2)))
     moment = float(np.sum((pa - pa.mean(axis=0)) ** 2))
     if len(pa) < 2 or moment <= 0:
         return rms, math.inf
-    return rms, 1000.0 * (rms / math.sqrt(2)) / math.sqrt(moment)
+    sigma = max(rms / math.sqrt(2), TIE_SIGMA_FLOOR_MM)
+    return rms, 1000.0 * sigma / math.sqrt(moment)
 
 
 def _components(

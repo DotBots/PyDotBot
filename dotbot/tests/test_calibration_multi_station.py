@@ -360,6 +360,30 @@ def test_the_normal_equations_match_the_whole_jacobian():
     )
 
 
+def test_a_two_circle_link_claims_no_better_yaw_than_its_baseline_allows():
+    a = F.station(0)
+    b = F.station(1, F.rigid(2200, 0, 0))
+    own_a = [(500, 1000), (500, 2000), (900, 1500), (300, 1500)]
+    own_b = [(3200, 1000), (3200, 2000), (3600, 1500), (2900, 1500)]
+    tie = [(1700, 1500), (2100, 1500)]
+    joint = ms.solve_joint(F.spins([a, b], own_a + own_b + tie))
+    (link,) = joint.graph.links
+    assert link.shared == 2 and link.disagreement_mm < 0.1
+    # sqrt(2) sigma / L with sigma at its floor: noise-free fits measure none
+    floor = 1000 * np.sqrt(2) * ms.TIE_SIGMA_FLOOR_MM / link.spread_mm
+    assert link.yaw_sigma_mrad == pytest.approx(floor, rel=0.01)
+
+
+def test_a_single_station_is_solved_as_free_mode_solves_it():
+    a = F.station(0)
+    tracks = F.spins([a], floor_grid([a]), noise=0.5, seed=3)
+    joint = ms.solve_joint(tracks)
+    own = conics.solve(tracks[0])
+    assert np.array_equal(joint.homographies[0], own.homography / own.homography[2, 2])
+    assert joint.field_mm == own.field_mm
+    assert not joint.graph.links and joint.error_map.covered > 0
+
+
 def real_spin_samples():
     data = tomllib.loads((HERE / "lh2_spin_c405.toml").read_text())
     samples = [
