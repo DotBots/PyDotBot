@@ -25,6 +25,8 @@ from dotbot.calibration.placement import (
     is_free_mode,
     overlay,
     place_calibration,
+    save_placed,
+    site_tags,
     spin_centres,
 )
 from dotbot.config import SiteSection
@@ -112,23 +114,15 @@ def create_router(name: str, pack: Path, site_text: Callable[[], str]) -> APIRou
     def place(spec: str, request: PlaceRequest):
         source = resolve(spec)
         site = current_site()
-        taken = [
-            m["tag"]
-            for m in map(_metadata, _files(pack))
-            if m and m["site"] == site.name and m["tag"]
-        ]
+        taken = site_tags(site.name, _files(pack))
         move = Rigid2D(request.dx_mm, request.dy_mm, request.theta_deg)
         try:
             placed = place_calibration(
                 source, site, move, reanchor=request.reanchor, taken_tags=taken
             )
+            placed, path = save_placed(source, placed)
         except PlacementRefused as exc:
             raise HTTPException(422, str(exc)) from exc
-        if placed.id == source.id:
-            raise HTTPException(
-                422, "the move changes nothing; the calibration is already there"
-            )
-        path = lighthouse2.write_calibration(placed)
         warnings = []
         if site.extent_mm is not None:
             width, height = site.extent_mm
