@@ -7,7 +7,6 @@ calibration, never writing the file it was loaded from."""
 import dataclasses
 
 import pytest
-from fastapi.testclient import TestClient
 
 from dotbot.calibration import conics, lighthouse2
 from dotbot.calibration.lighthouse2 import read_calibration_file, write_calibration
@@ -15,6 +14,7 @@ from dotbot.calibration.placement import Rigid2D, spin_centres
 from dotbot.site import Site
 from dotbot.site_editor import EditorState, create_app
 from dotbot.tests.test_calibration_conics import CENTRES, track_samples
+from dotbot.tests.test_site_editor import local_client
 from dotbot.tests.test_site_toml import ARENA
 
 
@@ -41,10 +41,7 @@ def client(tmp_path, home):
     page = tmp_path / "dist"
     page.mkdir()
     (page / "site-editor.html").write_text("<html></html>")
-    return TestClient(
-        create_app(EditorState("arena", pack, [home / "arena"]), page),
-        base_url="http://127.0.0.1",
-    )
+    return local_client(create_app(EditorState("arena", pack, [home / "arena"]), page))
 
 
 def test_the_calibrations_are_listed_with_their_kind(client, spun):
