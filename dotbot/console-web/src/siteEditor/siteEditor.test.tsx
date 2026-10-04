@@ -387,4 +387,13 @@ describe("SiteEditor walls and obstacles", () => {
     fireEvent.click(screen.getByText("Delete obstacle"));
     expect(screen.queryByTestId("edit-obstacle-0")).toBeNull();
   });
+
+  it("keeps a selected obstacle when Backspace is pressed while drawing", async () => {
+    server(withBarriers(), { status: 200, body: {} });
+    render(<SiteEditor />);
+    fireEvent.click(within(await screen.findByTestId("barriers")).getByText("pillar"));
+    fireEvent.click(screen.getByText("Wall"));
+    fireEvent.keyDown(window, { key: "Backspace" });
+    expect(screen.getByTestId("edit-obstacle-0")).toBeInTheDocument();
+  });
 });
