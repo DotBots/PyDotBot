@@ -679,6 +679,7 @@ class DotBotSimulatorCommunicationInterface:
         import torch
 
         reports = self.reports()
+        charging = self.on_charger()
         for index, model in self._battery_models.items():
             features = torch.tensor(
                 [
@@ -698,8 +699,11 @@ class DotBotSimulatorCommunicationInterface:
             except Exception as exc:  # noqa: BLE001
                 self.logger.warning("Battery model inference failed", error=str(exc))
                 continue
-            self.battery[index] = max(
-                0.0, self.battery[index] + rate * SIMULATOR_STEP_DELTA_T
+            if charging[index]:
+                rate = INITIAL_BATTERY_VOLTAGE / CHARGE_FULL_S
+            self.battery[index] = min(
+                INITIAL_BATTERY_VOLTAGE,
+                max(0.0, self.battery[index] + rate * SIMULATOR_STEP_DELTA_T),
             )
 
     def on_charger(self) -> np.ndarray:

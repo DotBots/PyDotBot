@@ -6,6 +6,7 @@ charged at in the simulator, and used by the charging-station example."""
 
 import tomllib
 
+import numpy as np
 import pytest
 import tomlkit
 
@@ -121,3 +122,31 @@ def test_a_simulated_robot_on_a_charger_charges_and_one_off_it_drains():
     # Ten seconds: a twelfth of a full charge on, a sliver of drain off
     assert on == pytest.approx(INITIAL_BATTERY_VOLTAGE * (0.5 + 10 / 120), abs=1)
     assert off < INITIAL_BATTERY_VOLTAGE / 2
+
+
+def test_a_robot_with_a_learned_battery_model_charges_on_a_charger_too(monkeypatch):
+    import contextlib
+    import sys
+    import types
+
+    # Stands in for torch: the model below draws 10 mV/s whatever it is fed
+    torch = types.SimpleNamespace(
+        tensor=lambda data, dtype=None: data,
+        float32=None,
+        no_grad=contextlib.nullcontext,
+    )
+    monkeypatch.setitem(sys.modules, "torch", torch)
+    state = InitStateToml(
+        dotbots=[
+            SimulatedDotBotSettings(address="0000000000000001", pos_x=800, pos_y=3800),
+            SimulatedDotBotSettings(address="0000000000000002", pos_x=800, pos_y=1000),
+        ]
+    )
+    sim = DotBotSimulatorCommunicationInterface(lambda frame: None, state, site=_site())
+    sim._battery_models = {0: lambda features: np.array([[-10.0]])}
+    sim._battery_modelled[:] = [True, False]
+    sim.battery[:] = INITIAL_BATTERY_VOLTAGE / 2
+    for _ in range(100):
+        sim.step()
+    assert sim.battery[0] > INITIAL_BATTERY_VOLTAGE / 2
+
