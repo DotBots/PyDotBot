@@ -981,7 +981,7 @@ def test_advertisement_waypoint_report():
         report=True,
     )
     data = advert.to_bytes()
-    assert len(data) == 41
+    assert len(data) == 42
     parsed = PayloadDotBotAdvertisement().from_bytes(data)
     assert parsed.has_report
     assert (parsed.waypoint_idx, parsed.waypoints_status, parsed.waypoints_reason) == (
@@ -993,7 +993,7 @@ def test_advertisement_waypoint_report():
     assert (parsed.axle_x, parsed.axle_y) == (1234, 567)
 
     legacy = PayloadDotBotAdvertisement(direction=-90, waypoint_idx=1).to_bytes()
-    assert len(legacy) == 33
+    assert len(legacy) == 34
     parsed = PayloadDotBotAdvertisement().from_bytes(legacy)
     assert not parsed.has_report
     assert parsed.waypoint_idx == 1 and parsed.batch_id == 0

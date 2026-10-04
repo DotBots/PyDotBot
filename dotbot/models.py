@@ -684,7 +684,7 @@ class DotBotModel(BaseModel):
     axle_position: Optional[DotBotLH2Position] = None  # the robot's own estimate
     # Where the robot has been, oldest first
     trail: List[Union[DotBotLH2Position, DotBotGPSPosition]] = []
-    calibrated: int = 0x00  # Bitmask: first lighthouse = 0x01, second lighthouse = 0x02
+    calibrated: int = 0x00  # bit i: the robot holds station i's homography
     battery: float = 3.0  # Voltage in Volts
 
 

@@ -1586,17 +1586,12 @@ async def test_a_resend_that_fails_drops_the_command(controller, clock):
 
 
 def _old_calibration_settings(tmp_path, **kwargs):
-    """Settings loading the wire fixture, made 2026-09-10, by path, with its
-    stations renumbered 0 and 1: a robot advertises the stations it holds in
-    one byte, stations 0 to 7."""
+    """Settings loading the wire fixture, made 2026-09-10, by path: stations
+    2 and 8."""
     from dotbot.tests.lh2_wire_fixture import FIXTURE_TOML
 
     path = tmp_path / "calibration.toml"
-    path.write_text(
-        FIXTURE_TOML.replace("index = 2\n", "index = 0\n").replace(
-            "index = 8\n", "index = 1\n"
-        )
-    )
+    path.write_text(FIXTURE_TOML)
     return ControllerSettings(
         port="/dev/null",
         baudrate=115200,
@@ -1643,7 +1638,7 @@ def test_robots_holding_stations_the_calibration_does_not_solve_are_warned_once(
         _old_calibration_settings(tmp_path, lh2_calibration_max_age_days=0)
     )
     solved = sorted(station.index for station in controller.lh2_calibration)
-    first, second = sorted(set(range(8)) - set(solved))[:2]
+    first, second = sorted(set(range(16)) - set(solved))[-2:]
     held = sum(1 << index for index in solved)
     with capture_logs() as logs:
         for bot in (BOT, BOT + 1, BOT + 2):

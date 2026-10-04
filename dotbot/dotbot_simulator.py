@@ -61,8 +61,8 @@ MARI_SLOTFRAME_SIZE = (
 # How far apart `--robots N` puts a generated fleet
 FLEET_PITCH_MM = 200
 # The stations a simulated robot holds when neither its world file nor the
-# controller's calibration says: all eight
-CALIBRATED_ALL = 0xFF
+# controller's calibration says: all sixteen
+CALIBRATED_ALL = 0xFFFF
 # The heading of every robot of a generated fleet: up (-y), 0 facing +y
 FLEET_FACING = 180
 
@@ -113,7 +113,7 @@ class SimulatedDotBotSettings(BaseModel):
     estimator starts out tracking; without one the robot faces +y and starts
     with no heading, as a real robot does from boot. `calibrated` is the
     bitmask of stations the robot holds a homography for; without one it
-    holds the stations of the controller's calibration, all eight when none
+    holds the stations of the controller's calibration, all sixteen when none
     is loaded.
     """
 
@@ -520,7 +520,7 @@ class DotBotSimulatorCommunicationInterface:
         ]
         calibrated = CALIBRATED_ALL if calibrated is None else calibrated
         self._calibrated = [
-            (calibrated if s.calibrated is None else s.calibrated) & 0xFF
+            (calibrated if s.calibrated is None else s.calibrated) & 0xFFFF
             for s in settings
         ]
         self._dotbot_modes = [s.network_mode for s in settings]
@@ -722,7 +722,7 @@ class DotBotSimulatorCommunicationInterface:
     def _advertise(self, index: int, packet: bytearray):
         """Send robot `index`'s advertisement, as its firmware encoded it."""
         # The calibration bitmask is the node's, not the control core's
-        packet[1] = self._calibrated[index]
+        packet[1:3] = self._calibrated[index].to_bytes(2, "little")
         self._counts[:, index] = 0
         frame = Frame(header=self._headers[index], packet=Packet.from_bytes(packet))
         if self._dotbot_modes[index] == SimulatedNetworkMode.MARI:
