@@ -808,7 +808,7 @@ def solve_joint(
     H, C = dict(H0), {}
     problem = None
     x = None
-    for _ in range(TIE_ROUNDS_MAX):
+    for tie_round in range(TIE_ROUNDS_MAX + 1):
         problem, x0 = _build_problem(kept, world, tied, H, root)
         x = _refine(problem, x0)
         H, C = problem.unpack(x)
@@ -816,6 +816,8 @@ def solve_joint(
             s: {t.key: _circle_fit(apply(H[s], t.points))[0] for t in kept[s]}
             for s in kept
         }
+        if tie_round == TIE_ROUNDS_MAX:
+            break
         untie = _gate_ties(per_station, tied)
         if not untie:
             break
@@ -823,13 +825,11 @@ def solve_joint(
             dropped[k] = why
             tied[k] = set()
         world = per_station
-    per_station = {
-        s: {t.key: _circle_fit(apply(H[s], t.points))[0] for t in kept[s]} for s in kept
-    }
     graph_after = _graph_from_centres(per_station, tied)
-    islands = [s for s in sorted(kept) if s not in graph_after.components[0]]
+    main_after = next(c for c in graph_after.components if root in c)
+    islands = [s for s in sorted(kept) if s not in main_after]
     if islands:
-        message, weak = _island_message(islands, graph_after.components[0], graph_after)
+        message, weak = _island_message(islands, main_after, graph_after)
         raise MultiStationError(
             "after untying the circles the stations disagree on:\n" + message,
             islands=islands,
