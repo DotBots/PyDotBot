@@ -354,3 +354,15 @@ def test_a_save_through_a_symlink_writes_its_target(tmp_path, page):
     assert response.status_code == 200
     assert (pack / "site.toml").is_symlink()
     assert 'anchor = "moved"' in target.read_text()
+
+
+def test_a_save_that_leaves_out_the_walls_keeps_them(client, pack):
+    (pack / "site.toml").write_text(ARENA + "\n[[walls]]\npoints = [[0, 0], [1, 1]]\n")
+    body = _loaded(client)
+    site = {k: v for k, v in body["site"].items() if k not in ("walls", "obstacles")}
+    site["anchor"] = "moved"
+    response = client.put(
+        "/api/site", json={"revision": body["revision"], "site": site}
+    )
+    assert response.status_code == 200
+    assert "[[walls]]" in (pack / "site.toml").read_text()
