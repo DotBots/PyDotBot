@@ -189,6 +189,12 @@ describe("SiteEditor calibration placement", () => {
     expect(await screen.findByTestId("placement-saved")).toHaveTextContent(
       "dotbot swarm calibrate-lh2 push 7c0d5e12 --site arena",
     );
+    // The source stays drawn where it was moved to, and the list takes the new file
+    expect(screen.getByLabelText("shift x (mm)")).toHaveValue(500);
+    expect(screen.getByLabelText("turn (deg)")).toHaveValue(90);
+    await waitFor(() =>
+      expect(fetch.mock.calls.filter(([url]) => url === "api/calibrations").length).toBeGreaterThan(1),
+    );
   });
 
   it("refuses to move a corner-collected calibration until Re-anchor is ticked", async () => {
