@@ -114,14 +114,16 @@ class FleetPlant:
         travel[:, self.held] = 0.0
         self.speed = speed
         x, y, heading = move(self.x, self.y, self.heading_deg, travel[0], travel[1])
-        if self.barriers is not None:
-            # A body that would meet a barrier stays where it was, its wheels
-            # stalled; one already in contact may still move off it
-            hit = self.barriers.blocked(x, y, heading)
+        barriers = self.barriers
+        moving = np.flatnonzero((travel != 0).any(axis=0))
+        if barriers is not None and len(moving):
+            # A body the barriers stop stays where it was, its wheels stalled
+            hit = np.zeros(len(x), dtype=bool)
+            hit[moving] = barriers.refused(
+                (self.x[moving], self.y[moving], self.heading_deg[moving]),
+                (x[moving], y[moving], heading[moving]),
+            )
             if hit.any():
-                hit[hit] = ~self.barriers.blocked(
-                    self.x[hit], self.y[hit], self.heading_deg[hit]
-                )
                 x = np.where(hit, self.x, x)
                 y = np.where(hit, self.y, y)
                 heading = np.where(hit, self.heading_deg, heading)
