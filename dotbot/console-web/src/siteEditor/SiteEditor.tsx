@@ -24,7 +24,7 @@ import {
   siteIssues,
 } from "./edit";
 import type { Rect } from "./edit";
-import { record, redo, startHistory, undo } from "./history";
+import { record, redo, seal, startHistory, undo } from "./history";
 import type { History } from "./history";
 import { Inspector } from "./Inspector";
 import { IDENTITY } from "./rigid";
@@ -77,9 +77,13 @@ const TOOLS: { key: Tool | "wall" | "obstacle" | "charger"; label: string; hint:
   { key: "charger", label: "Charger", hint: "needs an objects table in site.toml first" },
 ];
 
+const NOT_TYPED = new Set(["checkbox", "radio", "button", "submit", "reset", "range", "color", "file"]);
+
 function typing(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
-  return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT");
+  if (!el) return false;
+  if (el.tagName === "INPUT") return !NOT_TYPED.has((el as HTMLInputElement).type);
+  return el.tagName === "TEXTAREA" || el.tagName === "SELECT";
 }
 
 export function SiteEditor() {
@@ -125,12 +129,30 @@ export function SiteEditor() {
     void load();
   }, [load]);
 
-  // Read again after a placement, which adds a calibration to the site
+  // Read again after a placement adds a calibration, and after a save or a
+  // reload, which can move the areas cameras are registered on
+  const revision = loaded?.revision;
   useEffect(() => {
+    if (revision === undefined) return;
     fetchBackdrops()
       .then(setBackdrops)
       .catch(() => setBackdrops(null));
-  }, [placed]);
+  }, [placed, revision]);
+
+  // A new selection starts a new undo step, even for the same kind of edit
+  useEffect(() => {
+    setHistory((h) => (h ? seal(h) : h));
+  }, [selected]);
+
+  /** Undo or redo, dropping a selection whose index now names another area. */
+  const travel = (move: (h: History<SiteModel>) => History<SiteModel>) => {
+    if (!history) return;
+    const next = move(history);
+    if (selected !== null && next.present.areas[selected]?.name !== history.present.areas[selected]?.name) {
+      setSelected(null);
+    }
+    setHistory(next);
+  };
 
   useEffect(() => {
     if (tool !== "calibration") return;
@@ -202,8 +224,8 @@ export function SiteEditor() {
       if (saving || typing(e.target)) return;
       if (e.ctrlKey || e.metaKey) {
         const key = e.key.toLowerCase();
-        if (key === "z" && !e.shiftKey) setHistory((h) => (h ? undo(h) : h));
-        else if ((key === "z" && e.shiftKey) || key === "y") setHistory((h) => (h ? redo(h) : h));
+        if (key === "z" && !e.shiftKey) travel(undo);
+        else if ((key === "z" && e.shiftKey) || key === "y") travel(redo);
         else return;
         e.preventDefault();
         return;
@@ -353,7 +375,7 @@ export function SiteEditor() {
           style={button}
           title="undo (Ctrl+Z)"
           disabled={!history || history.past.length === 0}
-          onClick={() => setHistory((h) => (h ? undo(h) : h))}
+          onClick={() => travel(undo)}
         >
           Undo
         </button>
@@ -362,7 +384,7 @@ export function SiteEditor() {
           style={button}
           title="redo (Ctrl+Shift+Z)"
           disabled={!history || history.future.length === 0}
-          onClick={() => setHistory((h) => (h ? redo(h) : h))}
+          onClick={() => travel(redo)}
         >
           Redo
         </button>

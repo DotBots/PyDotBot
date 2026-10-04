@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { HISTORY_LIMIT, record, redo, startHistory, undo } from "./history";
+import { HISTORY_LIMIT, record, redo, seal, startHistory, undo } from "./history";
 
 describe("history", () => {
   it("undoes and redoes one step at a time", () => {
@@ -36,5 +36,11 @@ describe("history", () => {
     let h = startHistory(0);
     for (let i = 1; i <= HISTORY_LIMIT + 10; i += 1) h = record(h, i);
     expect(h.past).toHaveLength(HISTORY_LIMIT);
+  });
+
+  it("starts a new step after a seal, even under the same key", () => {
+    let h = record(startHistory(0), 1, "nudge-0");
+    h = record(seal(h), 2, "nudge-0");
+    expect(undo(h).present).toBe(1);
   });
 });
