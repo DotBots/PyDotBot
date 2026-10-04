@@ -11,18 +11,19 @@ meanwhile is never overwritten.
 
 from __future__ import annotations
 
+import ipaddress
 import os
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Literal
+from urllib.parse import urlsplit
 
 import tomlkit
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from dotbot import site_toml
 from dotbot.site import PACK_CALIBRATIONS
@@ -78,6 +79,53 @@ class EditorState:
         ]
 
 
+def _is_loopback(address: str) -> bool:
+    try:
+        ip = ipaddress.ip_address(address)
+    except ValueError:
+        return False
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        ip = ip.ipv4_mapped
+    return ip.is_loopback
+
+
+def _refusal(scope) -> str | None:
+    """Why a request may not reach the editor, or None when it may.
+
+    Only a client on this machine, addressing it by a loopback name, from the
+    editor's own page or from no page at all, is let through."""
+    client = scope.get("client")
+    if client is None or not _is_loopback(client[0]):
+        return "the site editor answers this machine only"
+    headers = {
+        key.decode("latin-1"): value.decode("latin-1")
+        for key, value in scope.get("headers", [])
+    }
+    host = headers.get("host", "")
+    if urlsplit(f"//{host}").hostname not in ("127.0.0.1", "localhost", "::1"):
+        return "the site editor answers 127.0.0.1 and localhost only"
+    if headers.get("sec-fetch-site", "same-origin") not in ("same-origin", "none"):
+        return "the site editor answers its own page only"
+    origin = headers.get("origin")
+    if origin is not None and urlsplit(origin).netloc != host:
+        return "the site editor answers its own page only"
+    return None
+
+
+class LocalOnly:
+    """ASGI middleware refusing, with a 403, any request `_refusal` names."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        reason = _refusal(scope) if scope["type"] == "http" else None
+        if reason is not None:
+            await PlainTextResponse(reason, status_code=403)(scope, receive, send)
+            return
+        await self.app(scope, receive, send)
+
+
 def _write_atomic(path: Path, text: str) -> None:
     """Write `text` beside `path` and rename it over, keeping its mode."""
     mode = path.stat().st_mode & 0o777 if path.exists() else 0o644
@@ -105,8 +153,7 @@ def create_app(
 ) -> FastAPI:
     """The editor's app for `state`; `on_done` runs when the page says Done."""
     app = FastAPI(title="DotBot site editor", docs_url=None, redoc_url=None)
-    # A page from another site that rebinds its name to 127.0.0.1 is refused.
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost"])
+    app.add_middleware(LocalOnly)
 
     def read() -> tuple[bytes, str]:
         try:
