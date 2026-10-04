@@ -22,8 +22,8 @@ from tomlkit.toml_document import TOMLDocument
 from dotbot.config import SiteSection
 
 AREA_KEYS = ("x", "y", "w", "h")
-# Each table of named tables the editor models, and its keys in file order;
-# the first may be left out (None), the rest are whole millimetres
+# Each table of named tables the editor models, and its keys in file order:
+# the first a word (an area's role may be left out), the rest whole millimetres
 NAMED = {"areas": ("role", *AREA_KEYS), "objects": ("kind", "x", "y")}
 # An object's optional heading, written only when not zero
 HEADING = "heading_deg"
@@ -174,7 +174,7 @@ def _check_names(entries: list[dict[str, Any]], what: str = "area") -> None:
             raise SiteTomlError(f"an {what} needs a name")
         if name != name.strip():
             raise SiteTomlError(f"{what} {name!r}: no spaces around the name")
-        if "," in name:
+        if what == "area" and "," in name:
             raise SiteTomlError(
                 f"{what} {name!r}: a comma makes the name read as an x,y,w,h literal"
             )
