@@ -712,7 +712,7 @@ def _single(
     rect_margin_mm: int,
     unsolved: dict[int, str],
 ) -> JointSolution:
-    """One station: free mode's own answer, so a lone station is solved as before."""
+    """One station, exactly as `conics.solve` solves it."""
     H = solution.homography / solution.homography[2, 2]
     kept_names = {t.key for t in solution.tracks}
     kept = [t for t in tracks if t.key in kept_names]
