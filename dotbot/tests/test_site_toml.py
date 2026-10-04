@@ -208,3 +208,122 @@ def test_a_model_the_schema_refuses_is_an_error(change, message):
 def test_the_revision_is_the_hash_of_the_bytes():
     assert site_toml.revision(b"a") != site_toml.revision(b"b")
     assert len(site_toml.revision(b"")) == 64
+
+
+HEADED = """\
+anchor = "a"
+
+# Field: the top.
+[areas.field]
+x = 0
+y = 0
+w = 1000
+h = 1000
+
+# Staging: the strip below.
+# Second line.
+[areas.staging]
+x = 0
+y = 1000
+w = 1000
+h = 500
+
+# The broker.
+[connection]
+conn = "mqtt://h:1883"
+"""
+
+
+def _heading(text, header):
+    """The two lines just above `header` in `text`."""
+    lines = text.splitlines()
+    index = lines.index(header)
+    return lines[index - 2 : index]
+
+
+def _without(text, name):
+    model = _loaded(text)
+    model["areas"] = [a for a in model["areas"] if a["name"] != name]
+    return patched_text(text, model)
+
+
+def test_deleting_an_area_keeps_the_comments_heading_the_next_table():
+    without_field = _without(HEADED, "field")
+    assert _heading(without_field, "[areas.staging]") == [
+        "# Staging: the strip below.",
+        "# Second line.",
+    ]
+    assert "# Field: the top." not in without_field
+    without_staging = _without(HEADED, "staging")
+    assert _heading(without_staging, "[connection]") == ["", "# The broker."]
+    assert "# Staging" not in without_staging
+    assert _heading(_without(without_staging, "field"), "[connection]") == [
+        "",
+        "# The broker.",
+    ]
+
+
+def test_a_new_area_goes_above_the_comments_heading_the_next_table():
+    model = _loaded(HEADED)
+    model["areas"].append(
+        {"name": "c", "x": 1, "y": 2, "w": 3, "h": 4, "role": None, "was": None}
+    )
+    result = patched_text(HEADED, model)
+    assert _heading(result, "[areas.c]") == ["h = 500", ""]
+    assert _heading(result, "[connection]") == ["", "# The broker."]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "[areas.field]\nx = 0\ny = 0\nw = 1\nh = 1\n\n[connection]\nconn = 'x'\n\n"
+        "[areas.staging]\nx = 0\ny = 1\nw = 1\nh = 1\n",
+        "areas.field.x = 0\nareas.field.y = 0\nareas.field.w = 1\nareas.field.h = 1\n",
+        "areas = { field = { x = 0, y = 0, w = 1, h = 1 } }\n",
+    ],
+    ids=["split", "dotted", "inline"],
+)
+def test_areas_laid_out_another_way_are_refused_not_wiped(text):
+    with pytest.raises(SiteTomlError, match="edit it by hand"):
+        site_model(tomlkit.parse(text))
+    model = {
+        "areas": [{"name": "c", "x": 1, "y": 1, "w": 1, "h": 1, "was": None}],
+    }
+    with pytest.raises(SiteTomlError):
+        patched_text(text, model)
+
+
+@pytest.mark.parametrize("comment", ['x\nrole = "corner"', "x\r\ny = 1"])
+def test_a_comment_cannot_carry_a_second_line(comment):
+    model = _loaded(ARENA)
+    model["areas"][2]["comment"] = comment
+    with pytest.raises(SiteTomlError, match="one line"):
+        patched_text(ARENA, model)
+
+
+@pytest.mark.parametrize(
+    "header", ['[areas."field"]', "[areas.'field']", "[ areas.field ]"]
+)
+def test_a_rename_reads_any_spelling_of_the_header(header):
+    text = f"{header}  # c\nx = 0\ny = 0\nw = 1\nh = 1\n"
+    model = _loaded(text)
+    model["areas"][0]["name"] = "pitch"
+    first = patched_text(text, model).splitlines()[0]
+    assert first.replace(" ", "") == "[areas.pitch]#c"
+
+
+def test_two_areas_can_swap_names():
+    model = _loaded(HEADED)
+    model["areas"][0]["name"] = "staging"
+    model["areas"][1]["name"] = "field"
+    result = patched_text(HEADED, model)
+    assert [
+        (a["name"], a["y"]) for a in site_model(tomlkit.parse(result))["areas"]
+    ] == [
+        ("staging", 0),
+        ("field", 1000),
+    ]
+    assert _heading(result, "[areas.field]") == [
+        "# Staging: the strip below.",
+        "# Second line.",
+    ]
