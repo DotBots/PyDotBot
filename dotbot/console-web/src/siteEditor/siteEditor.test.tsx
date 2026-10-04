@@ -285,4 +285,59 @@ describe("SiteEditor comfort", () => {
     fireEvent.click(box);
     expect(screen.getByTestId("backdrop-calibration-b54cb043")).toBeInTheDocument();
   });
+
+  it("leaves keys typed into a field to the field, but not those on a checkbox", async () => {
+    server(loaded(), { status: 200, body: {} });
+    render(<SiteEditor />);
+    await screen.findByLabelText("show dev-corner");
+    fireEvent.click(screen.getByLabelText("show dev-corner").parentElement!);
+    const x = screen.getByLabelText("x");
+    fireEvent.keyDown(x, { key: "ArrowRight" });
+    fireEvent.keyDown(x, { key: "Delete" });
+    expect(xOf()).toBe(1000);
+    fireEvent.keyDown(screen.getByLabelText("show field"), { key: "ArrowRight" });
+    expect(xOf()).toBe(1050);
+  });
+
+  it("undoes nudges made in two selections as two steps", async () => {
+    server(loaded(), { status: 200, body: {} });
+    render(<SiteEditor />);
+    await screen.findByLabelText("show dev-corner");
+    const select = (name: string) => fireEvent.click(screen.getByLabelText(`show ${name}`).parentElement!);
+    select("dev-corner");
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+    select("field");
+    select("dev-corner");
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+    expect(xOf()).toBe(1100);
+    fireEvent.click(screen.getByText("Undo"));
+    expect(xOf()).toBe(1050);
+  });
+
+  it("drops the selection when an undo puts another area at its place", async () => {
+    server(loaded(), { status: 200, body: {} });
+    render(<SiteEditor />);
+    await screen.findByLabelText("show dev-corner");
+    fireEvent.click(screen.getByLabelText("show field").parentElement!);
+    fireEvent.keyDown(window, { key: "Delete" });
+    fireEvent.click(screen.getByLabelText("show dev-corner").parentElement!);
+    expect(xOf()).toBe(1000);
+    fireEvent.keyDown(window, { key: "z", ctrlKey: true });
+    expect(screen.getByLabelText("show field")).toBeInTheDocument();
+    expect(screen.queryByLabelText("x")).toBeNull();
+  });
+
+  it("reads the backdrops again after a save", async () => {
+    const saved = { ...loaded(), revision: "r2", written: true };
+    const fetch = server(loaded(), { status: 200, body: saved });
+    render(<SiteEditor />);
+    await screen.findByLabelText("show dev-corner");
+    const backdropReads = () => fetch.mock.calls.filter(([url]) => url === "api/backdrops").length;
+    await waitFor(() => expect(backdropReads()).toBe(1));
+    fireEvent.click(screen.getByLabelText("show dev-corner").parentElement!);
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+    fireEvent.click(screen.getByText("Save"));
+    await waitFor(() => expect(backdropReads()).toBe(2));
+    expect(screen.getByText("Undo")).toBeDisabled();
+  });
 });

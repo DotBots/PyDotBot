@@ -34,3 +34,8 @@ export function redo<T>(h: History<T>): History<T> {
   if (h.future.length === 0) return h;
   return { past: [...h.past, h.present], present: h.future[0], future: h.future.slice(1), key: null };
 }
+
+/** End the current coalescing run: the next edit is a step of its own. */
+export function seal<T>(h: History<T>): History<T> {
+  return h.key === null ? h : { ...h, key: null };
+}
