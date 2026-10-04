@@ -96,6 +96,58 @@ def test_a_robot_in_contact_may_back_off():
     assert plant.y[0] < 900
 
 
+def _drive(plant, pwm, ticks):
+    plant.pwm[:] = pwm
+    for _ in range(ticks):
+        plant.step(np.zeros(len(plant.x), dtype=bool))
+
+
+def test_a_robot_placed_against_a_wall_cannot_drive_through_it():
+    # Its disc already overlaps the wall at y = 1000, from the near side
+    plant = FleetPlant(
+        x=[500.0], y=[940.0], heading_deg=[0.0], barriers=Barriers.from_site(_site())
+    )
+    _drive(plant, 80.0, 400)
+    assert plant.y[0] <= 940.0 + 1e-6
+
+
+def test_a_robot_placed_across_a_wall_cannot_drive_back_over_it():
+    plant = FleetPlant(
+        x=[500.0], y=[1050.0], heading_deg=[180.0], barriers=Barriers.from_site(_site())
+    )
+    _drive(plant, 80.0, 400)
+    assert plant.y[0] >= 1050.0 - 1e-6
+
+
+def test_a_robot_placed_inside_an_obstacle_may_drive_out():
+    plant = FleetPlant(
+        x=[1600.0], y=[1600.0], heading_deg=[0.0], barriers=Barriers.from_site(_site())
+    )
+    _drive(plant, 60.0, 400)
+    assert plant.y[0] > 1700 + 47.5
+
+
+def test_a_robot_at_a_wall_may_turn_away_but_not_into_it():
+    barriers = Barriers.from_site(_site())
+    plant = FleetPlant(x=[500.0], y=[920.0], heading_deg=[0.0], barriers=barriers)
+    _drive(plant, 60.0, 200)
+    stopped = plant.heading_deg[0]
+    plant.pwm[:, 0] = [60.0, -60.0]
+    for _ in range(100):
+        plant.step(np.zeros(1, dtype=bool))
+    assert plant.heading_deg[0] != stopped
+    assert not barriers.blocked(plant.x, plant.y, plant.heading_deg)[0]
+
+
+def test_robots_standing_still_are_not_checked(monkeypatch):
+    barriers = Barriers.from_site(_site())
+    calls = []
+    monkeypatch.setattr(barriers, "refused", lambda *a: calls.append(a))
+    plant = FleetPlant(x=[500.0], y=[500.0], heading_deg=[0.0], barriers=barriers)
+    plant.step(np.zeros(1, dtype=bool))
+    assert calls == []
+
+
 @pytest.mark.scenario
 @pytest.mark.asyncio
 async def test_a_waypoint_behind_a_wall_is_not_reached(tmp_path):
