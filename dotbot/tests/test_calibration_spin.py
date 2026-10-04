@@ -632,3 +632,21 @@ def test_one_anchor_is_refused(monkeypatch, lab):
     assert result.exit_code != 0 and "two or more" in result.output
     result = _collect(monkeypatch, lab, fleet, "--anchor", "nonsense")
     assert result.exit_code != 0 and "ADDRESS=X,Y" in result.output
+
+
+def test_an_anchor_that_would_not_spin_is_refused_before_the_spin(monkeypatch, lab):
+    a, b = _two_stations()
+    addrs, fleet = _two_station_fleet([a, b], _floor_grid([a, b])[:10])
+    result = _collect(
+        monkeypatch,
+        lab,
+        fleet,
+        "--anchor",
+        f"{addrs[0].lower()}=0,0",
+        "--anchor",
+        "B0B0B0B0B0B0B0B0=1,2",
+    )
+    assert result.exit_code != 0
+    assert "B0B0B0B0B0B0B0B0 would not spin" in result.output
+    assert addrs[0] not in result.output.split("would not spin")[0]
+    assert "start" not in [c for c, _ in fleet.calls]
