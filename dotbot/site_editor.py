@@ -14,12 +14,12 @@ from __future__ import annotations
 import ipaddress
 import os
 import tempfile
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Literal
 from urllib.parse import urlsplit
 
-import tomlkit
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
@@ -127,7 +127,9 @@ class LocalOnly:
 
 
 def _write_atomic(path: Path, text: str) -> None:
-    """Write `text` beside `path` and rename it over, keeping its mode."""
+    """Write `text` beside `path` and rename it over, keeping its mode; a
+    symlink's target is the file written."""
+    path = path.resolve()
     mode = path.stat().st_mode & 0o777 if path.exists() else 0o644
     fd, tmp = tempfile.mkstemp(prefix=f".{path.name}-", dir=path.parent)
     try:
@@ -155,19 +157,28 @@ def create_app(
     app = FastAPI(title="DotBot site editor", docs_url=None, redoc_url=None)
     app.add_middleware(LocalOnly)
 
+    saving = threading.Lock()
+
     def read() -> tuple[bytes, str]:
         try:
             data = state.path.read_bytes()
         except OSError as exc:
             raise HTTPException(500, f"could not read {state.path}: {exc}") from exc
-        return data, data.decode("utf-8")
+        try:
+            return data, data.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise HTTPException(422, f"{state.path} is not UTF-8: {exc}") from exc
 
     def body(data: bytes, text: str) -> dict:
+        try:
+            site = site_toml.site_model(site_toml.parse(text))
+        except site_toml.SiteTomlError as exc:
+            raise HTTPException(422, f"{state.path}: {exc}") from exc
         return {
             "name": state.name,
             "path": str(state.path),
             "revision": site_toml.revision(data),
-            "site": site_toml.site_model(tomlkit.parse(text)),
+            "site": site,
             "calibrations": state.calibrations(),
         }
 
@@ -189,17 +200,18 @@ def create_app(
 
     @app.put("/api/site")
     def save(request: SaveRequest):
-        data, text = read()
-        if site_toml.revision(data) != request.revision:
-            raise HTTPException(
-                409, f"{state.path} changed on disk since the page loaded it"
-            )
-        result = patched(text, request.site)
-        written = result != text
-        if written:
-            _write_atomic(state.path, result)
-            data = result.encode("utf-8")
-            text = result
+        with saving:
+            data, text = read()
+            if site_toml.revision(data) != request.revision:
+                raise HTTPException(
+                    409, f"{state.path} changed on disk since the page loaded it"
+                )
+            result = patched(text, request.site)
+            written = result != text
+            if written:
+                _write_atomic(state.path, result)
+                data = result.encode("utf-8")
+                text = result
         return {**body(data, text), "written": written}
 
     @app.post("/api/done")
