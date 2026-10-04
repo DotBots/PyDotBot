@@ -118,5 +118,9 @@ export async function placeCalibration(
 export async function fetchBackdrops(base = ""): Promise<Backdrops> {
   const res = await fetch(`${base}api/backdrops`);
   if (!res.ok) throw new Error(await detail(res));
-  return res.json();
+  const body: Backdrops = await res.json();
+  return {
+    ...body,
+    cameras: body.cameras.map((c) => ({ ...c, still: c.still === null ? null : `${base}${c.still}` })),
+  };
 }
