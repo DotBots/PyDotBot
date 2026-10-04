@@ -624,6 +624,13 @@ def _collect_spin(
             raise click.ClickException(f"spin refused:\n{refusal}")
         if not robots.robots:
             raise click.ClickException("no robot answered, so none can spin")
+        spinning = {address.upper(): address for address in robots.robots}
+        absent = [address for address, _ in anchors if address not in spinning]
+        if absent:
+            raise click.ClickException(
+                f"anchor robot(s) {', '.join(absent)} would not spin: they are "
+                "not among the robots ready for the spin"
+            )
         click.echo(
             f"Spin calibration in site {site.name} (from {site_source}): "
             f"{len(robots.robots)} robot(s), spin radius {spin_radius:g} mm "
@@ -635,7 +642,8 @@ def _collect_spin(
         except RuntimeError as exc:
             raise click.ClickException(str(exc)) from exc
         anchored = [
-            Anchor(CircleKey(address, round_), point) for address, point in anchors
+            Anchor(CircleKey(spinning[address], round_), point)
+            for address, point in anchors
         ]
         samples = list(earlier) + [
             s for spin in spins.values() for s in spin.samples(spin_radius, round_)
