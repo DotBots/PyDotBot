@@ -433,4 +433,23 @@ describe("SiteEditor in the console", () => {
     expect(fetch.mock.calls.map(([url]) => url)).not.toContain("api/done");
     expect(fetch.mock.calls.every(([url]) => String(url).startsWith("/controller/site-editor/"))).toBe(true);
   });
+
+  it("draws a camera still from the controller's routes", async () => {
+    const fetch = vi.fn(async (url: string) => {
+      const json = (status: number, body: unknown) =>
+        new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+      if (url === "/controller/site-editor/api/site") return json(200, loaded());
+      if (url === "/controller/site-editor/api/backdrops")
+        return json(200, {
+          calibrations: [],
+          cameras: [{ id8: "abcd1234", area: "field", rect: [0, 0, 2000, 2000], span: [], still: "api/backdrops/camera/abcd1234.png?v=1" }],
+        });
+      return json(404, { detail: "no" });
+    });
+    vi.stubGlobal("fetch", fetch);
+    const { container } = render(<SiteEditor base="/controller/site-editor/" onClose={() => {}} />);
+    fireEvent.click(await screen.findByLabelText(/backdrop camera abcd1234/));
+    const image = container.querySelector("image");
+    expect(image?.getAttribute("href")).toBe("/controller/site-editor/api/backdrops/camera/abcd1234.png?v=1");
+  });
 });
