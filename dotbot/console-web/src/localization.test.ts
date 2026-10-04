@@ -56,7 +56,7 @@ const bot = (id: string, calibrationId?: string): UnifiedBot =>
       calibrationId === undefined
         ? null
         : ({
-            info: { info_version: 3, lh2_calibration_id: calibrationId },
+            info: { info_version: 4, lh2_calibration_id: calibrationId },
           } as unknown as SwarmitNode),
   }) as UnifiedBot;
 

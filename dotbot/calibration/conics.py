@@ -21,7 +21,7 @@ from __future__ import annotations
 import datetime
 import itertools
 from dataclasses import dataclass, field
-from typing import Sequence
+from typing import TYPE_CHECKING, Sequence
 
 import numpy as np
 
@@ -29,9 +29,13 @@ from dotbot.calibration.lighthouse2 import (
     Calibration,
     StationSolution,
     TrackSample,
+    union_rect,
 )
 from dotbot.robots import ROBOT_DEFAULT, robot_geometry
 from dotbot.site import Site, starter_layout
+
+if TYPE_CHECKING:
+    from dotbot.calibration.multi_station import Anchor, JointSolution
 
 # Post-rectification minor/major axis ratio under which a track is not a circle.
 TRACK_AXIS_RATIO_MIN = 0.95
@@ -56,22 +60,36 @@ CLOSED_FORM_PAIRS_MAX = 400
 GATE_ROUNDS_MAX = 4
 
 
+@dataclass(frozen=True)
+class CircleKey:
+    """One physical circle: a robot's spin in one collection round."""
+
+    name: str
+    round: int = 0
+
+
 @dataclass(eq=False)
 class Track:
-    """One circle's camera points, in the order they were read.
+    """One circle's camera points, as one station read them, in order.
 
     `radius_mm` is the circle's true radius when known; tracks that share a
     radius are fitted with one. `turn` is +1 when the robot turned counter
     clockwise as drawn (right wheel faster), -1 clockwise, 0 unknown.
+    Tracks of several stations with the same `key` are the same circle.
     """
 
     points: np.ndarray
     radius_mm: float | None = None
     turn: int = 0
     name: str = ""
+    round: int = 0
 
     def __post_init__(self):
         self.points = np.asarray(self.points, dtype=np.float64).reshape(-1, 2)
+
+    @property
+    def key(self) -> CircleKey:
+        return CircleKey(self.name, self.round)
 
 
 @dataclass
@@ -88,6 +106,11 @@ class TrackFit:
     axis_ratio: float
     rms_mm: float
     why: str = ""
+    round: int = 0
+
+    @property
+    def key(self) -> CircleKey:
+        return CircleKey(self.name, self.round)
 
 
 @dataclass
@@ -496,6 +519,7 @@ def fit_tracks(
                 axis_ratio=axis_ratio(t, H),
                 rms_mm=rms,
                 why=why.get(t, ""),
+                round=t.round,
             )
         )
     return fits
@@ -677,84 +701,85 @@ def solve_calibration(
     site: Site,
     robot: str = ROBOT_DEFAULT,
     tag: str = "",
-) -> tuple[Calibration, dict[int, ConicSolution], dict[int, str]]:
-    """A free-mode calibration from circle tracks, one homography per station.
+    drop_stations: Sequence[int] = (),
+    anchors: Sequence[Anchor] = (),
+) -> tuple[Calibration, JointSolution, dict[int, str]]:
+    """A free-mode calibration from circle tracks, every station in one frame.
 
-    The station with the most tracks sets the frame; every other station is
-    aligned to it through the centres of the circles both saw. Returns the
-    calibration, each solved station's solution, and why each other station
-    was not solved. The calibration records `site`'s name only, with
-    `FREE_FRAME_ANCHOR` for its anchor.
+    One station is solved as `solve` solves it. Several are put in one frame
+    by `multi_station.solve_joint` through the circles they share; one that
+    is not tied to the rest raises `MultiStationError` unless it is in
+    `drop_stations`. Returns the calibration, the joint solution, and why
+    each station with tracks was not solved. The calibration records
+    `site`'s name only, with `FREE_FRAME_ANCHOR` for its anchor; with
+    `anchors` it is in `site`'s own frame and records `site`'s anchor.
     """
-    by_station: dict[int, list[Track]] = {}
-    for sample in samples:
-        by_station.setdefault(sample.station, []).append(
-            Track(
-                points=sample.camera_points(),
-                radius_mm=sample.radius_mm,
-                turn=sample.turn,
-                name=sample.name,
-            )
-        )
+    # pylint: disable=import-outside-toplevel,cyclic-import
+    from dotbot.calibration.multi_station import solve_joint, tracks_by_station
+
+    by_station = tracks_by_station(samples)
     if not by_station:
         raise ValueError("no tracks to solve")
-    margin_mm = robot_geometry(robot).axle_reach_mm
-    order = sorted(by_station, key=lambda k: (-len(by_station[k]), k))
-    reference = order[0]
-    solutions = {reference: solve(by_station[reference], margin_mm=margin_mm)}
-    unsolved: dict[int, str] = {}
-    centres = {t.name: t.centre_mm for t in solutions[reference].tracks}
-    for station in order[1:]:
-        try:
-            own = solve(by_station[station], margin_mm=margin_mm)
-        except ValueError as exc:
-            unsolved[station] = str(exc)
-            continue
-        common = [t for t in own.tracks if t.name in centres]
-        if len(common) < 2:
-            unsolved[station] = (
-                f"shares {len(common)} circle(s) with station {reference}; 2 are "
-                "needed to put both in one frame"
-            )
-            continue
-        S = similarity(
-            np.array([t.centre_mm for t in common]),
-            np.array([centres[t.name] for t in common]),
-            scale=False,
-        )
-        H = S @ own.homography
-        own.homography = H / H[2, 2]
-        why = {t.name: t.why for t in own.dropped}
-        own.tracks = fit_tracks(
-            [t for t in by_station[station] if t.name not in why], own.homography
-        )
-        dropped = [t for t in by_station[station] if t.name in why]
-        own.dropped = fit_tracks(
-            dropped, own.homography, {t: why[t.name] for t in dropped}
-        )
-        solutions[station] = own
-    width, height = solutions[reference].field_mm
+    joint = solve_joint(
+        by_station,
+        margin_mm=robot_geometry(robot).axle_reach_mm,
+        drop=drop_stations,
+        anchors=anchors,
+    )
+    solved_from = "conics-joint" if joint.joint else "conics-free"
+    anchor = FREE_FRAME_ANCHOR
+    if joint.anchored:
+        solved_from, anchor = "conics-anchored", site.anchor
     stations = [
         StationSolution(
             index=station,
-            homography=[[float(v) for v in row] for row in sol.homography],
-            points=sum(t.points for t in sol.tracks),
-            residual_mm=sol.residual_mm,
-            solved_from="conics-free",
+            homography=[[float(v) for v in row] for row in H],
+            points=sum(t.points for t in joint.solutions[station].tracks),
+            residual_mm=joint.station_rms_mm[station],
+            solved_from=solved_from,
+            valid_mm=joint.rectangles[station],
         )
-        for station, sol in sorted(solutions.items())
+        for station, H in sorted(joint.homographies.items())
     ]
     now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     calibration = Calibration(
-        site=Site(name=site.name, anchor=FREE_FRAME_ANCHOR),
-        valid_mm=(0, 0, width, height),
+        site=Site(name=site.name, anchor=anchor),
+        valid_mm=joint.valid_mm,
         stations=stations,
         tracks=list(samples),
+        links=sorted(joint.graph.links, key=lambda k: (k.a, k.b)),
         created_at=now,
         tag=tag,
         robot=robot,
     )
-    return calibration, solutions, unsolved
+    return calibration, joint, dict(joint.unsolved)
+
+
+def spin_field(calibration: Calibration) -> tuple[int, int]:
+    """Width and height of a free-mode calibration's field, from its file.
+
+    The field is what `solve` reports: the box from the frame's zero to the
+    furthest kept spin centre, grown by a robot's reach. Kept means passing
+    the health gate under the stored homography.
+    """
+    margin_mm = robot_geometry(calibration.robot).axle_reach_mm
+    centres = []
+    for st in calibration.stations:
+        tracks = [
+            Track(points=t.camera_points(), radius_mm=t.radius_mm, turn=t.turn)
+            for t in calibration.tracks
+            if t.station == st.index and len(t.count1) >= TRACK_POINTS_MIN
+        ]
+        if not tracks:
+            continue
+        gate = health_gate(tracks, st.matrix)
+        centres += [
+            _circle_fit(apply(st.matrix, t.points))[0] for t in tracks if t not in gate
+        ]
+    if not centres:
+        return calibration.valid_mm[2], calibration.valid_mm[3]
+    hi = np.ceil(np.max(centres, axis=0) + margin_mm)
+    return int(hi[0]), int(hi[1])
 
 
 def self_defined_site(
@@ -764,26 +789,30 @@ def self_defined_site(
 ) -> tuple[Site, Calibration]:
     """A site pack's site from a free-mode calibration, and the calibration in it.
 
-    The site is the starter site (`starter_layout`) around the calibration's
-    own fence, the field (see `solve`): a margin of floor round it, or a
-    `size_mm` site with it centred, and a staging strip below it. The
-    calibration is shifted by the field's offset, and a tag gets `-<name>`
-    appended, so the two files answer to different tags.
+    The site is the starter site (`starter_layout`) around the robots'
+    field (`spin_field`): a margin of floor round it, or a `size_mm` site
+    with it centred, and a staging strip below it. The calibration is
+    shifted by the field's offset, each station's rectangle with it, and a
+    tag gets `-<name>` appended, so the two files answer to different tags.
     """
     if (
         not calibration.stations
         or calibration.site.anchor != FREE_FRAME_ANCHOR
-        or any(st.solved_from != "conics-free" for st in calibration.stations)
+        or any(
+            st.solved_from not in ("conics-free", "conics-joint")
+            for st in calibration.stations
+        )
     ):
         raise ValueError(
             f"calibration {calibration.id8} is not a free-mode spin calibration; "
             "a site can only be defined from one"
         )
-    x0, y0, field_w, field_h = calibration.valid_mm
+    x0, y0, _, _ = calibration.valid_mm
     if (x0, y0) != (0, 0):
         raise ValueError(
             f"a free-mode fence starts at (0, 0), got {list(calibration.valid_mm)}"
         )
+    field_w, field_h = spin_field(calibration)
     extent, field_area, staging = starter_layout((field_w, field_h), size_mm)
     dx, dy = field_area.x, field_area.y
     shift = np.array([[1, 0, dx], [0, 1, dy], [0, 0, 1.0]])
@@ -799,6 +828,12 @@ def self_defined_site(
                 points=st.points,
                 residual_mm=st.residual_mm,
                 solved_from=st.solved_from,
+                valid_mm=(
+                    st.valid_mm[0] + dx,
+                    st.valid_mm[1] + dy,
+                    st.valid_mm[2] + dx,
+                    st.valid_mm[3] + dy,
+                ),
             )
         )
     site = Site(
@@ -809,10 +844,11 @@ def self_defined_site(
     )
     placed = Calibration(
         site=Site(name=name, anchor=anchor),
-        valid_mm=(0, 0, *extent),
+        valid_mm=union_rect(st.valid_mm for st in stations),
         placements=calibration.placements,
         stations=stations,
         tracks=calibration.tracks,
+        links=calibration.links,
         created_at=calibration.created_at,
         tag=f"{calibration.tag}-{name}" if calibration.tag else "",
         robot=calibration.robot,
