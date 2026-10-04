@@ -415,6 +415,13 @@ def _h_matrix(p: np.ndarray) -> np.ndarray:
     return np.array([[p[0], p[1], p[2]], [p[3], p[4], p[5]], [p[6], p[7], 1.0]])
 
 
+def _map(p: np.ndarray, q: np.ndarray) -> np.ndarray:
+    """H(q) for the 8 parameters `p`."""
+    qx, qy = q[:, 0], q[:, 1]
+    w = p[6] * qx + p[7] * qy + 1.0
+    return np.c_[(p[0] * qx + p[1] * qy + p[2]) / w, (p[3] * qx + p[4] * qy + p[5]) / w]
+
+
 def _map_jacobian(p: np.ndarray, q: np.ndarray):
     """H(q) for the 8 parameters `p`, and its derivative, (n, 2, 8)."""
     qx, qy = q[:, 0], q[:, 1]
@@ -457,30 +464,52 @@ class _Problem:
         C = {c: x[col : col + 2].copy() for c, col in self.c_col.items()}
         return H, C
 
-    def residuals(self, x: np.ndarray, jacobian: bool = True, prior: bool = True):
-        rows_r, rows_J = [], []
+    def residuals(self, x: np.ndarray, prior: bool = True) -> np.ndarray:
+        """The radial residual of every read, in block order, then the prior's."""
+        rows = []
+        for s, cid, q, radius in self.blocks:
+            sc, cc = self.s_col[s], self.c_col[cid]
+            uv = _map(x[sc : sc + 8], q)
+            rows.append(np.linalg.norm(uv - x[cc : cc + 2], axis=1) - radius)
+        if prior:
+            for cid, target in self.prior.items():
+                cc = self.c_col[cid]
+                rows.append(GAUGE_PRIOR_WEIGHT * (x[cc : cc + 2] - target))
+        return np.concatenate(rows)
+
+    def normal(
+        self, x: np.ndarray, w: np.ndarray, prior: bool = True
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """`J.T W² J` and `J.T W² r` for the row weights `w`, block by block.
+
+        Each read touches its station's 8 parameters and its centre's 2, so
+        the Jacobian is never formed whole.
+        """
+        A = np.zeros((self.n, self.n))
+        g = np.zeros(self.n)
+        row = 0
         for s, cid, q, radius in self.blocks:
             sc, cc = self.s_col[s], self.c_col[cid]
             uv, G = _map_jacobian(x[sc : sc + 8], q)
             d = uv - x[cc : cc + 2]
             rho = np.linalg.norm(d, axis=1)
             e = d / np.maximum(rho, 1e-12)[:, None]
-            rows_r.append(rho - radius)
-            if jacobian:
-                J = np.zeros((len(q), self.n))
-                J[:, sc : sc + 8] = np.einsum("ni,nij->nj", e, G)
-                J[:, cc : cc + 2] = -e
-                rows_J.append(J)
+            wb = w[row : row + len(q), None]
+            row += len(q)
+            J = np.empty((len(q), 10))
+            J[:, :8] = np.einsum("ni,nij->nj", e, G)
+            J[:, 8:] = -e
+            J *= wb
+            idx = np.r_[sc : sc + 8, cc : cc + 2]
+            A[np.ix_(idx, idx)] += J.T @ J
+            g[idx] += J.T @ ((rho - radius) * wb[:, 0])
         if prior:
             for cid, target in self.prior.items():
                 cc = self.c_col[cid]
-                rows_r.append(GAUGE_PRIOR_WEIGHT * (x[cc : cc + 2] - target))
-                if jacobian:
-                    J = np.zeros((2, self.n))
-                    J[0, cc] = J[1, cc + 1] = GAUGE_PRIOR_WEIGHT
-                    rows_J.append(J)
-        r = np.concatenate(rows_r)
-        return (r, np.vstack(rows_J)) if jacobian else r
+                A[cc, cc] += GAUGE_PRIOR_WEIGHT**2
+                A[cc + 1, cc + 1] += GAUGE_PRIOR_WEIGHT**2
+                g[cc : cc + 2] += GAUGE_PRIOR_WEIGHT**2 * (x[cc : cc + 2] - target)
+        return A, g
 
     def read_rows(self) -> int:
         return sum(len(b[2]) for b in self.blocks)
@@ -497,14 +526,12 @@ def _refine(problem: _Problem, x0: np.ndarray) -> np.ndarray:
     """Levenberg-Marquardt on the Huber-weighted residuals, Marquardt scaling."""
     reads = problem.read_rows()
     x = x0.copy()
-    r, J = problem.residuals(x)
+    r = problem.residuals(x)
     w = _huber(r, reads)
+    A, g = problem.normal(x, w)
     cost = float(np.sum((w * r) ** 2))
     lam = 1e-3
     for _ in range(JOINT_ITERATIONS):
-        Jw, rw = J * w[:, None], r * w
-        A = Jw.T @ Jw
-        g = Jw.T @ rw
         D = np.diag(A).copy()
         D[D <= 0] = 1e-12
         improved = False
@@ -514,13 +541,14 @@ def _refine(problem: _Problem, x0: np.ndarray) -> np.ndarray:
             except np.linalg.LinAlgError:
                 lam *= 10
                 continue
-            r_new = problem.residuals(x + dx, jacobian=False)
+            r_new = problem.residuals(x + dx)
             cost_new = float(np.sum((w * r_new) ** 2))
             if np.isfinite(cost_new) and cost_new < cost:
                 gain = cost - cost_new
                 x = x + dx
-                r, J = problem.residuals(x)
+                r = problem.residuals(x)
                 w = _huber(r, reads)
+                A, g = problem.normal(x, w)
                 cost = float(np.sum((w * r) ** 2))
                 lam = max(lam / 10, 1e-12)
                 improved = gain > 1e-12 * max(cost, 1e-12)
@@ -538,10 +566,10 @@ def _covariance(problem: _Problem, x: np.ndarray) -> np.ndarray:
     unit diagonal, loses its 3 smallest eigen-directions (the gauge), is
     inverted, and is scaled by the residual variance.
     """
-    r, J = problem.residuals(x, prior=False)
+    r = problem.residuals(x, prior=False)
     w = _huber(r, problem.read_rows())
-    Jw, rw = J * w[:, None], r * w
-    A = Jw.T @ Jw
+    A, _ = problem.normal(x, w, prior=False)
+    rw = r * w
     d = np.sqrt(np.maximum(np.diag(A), 1e-30))
     As = A / np.outer(d, d)
     vals, vecs = np.linalg.eigh(As)
