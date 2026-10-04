@@ -632,3 +632,16 @@ def test_anchored_multi_needs_two_anchors_the_stations_kept():
                 ms.Anchor(ms.CircleKey("NOPE"), (1, 1)),
             ],
         )
+
+
+def test_anchored_multi_refuses_anchors_that_put_a_station_below_zero():
+    a, b = two_stations()
+    centres = floor_grid([a, b])
+    tracks = F.spins([a, b], centres)
+    # every anchor point 5 m left of where its robot spun
+    anchors = [
+        ms.Anchor(ms.CircleKey(f"R{i:02d}"), (centres[i][0] - 5000, centres[i][1]))
+        for i in (0, len(centres) - 1)
+    ]
+    with pytest.raises(ValueError, match="below the site's zero"):
+        ms.solve_joint(tracks, anchors=anchors)
