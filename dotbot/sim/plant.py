@@ -14,6 +14,7 @@ import numpy as np
 
 from dotbot.kinematics import LEVER_ARM_EFFECTIVE_MM, forward, move, wrap180
 from dotbot.robots import robot_geometry
+from dotbot.sim import collisions as contact
 
 TICK_S = 0.01
 
@@ -52,6 +53,7 @@ class FleetPlant:
         motor_error=None,
         noise_mm=None,
         rng: np.random.Generator = None,
+        collisions: bool = False,
     ):
         self.x = np.array(x, dtype=float)
         self.y = np.array(y, dtype=float)
@@ -68,6 +70,8 @@ class FleetPlant:
             np.zeros(count) if noise_mm is None else np.array(noise_mm, dtype=float)
         )
         self.rng = rng if rng is not None else np.random.default_rng()
+        # Whether robots block one another, see `dotbot.sim.collisions`
+        self.collisions = collisions
         self.mm_per_count = robot_geometry().mm_per_count
         self.speed = np.zeros((2, count))
         self.pwm = np.zeros((2, count))
@@ -109,10 +113,14 @@ class FleetPlant:
         )
         travel = (self.speed + speed) / 2.0 * TICK_S
         travel[:, self.held] = 0.0
+        pose = move(self.x, self.y, self.heading_deg, travel[0], travel[1])
+        if self.collisions:
+            # A robot whose move is refused stalls: its wheels do not turn
+            pose, refused = contact.resolve((self.x, self.y, self.heading_deg), pose)
+            speed[:, refused] = 0.0
+            travel[:, refused] = 0.0
         self.speed = speed
-        self.x, self.y, self.heading_deg = move(
-            self.x, self.y, self.heading_deg, travel[0], travel[1]
-        )
+        self.x, self.y, self.heading_deg = pose
         self._travel += travel / self.mm_per_count
         counts = np.trunc(self._travel)
         self._travel -= counts

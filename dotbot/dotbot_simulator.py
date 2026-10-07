@@ -471,6 +471,7 @@ class DotBotSimulatorCommunicationInterface:
         site: Optional[Site] = None,
         area: Optional[Area] = None,
         calibrated: Optional[int] = None,
+        collisions: bool = False,
     ):
         self.on_frame_received = on_frame_received
         self.ticks = 0
@@ -504,6 +505,7 @@ class DotBotSimulatorCommunicationInterface:
             ],
             noise_mm=[s.lh2_noise_mm for s in settings],
             rng=np.random.default_rng(random.getrandbits(64)),
+            collisions=collisions,
         )
         self.visible = np.ones(count, dtype=bool)
         self.battery = np.full(count, float(INITIAL_BATTERY_VOLTAGE))
@@ -557,6 +559,7 @@ class DotBotSimulatorCommunicationInterface:
         self.logger.info(
             "DotBot simulator initialized",
             robots=count,
+            collisions=collisions,
             control_core=self.core.manifest["commit"][:12],
         )
 
