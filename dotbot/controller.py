@@ -1355,6 +1355,8 @@ class Controller:
                 area=self.settings.simulator_area,
                 calibrated=_station_mask(self._solved_stations),
                 collisions=self.settings.simulator_collisions,
+                metrics_output=self.settings.mari_metrics_output,
+                probe_interval=self.settings.mari_probe_interval,
             )
         elif self.settings.adapter == "sailbot-simulator":
             self.adapter = SailBotSimulatorAdapter()

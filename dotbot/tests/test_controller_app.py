@@ -837,9 +837,9 @@ def test_mari_metrics_reach_a_serial_gateways_settings(controller, _asyncio_run)
 
 @patch("dotbot.controller_app.asyncio.run")
 @patch("dotbot.controller_app.Controller")
-def test_mari_metrics_are_refused_without_a_serial_gateway(controller, _asyncio_run):
-    args = ["--conn", "simulator", "--mari-probe-interval", "2"]
+def test_mari_metrics_are_refused_without_a_mari_edge(controller, _asyncio_run):
+    args = ["--conn", "simulator", "--sailbot", "--mari-probe-interval", "2"]
     result = CliRunner().invoke(main, args)
     assert result.exit_code == 2
-    assert "need a serial gateway connection" in result.output
+    assert "need a serial gateway or the DotBot simulator" in result.output
     controller.assert_not_called()

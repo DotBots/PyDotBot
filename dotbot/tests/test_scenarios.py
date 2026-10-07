@@ -43,8 +43,8 @@ BODY_CLEARANCE_MM = 160
 async def scenario(tmp_path):
     scenarios = []
 
-    def make(dotbots, seed=0):
-        scenarios.append(Scenario(tmp_path, dotbots, seed=seed))
+    def make(dotbots, seed=0, network=None):
+        scenarios.append(Scenario(tmp_path, dotbots, seed=seed, network=network))
         return scenarios[-1]
 
     yield make
@@ -356,3 +356,60 @@ async def test_no_origin_point_is_recorded_before_the_first_fix(scenario):
     pushed = [state.get("lh2_position") for state in s.socket.robot_states()]
     assert any(pushed), "the stream carried no fix"
     assert {"x": 0.0, "y": 0.0} not in pushed
+
+
+def _mari_circle(count=10, radius=600, centre=1500):
+    slots = [
+        (
+            round(centre + radius * math.cos(2 * math.pi * i / count)),
+            round(centre + radius * math.sin(2 * math.pi * i / count)),
+        )
+        for i in range(count)
+    ]
+    addresses = [f"{0xB0 + i:016X}" for i in range(count)]
+    bots = [
+        _bot(address, x, y, direction=0, network_mode="mari")
+        for address, (x, y) in zip(addresses, slots)
+    ]
+    return addresses, slots, bots
+
+
+async def test_mari_robots_appear_as_they_join_and_follow_waypoints(scenario):
+    """Guards the simulator's hardware path: robots reach the controller only
+    through the simulated gateway and MarilibEdge, and commands come back."""
+    addresses, slots, bots = _mari_circle()
+    s = scenario(bots, network={"seed": 1})
+    assert not s.controller.dotbots
+    assert await s.run(5.0, until=lambda: len(s.controller.dotbots) == len(bots))
+    for i, address in enumerate(addresses):
+        await s.waypoints(address, [slots[(i + 1) % len(slots)]], threshold=20)
+    assert await s.run_until_reported(addresses, "ARRIVED", seconds=20)
+    for i, address in enumerate(addresses):
+        assert axle_error_mm(s.robots[address], *slots[(i + 1) % len(slots)]) <= 20
+
+
+async def test_one_seed_gives_one_mari_scenario(scenario):
+    """Guards determinism: the same seed replays robots and network alike."""
+
+    async def run():
+        addresses, slots, bots = _mari_circle()
+        s = scenario(bots, seed=3, network={"seed": 3, "uplink_pdr": 90})
+        trace = []
+
+        def record():
+            trace.append(
+                (
+                    s.sim.network.joined_count,
+                    tuple((round(r.pos_x, 3), round(r.pos_y, 3)) for r in s.robots.values()),
+                )
+            )
+
+        await s.run(2.0, each_tick=record)
+        for i, address in enumerate(addresses):
+            await s.waypoints(address, [slots[(i + 3) % len(slots)]], threshold=20)
+        await s.run(4.0, each_tick=record)
+        return trace
+
+    first = await run()
+    assert first[-1][0] == 10
+    assert await run() == first

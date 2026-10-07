@@ -24,11 +24,7 @@ import toml
 import dotbot.controller as controller_module
 from dotbot.adapter import DotBotSimulatorAdapter
 from dotbot.controller import Controller, ControllerSettings
-from dotbot.dotbot_simulator import (
-    SIMULATOR_STEP_DELTA_T,
-    DotBotSimulatorCommunicationInterface,
-    SimulatedDotBot,
-)
+from dotbot.dotbot_simulator import SIMULATOR_STEP_DELTA_T, SimulatedDotBot
 from dotbot.protocol import ApplicationType
 from dotbot.server import api
 from dotbot.sim.core import SteeringState
@@ -63,10 +59,17 @@ class RecordingSocket:
 class Scenario:
     """A controller and a simulated fleet sharing a stepped clock."""
 
-    def __init__(self, tmp_path, dotbots: List[dict], seed: int = 0):
+    def __init__(
+        self,
+        tmp_path,
+        dotbots: List[dict],
+        seed: int = 0,
+        network: Optional[dict] = None,
+    ):
         random.seed(seed)
         world = tmp_path / "world.toml"
-        world.write_text(toml.dumps({"dotbots": dotbots}))
+        body = {"dotbots": dotbots, **({"network": network} if network else {})}
+        world.write_text(toml.dumps(body))
         self.seconds = 0.0
         self._structlog = structlog.get_config()
         structlog.configure(
@@ -84,10 +87,8 @@ class Scenario:
                 log_output=str(tmp_path / "pydotbot.log"),
             )
         )
-        self.sim = DotBotSimulatorCommunicationInterface(
-            self.controller.handle_received_frame, str(world)
-        )
         adapter = DotBotSimulatorAdapter(str(world))
+        self.sim = adapter.create_simulator(self.controller.handle_received_frame)
         adapter.simulator = self.sim
         self.controller.adapter = adapter
         # The stream is ticked on the scenario's clock, from `run`

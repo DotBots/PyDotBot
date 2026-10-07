@@ -409,7 +409,7 @@ def _generated_fleet(
     type=click.Path(file_okay=False),
     help=(
         "Directory where the mari edge writes a run_* folder of PDR, latency "
-        "and join CSVs, as mari-edge does. Serial gateways only."
+        "and join CSVs, as mari-edge does. Serial gateways and the DotBot simulator only."
     ),
 )
 @click.option(
@@ -417,7 +417,7 @@ def _generated_fleet(
     type=click.FloatRange(min=0),
     default=0.0,
     show_default=True,
-    help="Seconds between mari metrics probes to each robot; 0 sends none. Serial gateways only.",
+    help="Seconds between mari metrics probes to each robot; 0 sends none. Serial gateways and the DotBot simulator only.",
 )
 @click.option(
     "--site",
@@ -757,9 +757,13 @@ def main(
 
     data = dict(conn_settings)
     data.update({k: v for k, v in cli_args.items() if v is not None})
-    if (mari_metrics_output or mari_probe_interval) and data.get("adapter") != "edge":
+    if (mari_metrics_output or mari_probe_interval) and data.get("adapter") not in (
+        "edge",
+        "dotbot-simulator",
+    ):
         raise click.UsageError(
-            "--mari-metrics-output and --mari-probe-interval need a serial gateway connection"
+            "--mari-metrics-output and --mari-probe-interval need a serial gateway"
+            " or the DotBot simulator"
         )
     if data.get("adapter", "").endswith("simulator") and "swarmit_url" not in data:
         # The default swarmit server is the one serving the real robots
