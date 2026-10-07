@@ -647,7 +647,7 @@ def test_area_comes_from_the_config_too(controller, _asyncio_run, tmp_path):
 @pytest.mark.skipif(sys.platform == "win32", reason="Doesn't work on Windows")
 @patch("dotbot.controller_app.asyncio.run")
 @patch("dotbot.controller_app.Controller")
-def test_collisions_are_off_unless_the_flag_or_the_config_turns_them_on(
+def test_collisions_are_on_unless_the_flag_or_the_config_turns_them_off(
     controller, _asyncio_run, tmp_path
 ):
     def collisions(*args, config=ARENA_CONFIG):
@@ -655,15 +655,15 @@ def test_collisions_are_off_unless_the_flag_or_the_config_turns_them_on(
         assert result.exit_code == 0, result.output
         return controller.call_args.args[0].simulator_collisions
 
-    assert collisions() is False
-    assert collisions("--collisions") is True
-    on = ARENA_CONFIG.replace(
+    assert collisions() is True
+    assert collisions("--no-collisions") is False
+    off = ARENA_CONFIG.replace(
         "[sites.arena]",
-        "[run.controller]\nsimulator_collisions = true\n\n[sites.arena]",
+        "[run.controller]\nsimulator_collisions = false\n\n[sites.arena]",
         1,
     )
-    assert collisions(config=on) is True
-    assert collisions("--no-collisions", config=on) is False
+    assert collisions(config=off) is False
+    assert collisions("--collisions", config=off) is True
 
 
 def test_an_unknown_area_is_refused_with_the_known_ones(tmp_path):

@@ -53,7 +53,7 @@ class FleetPlant:
         motor_error=None,
         noise_mm=None,
         rng: np.random.Generator = None,
-        collisions: bool = False,
+        collisions: bool = True,
     ):
         self.x = np.array(x, dtype=float)
         self.y = np.array(y, dtype=float)

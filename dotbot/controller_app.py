@@ -505,7 +505,8 @@ def _generated_fleet(
     default=None,
     help=(
         "With a simulator: robots block one another, stopping at contact "
-        "or sliding along it, rather than driving through. Off by default."
+        "or sliding along it. On by default; --no-collisions lets them "
+        "drive through each other."
     ),
 )
 @click.option(
@@ -691,7 +692,7 @@ def main(
     )
     simulator_area = _simulator_area(area_spec, area_source, site, dotbot_simulator)
     simulator_collisions, _ = _resolve_controller_key(
-        ctx, "simulator_collisions", simulator_collisions, False
+        ctx, "simulator_collisions", simulator_collisions, True
     )
     robots, simulator_init_state = _generated_fleet(
         robots,

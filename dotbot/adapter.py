@@ -297,7 +297,7 @@ class DotBotSimulatorAdapter(SimulatorAdapterBase):
         robots: Optional[int] = None,
         area: Optional[Area] = None,
         calibrated: Optional[int] = None,
-        collisions: bool = False,
+        collisions: bool = True,
     ):
         self.simulator_init_state = simulator_init_state
         self.site = site

@@ -232,7 +232,7 @@ class ControllerSettings:
     # Where the simulator places its robots; None: the site's field
     simulator_area: Optional[Area] = None
     # Whether simulated robots block one another
-    simulator_collisions: bool = False
+    simulator_collisions: bool = True
     swarmit_url: Optional[str] = SWARMIT_URL_DEFAULT  # None: no swarmit server
     mrta_url: Optional[str] = None  # None: no MRTA server configured (opt-in only)
 

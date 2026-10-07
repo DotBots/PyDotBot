@@ -471,7 +471,7 @@ class DotBotSimulatorCommunicationInterface:
         site: Optional[Site] = None,
         area: Optional[Area] = None,
         calibrated: Optional[int] = None,
-        collisions: bool = False,
+        collisions: bool = True,
     ):
         self.on_frame_received = on_frame_received
         self.ticks = 0
