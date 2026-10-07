@@ -90,6 +90,11 @@ file gives no position.
 `--write-init-state` saves that fleet as a file to edit and reuse with
 `--simulator-init-state`.
 
+Simulated robots block one another: a robot driven into another stops at
+contact or slides along it. `--no-collisions` lets them drive through each
+other, and `[run.controller] simulator_collisions = false` sets that from the
+config.
+
 ## `calibrate-lh2` - cabled capture (deprecated)
 
 > **Deprecated.** Use [`swarm calibrate-lh2`](swarm.md), which calibrates
