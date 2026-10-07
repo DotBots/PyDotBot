@@ -231,6 +231,8 @@ class ControllerSettings:
     simulator_robots: Optional[int] = None
     # Where the simulator places its robots; None: the site's field
     simulator_area: Optional[Area] = None
+    # Whether simulated robots block one another
+    simulator_collisions: bool = False
     swarmit_url: Optional[str] = SWARMIT_URL_DEFAULT  # None: no swarmit server
     mrta_url: Optional[str] = None  # None: no MRTA server configured (opt-in only)
 
@@ -1347,6 +1349,7 @@ class Controller:
                 robots=self.settings.simulator_robots,
                 area=self.settings.simulator_area,
                 calibrated=_station_mask(self._solved_stations),
+                collisions=self.settings.simulator_collisions,
             )
         elif self.settings.adapter == "sailbot-simulator":
             self.adapter = SailBotSimulatorAdapter()
