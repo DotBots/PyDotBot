@@ -19,6 +19,7 @@ from marilib.communication_adapter import SerialAdapter as MarilibSerialAdapter
 from marilib.mari_protocol import Frame as MariFrame
 from marilib.mari_protocol import NextProto
 from marilib.marilib_cloud import MarilibCloud
+from marilib.logger import MetricsLogger
 from marilib.marilib_edge import MarilibEdge
 from marilib.model import EdgeEvent, MariNode
 
@@ -117,9 +118,22 @@ class SerialAdapter(GatewayAdapterBase):
 class MarilibEdgeAdapter(GatewayAdapterBase):
     """Class used to interface with Marilib."""
 
-    def __init__(self, port: str, baudrate: int, verbose: bool = False):
+    # Seconds between writes of the metrics logger's periodic rows
+    METRICS_UPDATE_S = 1.0
+
+    def __init__(
+        self,
+        port: str,
+        baudrate: int,
+        verbose: bool = False,
+        metrics_output: Optional[str] = None,
+        probe_interval: float = 0.0,
+    ):
         self.port = port
         self.baudrate = baudrate
+        self.metrics_output = metrics_output
+        self.probe_interval = probe_interval
+        self.logger = None
 
     async def start(self, on_frame_received: callable):
         self.on_frame_received = on_frame_received
@@ -142,16 +156,33 @@ class MarilibEdgeAdapter(GatewayAdapterBase):
                     return
                 self.inbox.put(Frame(header=event_data.header, packet=packet))
 
+        if self.metrics_output:
+            self.logger = MetricsLogger(
+                log_dir_base=self.metrics_output, rotation_interval_minutes=1440
+            )
         self.mari = MarilibEdge(
-            _on_mari_event, MarilibSerialAdapter(self.port, self.baudrate)
+            _on_mari_event,
+            MarilibSerialAdapter(self.port, self.baudrate),
+            logger=self.logger,
+            metrics_probe_period=self.probe_interval,
         )
         await asyncio.sleep(3)
 
         LOGGER.info("Connected to mari edge")
+        if self.logger is not None:
+            LOGGER.info(f"Mari metrics in {self.logger.log_dir}")
+            asyncio.create_task(self._update_metrics())
         await self.inbox.run(self.on_frame_received)
+
+    async def _update_metrics(self):
+        while True:
+            await asyncio.sleep(self.METRICS_UPDATE_S)
+            self.mari.update()
 
     def close(self):
         self.mari.close()
+        if self.logger is not None:
+            self.logger.close()
 
     def send_payload(self, destination: int, payload: Payload):
         self.mari.send_frame(

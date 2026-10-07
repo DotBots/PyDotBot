@@ -97,6 +97,26 @@ async def test_marilib_edge_adapter(mari):
 
 
 @pytest.mark.asyncio
+@patch("dotbot.adapter.MetricsLogger")
+@patch("dotbot.adapter.MarilibEdge")
+async def test_an_edge_adapter_with_metrics_logs_and_probes(mari, logger, monkeypatch):
+    monkeypatch.setattr(MarilibEdgeAdapter, "METRICS_UPDATE_S", 0.05)
+    adapter = MarilibEdgeAdapter(
+        port="p", baudrate=1, metrics_output="out", probe_interval=2.5
+    )
+    task = asyncio.create_task(adapter.start(lambda _: None))
+    await asyncio.sleep(3.3)
+    logger.assert_called_once_with(log_dir_base="out", rotation_interval_minutes=1440)
+    kwargs = mari.call_args.kwargs
+    assert kwargs["logger"] is logger.return_value
+    assert kwargs["metrics_probe_period"] == 2.5
+    assert adapter.mari.update.call_count >= 2
+    adapter.close()
+    logger.return_value.close.assert_called_once()
+    task.cancel()
+
+
+@pytest.mark.asyncio
 @patch("dotbot.adapter.MarilibCloud")
 async def test_marilib_cloud_adapter(mari):
     adapter = MarilibCloudAdapter(host="h", port=1, use_tls=False, network_id=2)
