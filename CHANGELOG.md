@@ -7,6 +7,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-10-07
+
+### Added
+
+- Simulated robots block one another: a robot driven into another stops at
+  contact or slides along it. `--no-collisions` or `[run.controller]
+  simulator_collisions = false` lets them drive through each other.
+
 ### Fixed
 
 - `dotbot config init --conn <broker>` on a site whose pack already exists

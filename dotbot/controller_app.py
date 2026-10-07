@@ -500,6 +500,16 @@ def _generated_fleet(
     ),
 )
 @click.option(
+    "--collisions/--no-collisions",
+    "simulator_collisions",
+    default=None,
+    help=(
+        "With a simulator: robots block one another, stopping at contact "
+        "or sliding along it. On by default; --no-collisions lets them "
+        "drive through each other."
+    ),
+)
+@click.option(
     "--write-init-state",
     type=click.Path(dir_okay=False),
     help=(
@@ -564,6 +574,7 @@ def main(
     simulator_init_state,
     robots,
     simulator_area,
+    simulator_collisions,
     write_init_state,
     swarmit_url,
     mrta_url,
@@ -680,6 +691,9 @@ def main(
         ctx, "simulator_area", simulator_area, None
     )
     simulator_area = _simulator_area(area_spec, area_source, site, dotbot_simulator)
+    simulator_collisions, _ = _resolve_controller_key(
+        ctx, "simulator_collisions", simulator_collisions, True
+    )
     robots, simulator_init_state = _generated_fleet(
         robots,
         write_init_state,
@@ -712,6 +726,7 @@ def main(
         "simulator_init_state": simulator_init_state,
         "simulator_robots": robots,
         "simulator_area": simulator_area,
+        "simulator_collisions": bool(simulator_collisions),
         "swarmit_url": swarmit_url,
         "mrta_url": mrta_url,
         "headless": True if headless else None,

@@ -208,6 +208,7 @@ var is `DOTBOT_FW_SOURCES_<KEY>` (`DOTBOT_FW_SOURCES_DOTBOT_FIRMWARE`).
 | `camera_max_robots` | The most robots one camera frame reports. |
 | `camera_detect_share` | The share of one CPU core the detector may hold on average. |
 | `simulator_area` | Where a simulator places its robots (`--area`): an area name, a `+`-joined composite or `x,y,w,h` in mm. Defaults to the site's field. |
+| `simulator_collisions` | Simulated robots block one another at contact (`--collisions/--no-collisions`, default true). False lets them drive through each other. |
 | `swarmit_url` | The swarmit server the console's orchestration panel talks to, proxied at `/swarmit/*` (default `http://localhost:8001`). |
 | `swarm_serve` | Start a local swarm server at `swarmit_url` beside an MQTT connection, unless one already answers there (default true; `DOTBOT_SWARM_SERVE`). |
 | `mrta_url` | The MRTA mode server the console's MRTA toggle talks to, proxied at `/mrta/*`. Unset by default, which hides the control. |

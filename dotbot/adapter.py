@@ -297,12 +297,14 @@ class DotBotSimulatorAdapter(SimulatorAdapterBase):
         robots: Optional[int] = None,
         area: Optional[Area] = None,
         calibrated: Optional[int] = None,
+        collisions: bool = True,
     ):
         self.simulator_init_state = simulator_init_state
         self.site = site
         self.robots = robots
         self.area = area
         self.calibrated = calibrated
+        self.collisions = collisions
 
     def create_simulator(self, on_frame_received: callable):
         init_state = (
@@ -316,6 +318,7 @@ class DotBotSimulatorAdapter(SimulatorAdapterBase):
             self.site,
             self.area,
             calibrated=self.calibrated,
+            collisions=self.collisions,
         )
 
 

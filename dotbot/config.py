@@ -262,6 +262,7 @@ class ControllerSection(_Strict):
     camera_max_robots: int | None = Field(None, ge=1)
     camera_detect_share: float | None = Field(None, gt=0.0, le=1.0)
     simulator_area: str | None = None
+    simulator_collisions: bool | None = None
     swarmit_url: str | None = None
     swarm_serve: bool | None = None
     mrta_url: str | None = None
