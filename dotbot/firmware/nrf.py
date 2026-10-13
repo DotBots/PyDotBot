@@ -307,7 +307,11 @@ def nrfjprog_program(
 
 
 def _parse_memrd_words(output: str) -> list[str]:
-    line = output.strip().splitlines()[0] if output.strip() else ""
+    # Take the first "0xADDR: ..." line: nrfjprog may print J-Link DLL noise
+    # (see _nrfjprog_failed) ahead of it.
+    line = next(
+        (ln for ln in output.splitlines() if ln.strip().startswith(("0x", "0X"))), ""
+    )
     if ":" not in line:
         raise RuntimeError(f"Unexpected memrd output: {output.strip()}")
     _, rest = line.split(":", 1)
