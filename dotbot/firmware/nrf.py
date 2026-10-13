@@ -31,6 +31,22 @@ def run(cmd, timeout=None, cwd=None):
     return proc.returncode, proc.stdout
 
 
+def _nrfjprog_failed(rc, out):
+    """Whether an nrfjprog run failed, judged by its exit code and output.
+
+    A J-Link DLL newer than the one nrfjprog was built against logs
+    "[error] [SeggerBackend] - JLinkARM.dll reported error -256" lines on
+    every call, successful ones included, so those lines are not read as
+    failures.
+    """
+    if rc != 0:
+        return True
+    text = "\n".join(
+        line for line in out.splitlines() if "[SeggerBackend]" not in line
+    )
+    return "ERROR" in text.upper() or "failed" in text.lower()
+
+
 def run_capture(cmd):
     proc = subprocess.run(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
@@ -286,7 +302,7 @@ def nrfjprog_program(
     if reset:
         args += ["--reset"]
     rc, out = run(args, timeout=120)
-    if rc != 0 or "ERROR" in out.upper() or "failed" in out.lower():
+    if _nrfjprog_failed(rc, out):
         raise RuntimeError("nrfjprog programming failed; see log above.")
 
 
@@ -521,7 +537,7 @@ def nrfjprog_debugreset(nrfjprog, snr=None, family="NRF53"):
         args += ["-s", str(snr)]
     args += ["--debugreset"]
     rc, out = run(args, timeout=120)
-    if rc != 0 or "ERROR" in out.upper() or "failed" in out.lower():
+    if _nrfjprog_failed(rc, out):
         raise RuntimeError("nrfjprog debug reset failed; see log above.")
 
 
@@ -559,5 +575,5 @@ def nrfjprog_reset_core(nrfjprog, snr=None, core="CP_APPLICATION", family="NRF53
     if is_multicore_family(family) and core:
         args += ["--coprocessor", core]
     rc, out = run(args, timeout=120)
-    if rc != 0 or "ERROR" in out.upper() or "failed" in out.lower():
+    if _nrfjprog_failed(rc, out):
         raise RuntimeError("nrfjprog reset failed; see log above.")
