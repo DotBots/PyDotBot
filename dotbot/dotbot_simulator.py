@@ -149,7 +149,12 @@ class MariRobotApp:
 
     next_proto = NextProto.DOTBOT_APP
 
-    def __init__(self, fleet: "DotBotSimulatorCommunicationInterface", index: int, queue_size: int):
+    def __init__(
+        self,
+        fleet: "DotBotSimulatorCommunicationInterface",
+        index: int,
+        queue_size: int,
+    ):
         self._fleet = fleet
         self._index = index
         self._probes = ProbeResponder()
@@ -505,7 +510,9 @@ class DotBotSimulatorCommunicationInterface:
         self._mari_nodes = {}
         self._joined = np.zeros(count, dtype=bool)
         mari = [
-            i for i, m in enumerate(self._dotbot_modes) if m == SimulatedNetworkMode.MARI
+            i
+            for i, m in enumerate(self._dotbot_modes)
+            if m == SimulatedNetworkMode.MARI
         ]
         if mari:
             self.network = self._mari_network([settings[i] for i in mari])

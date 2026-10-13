@@ -9,7 +9,6 @@ from unittest.mock import patch
 import pytest
 import toml
 from dotbot_utils.protocol import Frame, Header, Packet
-
 from marilib.mari_protocol import MARI_BROADCAST_ADDRESS, MetricsProbePayload
 from marilib.sim.node import NodeState
 
@@ -507,9 +506,7 @@ def test_a_mari_robot_answers_metrics_probes_below_its_app(tmp_path):
 
 
 def test_a_mari_robot_with_a_dead_uplink_never_joins(tmp_path):
-    _, interface, received = _mari_interface(
-        tmp_path, [{**MARI_BOT, "uplink_pdr": 0}]
-    )
+    _, interface, received = _mari_interface(tmp_path, [{**MARI_BOT, "uplink_pdr": 0}])
     for _ in range(300):
         interface.step()
     assert interface.network.nodes[1].state != NodeState.JOINED

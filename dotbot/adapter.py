@@ -16,10 +16,11 @@ from dotbot_utils.protocol import (
 from dotbot_utils.serial_interface import SerialInterface
 from marilib.communication_adapter import MQTTAdapter as MarilibMQTTAdapter
 from marilib.communication_adapter import SerialAdapter as MarilibSerialAdapter
-from marilib.mari_protocol import Frame as MariFrame
-from marilib.mari_protocol import MARI_BROADCAST_ADDRESS, NextProto
-from marilib.marilib_cloud import MarilibCloud
 from marilib.logger import MetricsLogger
+from marilib.mari_protocol import MARI_BROADCAST_ADDRESS
+from marilib.mari_protocol import Frame as MariFrame
+from marilib.mari_protocol import NextProto
+from marilib.marilib_cloud import MarilibCloud
 from marilib.marilib_edge import MarilibEdge
 from marilib.model import EdgeEvent, MariNode
 from marilib.sim import SimulatedGatewayAdapter

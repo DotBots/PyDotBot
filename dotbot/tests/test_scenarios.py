@@ -400,7 +400,10 @@ async def test_one_seed_gives_one_mari_scenario(scenario):
             trace.append(
                 (
                     s.sim.network.joined_count,
-                    tuple((round(r.pos_x, 3), round(r.pos_y, 3)) for r in s.robots.values()),
+                    tuple(
+                        (round(r.pos_x, 3), round(r.pos_y, 3))
+                        for r in s.robots.values()
+                    ),
                 )
             )
 
