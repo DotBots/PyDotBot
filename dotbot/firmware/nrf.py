@@ -41,9 +41,7 @@ def _nrfjprog_failed(rc, out):
     """
     if rc != 0:
         return True
-    text = "\n".join(
-        line for line in out.splitlines() if "[SeggerBackend]" not in line
-    )
+    text = "\n".join(line for line in out.splitlines() if "[SeggerBackend]" not in line)
     return "ERROR" in text.upper() or "failed" in text.lower()
 
 
