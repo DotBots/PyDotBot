@@ -405,6 +405,21 @@ def _generated_fleet(
     help="Filename where CSV data logs are stored. If not set, CSV data logging is disabled.",
 )
 @click.option(
+    "--mari-metrics-output",
+    type=click.Path(file_okay=False),
+    help=(
+        "Directory where the mari edge writes a run_* folder of PDR, latency "
+        "and join CSVs, as mari-edge does. Serial gateways and the DotBot simulator only."
+    ),
+)
+@click.option(
+    "--mari-probe-interval",
+    type=click.FloatRange(min=0),
+    default=0.0,
+    show_default=True,
+    help="Seconds between mari metrics probes to each robot; 0 sends none. Serial gateways and the DotBot simulator only.",
+)
+@click.option(
     "--site",
     "site",
     type=str,
@@ -584,6 +599,8 @@ def main(
     log_level,
     log_output,
     csv_data_output,
+    mari_metrics_output,
+    mari_probe_interval,
 ):  # pylint: disable=redefined-builtin,too-many-arguments
     """DotBotController, universal SailBot and DotBot controller."""
     # welcome sentence
@@ -734,10 +751,20 @@ def main(
         "log_level": log_level,
         "log_output": log_output,
         "csv_data_output": csv_data_output,
+        "mari_metrics_output": mari_metrics_output,
+        "mari_probe_interval": mari_probe_interval or None,
     }
 
     data = dict(conn_settings)
     data.update({k: v for k, v in cli_args.items() if v is not None})
+    if (mari_metrics_output or mari_probe_interval) and data.get("adapter") not in (
+        "edge",
+        "dotbot-simulator",
+    ):
+        raise click.UsageError(
+            "--mari-metrics-output and --mari-probe-interval need a serial gateway"
+            " or the DotBot simulator"
+        )
     if data.get("adapter", "").endswith("simulator") and "swarmit_url" not in data:
         # The default swarmit server is the one serving the real robots
         data["swarmit_url"] = None

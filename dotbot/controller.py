@@ -226,6 +226,8 @@ class ControllerSettings:
     log_level: str = "info"
     log_output: str = os.path.join(os.getcwd(), "pydotbot.log")
     csv_data_output: Optional[str] = None
+    mari_metrics_output: Optional[str] = None
+    mari_probe_interval: float = 0.0
     simulator_init_state: str = SIMULATOR_INIT_STATE_DEFAULT
     # A generated fleet of this many robots, in place of the init-state file
     simulator_robots: Optional[int] = None
@@ -1331,7 +1333,10 @@ class Controller:
         """Starts the communication adapter."""
         if self.settings.adapter == "edge":
             self.adapter = MarilibEdgeAdapter(
-                self.settings.port, self.settings.baudrate
+                self.settings.port,
+                self.settings.baudrate,
+                metrics_output=self.settings.mari_metrics_output,
+                probe_interval=self.settings.mari_probe_interval,
             )
         elif self.settings.adapter == "cloud":
             self.adapter = MarilibCloudAdapter(
@@ -1350,6 +1355,8 @@ class Controller:
                 area=self.settings.simulator_area,
                 calibrated=_station_mask(self._solved_stations),
                 collisions=self.settings.simulator_collisions,
+                metrics_output=self.settings.mari_metrics_output,
+                probe_interval=self.settings.mari_probe_interval,
             )
         elif self.settings.adapter == "sailbot-simulator":
             self.adapter = SailBotSimulatorAdapter()

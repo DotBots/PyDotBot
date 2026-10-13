@@ -9,13 +9,15 @@ from unittest.mock import patch
 import pytest
 import toml
 from dotbot_utils.protocol import Frame, Header, Packet
+from marilib.mari_protocol import MARI_BROADCAST_ADDRESS, MetricsProbePayload
+from marilib.sim.node import NodeState
 
 from dotbot import DOTBOT_ADDRESS_DEFAULT, addr_to_hex
+from dotbot.adapter import DotBotSimulatorAdapter
 from dotbot.area import Area
 from dotbot.dotbot_simulator import (
     ADVERTISEMENT_TICKS,
     FLEET_PITCH_MM,
-    MARI_SLOTFRAME_SIZE,
     SIMULATOR_STEP_DELTA_T,
     DotBotSimulatorCommunicationInterface,
     FleetDoesNotFit,
@@ -44,9 +46,12 @@ from dotbot.protocol import (
 from dotbot.sim import core as control
 from dotbot.site import Site
 
-# The firmware advertises every twice its node's minimum TX interval, the
-# slotframe, once joined: 2 x 126 ms
-MARI_ADVERTISEMENT_TICKS = 25
+MARI_BOT = {
+    "address": "0000000000000001",
+    "pos_x": 100,
+    "pos_y": 100,
+    "network_mode": "mari",
+}
 
 
 def _frame(bot_or_address, payload) -> Frame:
@@ -412,69 +417,130 @@ def test_the_live_fleet_runs_on_one_thread_at_the_wall_clock(tmp_path):
     assert sources == {"0000000000000001", "0000000000000002"}
 
 
-def test_a_mari_robot_is_heard_within_a_slotframe_of_the_stepped_clock(tmp_path):
-    interface, received = _interface(
-        tmp_path,
-        [
-            {
-                "address": "0000000000000001",
-                "pos_x": 100,
-                "pos_y": 100,
-                "network_mode": "mari",
-            }
-        ],
-    )
-    slotframe_ticks = math.ceil(
-        MARI_SLOTFRAME_SIZE * 1.236 / 1000 / SIMULATOR_STEP_DELTA_T
-    )
-    for _ in range(MARI_ADVERTISEMENT_TICKS - 1):
+def _mari_interface(tmp_path, dotbots, network=None):
+    """A fleet whose mari robots are read through the simulator adapter's
+    MarilibEdge, as the controller reads them."""
+    world = tmp_path / "world.toml"
+    body = {"dotbots": dotbots, **({"network": network} if network else {})}
+    world.write_text(toml.dumps(body))
+    received = []
+    adapter = DotBotSimulatorAdapter(str(world))
+    adapter.simulator = adapter.create_simulator(received.append)
+    return adapter, adapter.simulator, received
+
+
+def _step_until_joined(interface, address=1, seconds=3):
+    node = interface.network.nodes[address]
+    for _ in range(round(seconds / SIMULATOR_STEP_DELTA_T)):
+        if node.state == NodeState.JOINED:
+            return
         interface.step()
+    raise AssertionError(f"node {address:x} did not join in {seconds} s")
+
+
+def test_a_mari_robot_is_heard_through_the_edge_once_its_node_joins(tmp_path):
+    adapter, interface, received = _mari_interface(tmp_path, [MARI_BOT])
+    _step_until_joined(interface)
     assert not received
-    for _ in range(slotframe_ticks + 1):
+    for _ in range(ADVERTISEMENT_TICKS):
         interface.step()
-    assert len(received) == 1
+    assert received
+    assert {int(frame.header.source) for frame in received} == {1}
+    assert [node.address for node in adapter.mari.nodes] == [1]
 
 
-@pytest.mark.parametrize(
-    "network_mode,ticks", [("default", ADVERTISEMENT_TICKS), ("mari", None)]
-)
-def test_a_robot_advertises_at_its_firmware_rate(tmp_path, network_mode, ticks):
-    """A joined Mari robot advertises at the rate its firmware derives from
-    the slotframe, an unjoined one at the firmware's default."""
-    ticks = ticks or MARI_ADVERTISEMENT_TICKS
+def test_a_robot_advertises_at_the_default_rate_without_mari(tmp_path):
     interface, received = _interface(
-        tmp_path,
-        [
-            {
-                "address": "0000000000000001",
-                "pos_x": 100,
-                "pos_y": 100,
-                "network_mode": network_mode,
-            }
-        ],
+        tmp_path, [{"address": "0000000000000001", "pos_x": 100, "pos_y": 100}]
     )
     for _ in range(1000):
         interface.step()
-    assert abs(len(received) - 1000 / ticks) <= 1
+    assert abs(len(received) - 1000 / ADVERTISEMENT_TICKS) <= 1
 
 
-def test_a_mari_downlink_reaches_its_robot(tmp_path):
-    interface, _ = _interface(
-        tmp_path,
-        [
-            {
-                "address": "0000000000000001",
-                "pos_x": 100,
-                "pos_y": 100,
-                "network_mode": "mari",
-            }
-        ],
+@pytest.mark.parametrize("schedule,ticks", [("tiny", 10), ("medium", 23), ("huge", 53)])
+def test_a_joined_mari_robot_advertises_at_its_schedules_rate(
+    tmp_path, schedule, ticks
+):
+    """Twice the slotframe, floored at 100 ms, as the firmware derives it."""
+    _, interface, received = _mari_interface(
+        tmp_path, [MARI_BOT], network={"schedule": schedule}
     )
+    _step_until_joined(interface)
+    received.clear()
+    for _ in range(1000):
+        interface.step()
+    assert abs(len(received) - 1000 / ticks) <= 2
+
+
+def test_a_mari_downlink_reaches_its_robot_through_the_edge(tmp_path):
+    adapter, interface, _ = _mari_interface(tmp_path, [MARI_BOT])
+    _step_until_joined(interface)
     bot = interface.dotbots[0]
-    interface.write(_move_raw(1).to_bytes())
+    adapter.send_payload(1, _move_raw(1).packet.payload)
     for _ in range(20):
         interface.step()
     assert bot.drive_mode == control.DriveMode.RAW
+
+
+def test_a_broadcast_reaches_mari_and_default_robots_once_each(tmp_path):
+    other = {"address": "0000000000000002", "pos_x": 400, "pos_y": 100}
+    adapter, interface, _ = _mari_interface(tmp_path, [MARI_BOT, other])
+    _step_until_joined(interface)
+    with patch.object(interface.core, "rx", wraps=interface.core.rx) as rx:
+        adapter.send_payload(MARI_BROADCAST_ADDRESS, _move_raw(0).packet.payload)
+        for _ in range(20):
+            interface.step()
+    assert sorted(call.args[0] for call in rx.call_args_list) == [0, 1]
+
+
+def test_a_mari_robot_answers_metrics_probes_below_its_app(tmp_path):
+    adapter, interface, received = _mari_interface(tmp_path, [MARI_BOT])
+    _step_until_joined(interface)
+    with patch.object(interface.core, "rx", wraps=interface.core.rx) as rx:
+        adapter.mari.send_probe(1, bytes(MetricsProbePayload().to_bytes()))
+        for _ in range(30):
+            interface.step()
+    rx.assert_not_called()
+    assert adapter.mari.gateway.get_node(1).probe_rx_count == 1
+
+
+def test_a_mari_robot_with_a_dead_uplink_never_joins(tmp_path):
+    _, interface, received = _mari_interface(tmp_path, [{**MARI_BOT, "uplink_pdr": 0}])
+    for _ in range(300):
+        interface.step()
+    assert interface.network.nodes[1].state != NodeState.JOINED
+    assert not received
+
+
+def test_the_edge_reports_the_world_files_schedule(tmp_path):
+    adapter, interface, _ = _mari_interface(
+        tmp_path, [MARI_BOT], network={"schedule": "medium"}
+    )
+    for _ in range(30):
+        interface.step()
+    assert adapter.mari.gateway.info.schedule_name == "medium"
+
+
+def test_one_seed_gives_one_mari_run(tmp_path):
+    def run(path):
+        path.mkdir()
+        dotbots = [
+            {**MARI_BOT, "address": f"{i:016X}", "pos_x": 100 * i} for i in range(1, 6)
+        ]
+        _, interface, received = _mari_interface(
+            path, dotbots, network={"seed": 7, "uplink_pdr": 80}
+        )
+        stamps = []
+        for _ in range(300):
+            interface.step()
+            stamps.extend((interface.ticks, int(f.header.source)) for f in received)
+            received.clear()
+        return stamps
+
+    first = run(tmp_path / "a")
+    assert first
+    assert run(tmp_path / "b") == first
 
 
 def test_write_parses_once_and_delivers_only_to_its_addressee(tmp_path):

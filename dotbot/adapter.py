@@ -16,11 +16,14 @@ from dotbot_utils.protocol import (
 from dotbot_utils.serial_interface import SerialInterface
 from marilib.communication_adapter import MQTTAdapter as MarilibMQTTAdapter
 from marilib.communication_adapter import SerialAdapter as MarilibSerialAdapter
+from marilib.logger import MetricsLogger
+from marilib.mari_protocol import MARI_BROADCAST_ADDRESS
 from marilib.mari_protocol import Frame as MariFrame
 from marilib.mari_protocol import NextProto
 from marilib.marilib_cloud import MarilibCloud
 from marilib.marilib_edge import MarilibEdge
 from marilib.model import EdgeEvent, MariNode
+from marilib.sim import SimulatedGatewayAdapter
 
 from dotbot import SIMULATOR_INIT_STATE_DEFAULT
 from dotbot.area import Area
@@ -33,6 +36,35 @@ from dotbot.logger import LOGGER
 from dotbot.mqtt_tls import INSECURE_ENV, allow_unverified_broker
 from dotbot.sailbot_simulator import SailBotSimulatorCommunicationInterface
 from dotbot.site import Site
+
+
+def mari_event_handler(deliver: callable) -> callable:
+    """A MarilibEdge / MarilibCloud callback that hands `deliver` every DotBot
+    frame a node sends."""
+
+    def on_mari_event(event: EdgeEvent, event_data: MariNode | MariFrame):
+        if event == EdgeEvent.NODE_JOINED:
+            LOGGER.debug(f"Node joined: {event_data.address:016X}")
+        elif event == EdgeEvent.NODE_LEFT:
+            LOGGER.debug(f"Node left: {event_data.address:016X}")
+        elif event == EdgeEvent.NODE_DATA:
+            if event_data.header.next_proto != NextProto.DOTBOT_APP:
+                return
+            try:
+                packet = Packet.from_bytes(event_data.payload)
+            except (ValueError, ProtocolPayloadParserException) as exc:
+                LOGGER.debug(f"Error parsing packet: {exc}")
+                return
+            deliver(Frame(header=event_data.header, packet=packet))
+
+    return on_mari_event
+
+
+async def update_mari_metrics(mari: MarilibEdge, period_s: float):
+    """Write the metrics logger's periodic rows every `period_s`."""
+    while True:
+        await asyncio.sleep(period_s)
+        mari.update()
 
 
 class GatewayAdapterBase(ABC):
@@ -117,41 +149,49 @@ class SerialAdapter(GatewayAdapterBase):
 class MarilibEdgeAdapter(GatewayAdapterBase):
     """Class used to interface with Marilib."""
 
-    def __init__(self, port: str, baudrate: int, verbose: bool = False):
+    # Seconds between writes of the metrics logger's periodic rows
+    METRICS_UPDATE_S = 1.0
+
+    def __init__(
+        self,
+        port: str,
+        baudrate: int,
+        verbose: bool = False,
+        metrics_output: Optional[str] = None,
+        probe_interval: float = 0.0,
+    ):
         self.port = port
         self.baudrate = baudrate
+        self.metrics_output = metrics_output
+        self.probe_interval = probe_interval
+        self.logger = None
 
     async def start(self, on_frame_received: callable):
         self.on_frame_received = on_frame_received
         self.inbox = FrameInbox(asyncio.get_running_loop())
 
-        def _on_mari_event(event: EdgeEvent, event_data: MariNode | MariFrame):
-            if event == EdgeEvent.NODE_JOINED:
-                LOGGER.debug(f"Node joined: {event_data.address:016X}")
-            elif event == EdgeEvent.NODE_LEFT:
-                LOGGER.debug(f"Node left: {event_data.address:016X}")
-            elif event == EdgeEvent.NODE_DATA:
-                if event_data.header.next_proto != NextProto.DOTBOT_APP:
-                    return
-                try:
-                    packet = Packet.from_bytes(event_data.payload)
-                except (ValueError, ProtocolPayloadParserException) as exc:
-                    LOGGER.debug(f"Error parsing packet: {exc}")
-                    return
-                if not hasattr(self, "on_frame_received"):
-                    return
-                self.inbox.put(Frame(header=event_data.header, packet=packet))
-
+        if self.metrics_output:
+            self.logger = MetricsLogger(
+                log_dir_base=self.metrics_output, rotation_interval_minutes=1440
+            )
         self.mari = MarilibEdge(
-            _on_mari_event, MarilibSerialAdapter(self.port, self.baudrate)
+            mari_event_handler(self.inbox.put),
+            MarilibSerialAdapter(self.port, self.baudrate),
+            logger=self.logger,
+            metrics_probe_period=self.probe_interval,
         )
         await asyncio.sleep(3)
 
         LOGGER.info("Connected to mari edge")
+        if self.logger is not None:
+            LOGGER.info(f"Mari metrics in {self.logger.log_dir}")
+            asyncio.create_task(update_mari_metrics(self.mari, self.METRICS_UPDATE_S))
         await self.inbox.run(self.on_frame_received)
 
     def close(self):
         self.mari.close()
+        if self.logger is not None:
+            self.logger.close()
 
     def send_payload(self, destination: int, payload: Payload):
         self.mari.send_frame(
@@ -184,23 +224,6 @@ class MarilibCloudAdapter(GatewayAdapterBase):
         self.on_frame_received = on_frame_received
         self.inbox = FrameInbox(asyncio.get_running_loop())
 
-        def _on_mari_event(event: EdgeEvent, event_data: MariNode | MariFrame):
-            if event == EdgeEvent.NODE_JOINED:
-                LOGGER.debug(f"Node joined: {event_data.address:016X}")
-            elif event == EdgeEvent.NODE_LEFT:
-                LOGGER.debug(f"Node left: {event_data.address:016X}")
-            elif event == EdgeEvent.NODE_DATA:
-                if event_data.header.next_proto != NextProto.DOTBOT_APP:
-                    return
-                try:
-                    packet = Packet.from_bytes(event_data.payload)
-                except (ValueError, ProtocolPayloadParserException) as exc:
-                    LOGGER.debug(f"Error parsing packet: {exc}")
-                    return
-                if not hasattr(self, "on_frame_received"):
-                    return
-                self.inbox.put(Frame(header=event_data.header, packet=packet))
-
         allow_unverified_broker()
         # Broker credentials (from DOTBOT_MQTT_USER / DOTBOT_MQTT_PASS,
         # threaded down by controller_app) are passed only when set.
@@ -214,7 +237,7 @@ class MarilibCloudAdapter(GatewayAdapterBase):
             mqtt_kwargs["password"] = self.password
         try:
             self.mari = MarilibCloud(
-                _on_mari_event,
+                mari_event_handler(self.inbox.put),
                 MarilibMQTTAdapter(
                     self.host,
                     self.port,
@@ -288,7 +311,13 @@ class SimulatorAdapterBase(GatewayAdapterBase):
 
 
 class DotBotSimulatorAdapter(SimulatorAdapterBase):
-    """Class used to interface with the dotbot simulator."""
+    """Class used to interface with the dotbot simulator.
+
+    Robots in mari mode are reached as on hardware: a MarilibEdge reads the
+    simulated gateway's UART, and commands to them go through it.
+    """
+
+    METRICS_UPDATE_S = MarilibEdgeAdapter.METRICS_UPDATE_S
 
     def __init__(
         self,
@@ -298,6 +327,8 @@ class DotBotSimulatorAdapter(SimulatorAdapterBase):
         area: Optional[Area] = None,
         calibrated: Optional[int] = None,
         collisions: bool = True,
+        metrics_output: Optional[str] = None,
+        probe_interval: float = 0.0,
     ):
         self.simulator_init_state = simulator_init_state
         self.site = site
@@ -305,6 +336,10 @@ class DotBotSimulatorAdapter(SimulatorAdapterBase):
         self.area = area
         self.calibrated = calibrated
         self.collisions = collisions
+        self.metrics_output = metrics_output
+        self.probe_interval = probe_interval
+        self.mari = None
+        self.logger = None
 
     def create_simulator(self, on_frame_received: callable):
         init_state = (
@@ -312,7 +347,7 @@ class DotBotSimulatorAdapter(SimulatorAdapterBase):
             if self.robots is None
             else fleet_init_state(self.robots, self.site, area=self.area)
         )
-        return DotBotSimulatorCommunicationInterface(
+        simulator = DotBotSimulatorCommunicationInterface(
             on_frame_received,
             init_state,
             self.site,
@@ -320,6 +355,51 @@ class DotBotSimulatorAdapter(SimulatorAdapterBase):
             calibrated=self.calibrated,
             collisions=self.collisions,
         )
+        if simulator.network is not None:
+            if self.metrics_output:
+                self.logger = MetricsLogger(
+                    log_dir_base=self.metrics_output, rotation_interval_minutes=1440
+                )
+            self.mari = MarilibEdge(
+                mari_event_handler(on_frame_received),
+                SimulatedGatewayAdapter(simulator.network, realtime=False),
+                logger=self.logger,
+                metrics_probe_period=self.probe_interval,
+            )
+        return simulator
+
+    async def start(self, on_frame_received: callable):
+        self.on_frame_received = on_frame_received
+        self.inbox = FrameInbox(asyncio.get_running_loop())
+        self.simulator = self.create_simulator(self.inbox.put)
+        self.simulator.start()
+
+        LOGGER.info("Connected to simulator")
+        if self.logger is not None:
+            LOGGER.info(f"Mari metrics in {self.logger.log_dir}")
+            asyncio.create_task(update_mari_metrics(self.mari, self.METRICS_UPDATE_S))
+        await self.inbox.run(self.on_frame_received)
+
+    def close(self):
+        super().close()
+        if self.mari is not None:
+            self.mari.close()
+        if self.logger is not None:
+            self.logger.close()
+
+    def send_payload(self, destination: int, payload: Payload):
+        mari = self.mari is not None and (
+            destination == MARI_BROADCAST_ADDRESS
+            or destination in self.simulator.mari_addresses
+        )
+        if mari:
+            self.mari.send_frame(
+                dst=destination,
+                payload=Packet.from_payload(payload).to_bytes(),
+                next_proto=NextProto.DOTBOT_APP,
+            )
+        if not mari or destination == MARI_BROADCAST_ADDRESS:
+            super().send_payload(destination, payload)
 
 
 class SailBotSimulatorAdapter(SimulatorAdapterBase):

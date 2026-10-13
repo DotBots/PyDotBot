@@ -14,10 +14,10 @@
 
 [network]
 pdr = 100              # packet delivery ratio for "default" network mode (0-100)
-uplink_pdr = 100       # PDR for DotBot→gateway direction in "mari" mode
-downlink_pdr = 100     # PDR for gateway→DotBot direction in "mari" mode
-slot_duration_ms = 1.236  # Mari TSCH slot duration in ms (from mac.h)
-mqtt_latency_ms = 0.0  # one-way MQTT broker latency in ms (applied in both modes)
+uplink_pdr = 100       # "mari" robots' DotBot→gateway PDR; a robot may set its own
+downlink_pdr = 100     # "mari" robots' gateway→DotBot PDR; a robot may set its own
+# schedule = "medium"  # mari schedule: tiny / medium / big / huge; default the smallest that fits
+# seed = 1             # mari network seed; default drawn from Python's random
 
 [[dotbots]]
 address = "BADCAFE111111111" # DotBot unique address

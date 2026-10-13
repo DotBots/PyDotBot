@@ -822,3 +822,24 @@ def test_a_silence_threshold_from_the_environment_must_be_seconds(
     assert result.exit_code != 0
     assert "stale_after_s" in result.output
     controller.assert_not_called()
+
+
+@patch("dotbot.controller_app.asyncio.run")
+@patch("dotbot.controller_app.Controller")
+def test_mari_metrics_reach_a_serial_gateways_settings(controller, _asyncio_run):
+    args = ["--conn", "/dev/ttyACM0", "--mari-metrics-output", "runs"]
+    result = CliRunner().invoke(main, args + ["--mari-probe-interval", "2"])
+    assert result.exit_code == 0, result.output
+    settings = controller.call_args.args[0]
+    assert settings.adapter == "edge"
+    assert (settings.mari_metrics_output, settings.mari_probe_interval) == ("runs", 2.0)
+
+
+@patch("dotbot.controller_app.asyncio.run")
+@patch("dotbot.controller_app.Controller")
+def test_mari_metrics_are_refused_without_a_mari_edge(controller, _asyncio_run):
+    args = ["--conn", "simulator", "--sailbot", "--mari-probe-interval", "2"]
+    result = CliRunner().invoke(main, args)
+    assert result.exit_code == 2
+    assert "need a serial gateway or the DotBot simulator" in result.output
+    controller.assert_not_called()

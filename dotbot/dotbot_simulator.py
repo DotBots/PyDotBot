@@ -11,20 +11,23 @@ the wheel loop, the pose estimator, the waypoint steering and the
 advertisement, every 10 ms tick, on a body simulated by `dotbot.sim.plant`.
 """
 
-import functools
-import heapq
 import queue
 import random
 import threading
 import time
+from collections import deque
 from enum import Enum
 from math import ceil, sqrt
 from pathlib import Path
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple, Union
 
 import numpy as np
 import toml
 from dotbot_utils.protocol import Frame, Header, Packet
+from marilib.mari_protocol import NextProto
+from marilib.sim import Network, StaticLinks, load_firmware
+from marilib.sim.app import ProbeResponder, is_probe
+from marilib.sim.node import NodeState
 from pydantic import BaseModel, Field, model_validator
 
 from dotbot import (
@@ -54,9 +57,7 @@ ADVERTISEMENT_TICKS = round(ADVERTISEMENT_INTERVAL_S / SIMULATOR_STEP_DELTA_T)
 # Version, type, destination and source
 FRAME_HEADER_BYTES = 18
 
-MARI_SLOTFRAME_SIZE = (
-    102  # fixed schedule size; slotframe ≈ 126 ms → avg latency ≈ 63 ms
-)
+TICK_US = round(SIMULATOR_STEP_DELTA_T * 1e6)
 
 # How far apart `--robots N` puts a generated fleet
 FLEET_PITCH_MM = 200
@@ -85,11 +86,16 @@ class SimulatedNetworkMode(str, Enum):
 
 
 class SimulatedNetworkSettings(BaseModel):
+    """`pdr` is for default-mode robots; mari robots' links take
+    `uplink_pdr` / `downlink_pdr` unless the robot sets its own. `schedule`
+    is a mari schedule name, the smallest that fits the mari robots when
+    left out."""
+
     pdr: int = 100
     uplink_pdr: Optional[int] = None
     downlink_pdr: Optional[int] = None
-    slot_duration_ms: float = 1.236
-    mqtt_latency_ms: float = 0.0
+    schedule: Optional[str] = None
+    seed: Optional[int] = None
 
     @model_validator(mode="after")
     def _fill_mari_pdrs(self):
@@ -128,6 +134,8 @@ class SimulatedDotBotSettings(BaseModel):
     gru_model_path: Path = None
     battery_model_path: Path = None
     network_mode: SimulatedNetworkMode = SimulatedNetworkMode.DEFAULT
+    uplink_pdr: Optional[int] = None
+    downlink_pdr: Optional[int] = None
 
 
 class InitStateToml(BaseModel):
@@ -135,65 +143,36 @@ class InitStateToml(BaseModel):
     network: SimulatedNetworkSettings = SimulatedNetworkSettings()
 
 
-class MariNetworkSimulator:
-    """TSCH slot-based network simulator modelling the Mari link layer.
+class MariRobotApp:
+    """A robot as its mari node runs it: advertisements up, commands down,
+    and metrics probes echoed by the net core without reaching the robot."""
 
-    Runs on the simulator's clock: frames are scheduled from `now`, in
-    simulated seconds, and `deliver()` hands over those whose slot has come.
-    """
+    next_proto = NextProto.DOTBOT_APP
 
-    def __init__(self, settings: SimulatedNetworkSettings, on_frame_received: Callable):
-        self._settings = settings
-        self._on_frame_received = on_frame_received
-        self._heap: list = []
-        self._seq = 0
-        self.now = 0.0
-        # Downlinks are scheduled from the controller's thread
-        self._lock = threading.Lock()
+    def __init__(
+        self,
+        fleet: "DotBotSimulatorCommunicationInterface",
+        index: int,
+        queue_size: int,
+    ):
+        self._fleet = fleet
+        self._index = index
+        self._probes = ProbeResponder()
+        self.uplinks = deque(maxlen=queue_size)
 
-    @property
-    def min_tx_interval_us(self) -> int:
-        """A joined node's minimum TX interval: the slotframe's duration."""
-        return round(MARI_SLOTFRAME_SIZE * self._settings.slot_duration_ms * 1000)
+    def position_m(self) -> Tuple[float, float]:
+        plant = self._fleet.plant
+        return plant.x[self._index] / 1000, plant.y[self._index] / 1000
 
-    def _slot_delay_s(self, dotbot_index: int, slot_shift: int = 0) -> float:
-        slotframe_duration_s = (
-            MARI_SLOTFRAME_SIZE * self._settings.slot_duration_ms / 1000
-        )
-        slot_pos = (dotbot_index + slot_shift) % MARI_SLOTFRAME_SIZE
-        slot_offset_s = slot_pos * self._settings.slot_duration_ms / 1000
-        phase = self.now % slotframe_duration_s
-        return (slot_offset_s - phase) % slotframe_duration_s
-
-    def _enqueue(self, delay_s: float, fn: Callable):
-        with self._lock:
-            heapq.heappush(self._heap, (self.now + delay_s, self._seq, fn))
-            self._seq += 1
-
-    def schedule_uplink(self, frame, dotbot_index: int):
-        if random.randint(0, 100) > self._settings.uplink_pdr:
+    def on_downlink(self, frame, rx):
+        if is_probe(frame.payload):
+            reply = self._probes.reply(frame.payload, rx)
+            self.uplinks.append((reply, NextProto.MARI_INTERNAL))
             return
-        delay = self._slot_delay_s(dotbot_index) + self._settings.mqtt_latency_ms / 1000
-        self._enqueue(delay, lambda: self._on_frame_received(frame))
+        self._fleet.core.rx(self._index, frame.payload)
 
-    def schedule_downlink(self, dotbot_index: int, deliver: Callable):
-        """Call `deliver` once the robot's downlink slot has come."""
-        if random.randint(0, 100) > self._settings.downlink_pdr:
-            return
-        # Downlink slots are in the second half of the frame — distinct from uplink slots
-        delay = (
-            self._slot_delay_s(dotbot_index, slot_shift=MARI_SLOTFRAME_SIZE // 2)
-            + self._settings.mqtt_latency_ms / 1000
-        )
-        self._enqueue(delay, deliver)
-
-    def deliver(self):
-        while True:
-            with self._lock:
-                if not self._heap or self._heap[0][0] > self.now:
-                    return
-                _, _, fn = heapq.heappop(self._heap)
-            fn()
+    def next_uplink(self, asn: int) -> Union[bytes, Tuple[bytes, int], None]:
+        return self.uplinks.popleft() if self.uplinks else None
 
 
 def packaged_init_state_path() -> Path:
@@ -526,14 +505,24 @@ class DotBotSimulatorCommunicationInterface:
             for s in settings
         ]
         self._dotbot_modes = [s.network_mode for s in settings]
-        self._mari = None
-        if any(m == SimulatedNetworkMode.MARI for m in self._dotbot_modes):
-            self._mari = MariNetworkSimulator(self._network, self.on_frame_received)
-            # Mari robots are joined from boot, and advertise at the rate
-            # their firmware derives from the node's TX interval
-            for index, mode in enumerate(self._dotbot_modes):
-                if mode == SimulatedNetworkMode.MARI:
-                    self.core.set_min_tx_interval(index, self._mari.min_tx_interval_us)
+        # The simulated mari network, its UART left for a MarilibEdge to read
+        self.network = None
+        self._mari_nodes = {}
+        self._joined = np.zeros(count, dtype=bool)
+        mari = [
+            i
+            for i, m in enumerate(self._dotbot_modes)
+            if m == SimulatedNetworkMode.MARI
+        ]
+        if mari:
+            self.network = self._mari_network([settings[i] for i in mari])
+            queue_size = self.network.fw["MARI_PACKET_QUEUE_SIZE"]
+            for index in mari:
+                self._mari_nodes[index] = self.network.add_node(
+                    MariRobotApp(self, index, queue_size),
+                    address=int(self.addresses[index], 16),
+                )
+        self.mari_addresses = {int(self.addresses[i], 16) for i in mari}
         # Commands for the robots, (index, packet), from the controller's thread
         self._inbound = queue.SimpleQueue()
 
@@ -561,6 +550,27 @@ class DotBotSimulatorCommunicationInterface:
             robots=count,
             collisions=collisions,
             control_core=self.core.manifest["commit"][:12],
+        )
+
+    def _mari_network(self, settings: List[SimulatedDotBotSettings]) -> Network:
+        network = self._network
+        links = StaticLinks(
+            uplink=network.uplink_pdr / 100,
+            downlink=network.downlink_pdr / 100,
+            nodes={
+                int(s.address, 16): tuple(
+                    None if pdr is None else pdr / 100
+                    for pdr in (s.uplink_pdr, s.downlink_pdr)
+                )
+                for s in settings
+            },
+        )
+        firmware = load_firmware()
+        return Network(
+            network.schedule or firmware.schedule_for(len(settings)),
+            seed=random.getrandbits(32) if network.seed is None else network.seed,
+            links=links,
+            firmware=firmware,
         )
 
     # --- the clock ------------------------------------------------------
@@ -606,14 +616,25 @@ class DotBotSimulatorCommunicationInterface:
         self.ticks += 1
         self.time_elapsed_s += SIMULATOR_STEP_DELTA_T
         self._models_update()
-        if self._mari is not None:
-            self._mari.now = self.ticks * SIMULATOR_STEP_DELTA_T
         if outputs["advertise"].any():
             indices, packets = self.core.advertisements(self.battery)
             for index, packet in zip(indices.tolist(), packets):
                 self._advertise(index, bytearray(packet))
-        if self._mari is not None:
-            self._mari.deliver()
+        if self.network is not None:
+            self._mari_step()
+
+    def _mari_step(self):
+        """Run the network to the end of the tick, and give each robot whose
+        node joined or left its node's minimum TX interval, as swarmit's net
+        core does: the slotframe's duration while joined, 0 otherwise."""
+        network = self.network
+        network.run(self.ticks * TICK_US // network.slot_us - network.asn)
+        interval_us = network.schedule.n_cells * network.slot_us
+        for index, node in self._mari_nodes.items():
+            joined = node.state == NodeState.JOINED
+            if joined != self._joined[index]:
+                self._joined[index] = joined
+                self.core.set_min_tx_interval(index, interval_us if joined else 0)
 
     def _tick(self, fixes: np.ndarray) -> np.ndarray:
         """One tick of the bodies, then of the firmware reading them."""
@@ -729,7 +750,7 @@ class DotBotSimulatorCommunicationInterface:
         self._counts[:, index] = 0
         frame = Frame(header=self._headers[index], packet=Packet.from_bytes(packet))
         if self._dotbot_modes[index] == SimulatedNetworkMode.MARI:
-            self._mari.schedule_uplink(frame, index)
+            self._mari_nodes[index].app.uplinks.append(bytes(packet))
             return
         if not self._packet_delivered(self._network.pdr):
             self.logger.debug(
@@ -748,7 +769,8 @@ class DotBotSimulatorCommunicationInterface:
     def write(self, bytes_):
         """Write bytes on the fake serial and deliver the packet to its
         addressee: every robot for the broadcast address, as the firmware's
-        DB_FRAME_DST_BROADCAST check does, or only the matching one otherwise."""
+        DB_FRAME_DST_BROADCAST check does, or only the matching one otherwise.
+        Mari robots are left out: they hear only the simulated gateway."""
         header = Header().from_bytes(bytes_[:FRAME_HEADER_BYTES])
         packet = bytes(bytes_[FRAME_HEADER_BYTES:])
         destination = addr_to_hex(int(header.destination))
@@ -759,9 +781,6 @@ class DotBotSimulatorCommunicationInterface:
             targets = [index] if index is not None else []
         for index in targets:
             if self._dotbot_modes[index] == SimulatedNetworkMode.MARI:
-                self._mari.schedule_downlink(
-                    index, functools.partial(self._inbound.put, (index, packet))
-                )
                 continue
             if not self._packet_delivered(self._network.pdr):
                 self.logger.debug(

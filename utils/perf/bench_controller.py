@@ -8,8 +8,10 @@ endpoints. Optionally one more client that acks once then stops reading
 
 - `sim`: the controller runs the dotbot simulator in-process, as
   `dotbot run simulator` does, and every robot drives a waypoint batch.
-- `mari`: as `sim`, with every robot on the simulated Mari network, joined,
-  so it advertises at the rate its firmware derives from the slotframe.
+- `mari`: as `sim`, with every robot a node of the simulated Mari network,
+  read through a MarilibEdge as on hardware. Robots join during the warmup
+  and then advertise at the rate their firmware derives from the slotframe.
+  One gateway: up to the largest schedule's 102 robots.
 - `synth`: no simulator. A gateway adapter replays advertisements at the
   firmware's 2 Hz per robot through the same thread-to-loop inbox the Mari
   edge adapter uses, so the controller's cost is measured alone. The frames
