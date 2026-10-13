@@ -88,6 +88,32 @@ def test_nrfjprog_program_nrf53_net_uses_cp_network(capture_nrfjprog):
     assert "CP_NETWORK" in capture_nrfjprog[0]
 
 
+# ── J-Link DLL noise (newer DLL than nrfjprog was built against) ────────
+
+_SEGGER_NOISE = (
+    "[error] [SeggerBackend] - JLinkARM.dll reported error -256 at line 736.\n"
+    "[error] [SeggerBackend] - JLinkARM.dll reported error -256 at line 629.\n"
+)
+
+
+def test_nrfjprog_program_ignores_segger_backend_noise(monkeypatch):
+    out = _SEGGER_NOISE + "Verifying image - Verify successful\n"
+    monkeypatch.setattr("dotbot.firmware.nrf.run", lambda *a, **k: (0, out))
+    nrf.nrfjprog_program("nrfjprog", Path("x.hex"))  # does not raise
+
+
+def test_nrfjprog_program_still_fails_on_real_error(monkeypatch):
+    out = _SEGGER_NOISE + "ERROR: An internal error has occurred.\n"
+    monkeypatch.setattr("dotbot.firmware.nrf.run", lambda *a, **k: (0, out))
+    with pytest.raises(RuntimeError):
+        nrf.nrfjprog_program("nrfjprog", Path("x.hex"))
+
+
+def test_parse_memrd_words_skips_segger_backend_noise():
+    out = _SEGGER_NOISE + "0x0103F804: 00000001 0000A001  |........|\n"
+    assert nrf._parse_memrd_words(out)[:2] == ["00000001", "0000A001"]
+
+
 # ── device flash routing: board → family/core ──────────────────────────
 
 
