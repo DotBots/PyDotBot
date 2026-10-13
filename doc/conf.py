@@ -44,6 +44,7 @@ nitpick_ignore_regex = [
     ("py:class", r"<MagicMock.*>"),
     ("py:class", r"ComputedFieldInfo"),
     ("py:class", r"dotbot_utils.*"),
+    ("py:class", r"marilib.*"),
     ("py:class", r"ASGIApp"),
     ("py:class", r"DispatchFunction"),
     ("py:class", r"dotbot.models.Annotated"),
