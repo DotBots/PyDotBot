@@ -468,12 +468,6 @@ class DotBotCalibrationPreviewModel(BaseModel):
     reads: int = 0
 
 
-class DotBotCalibrationCaptureModel(BaseModel):
-    """Which robot takes the outstanding point's reads."""
-
-    device: str = ""
-
-
 class DotBotCalibrationSaveModel(BaseModel):
     """An optional session label, written into the file's metadata."""
 

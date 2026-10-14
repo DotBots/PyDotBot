@@ -287,9 +287,7 @@ def _centre(area: Area) -> PointPlacement:
     return PointPlacement(mm=area.centre, area=area.name)
 
 
-def point_prompt(
-    index: int, total: int, point: PointPlacement, trigger: str = "Enter"
-) -> str:
+def point_prompt(index: int, total: int, point: PointPlacement) -> str:
     """What the operator reads before one capture.
 
     The corner and the pose come first and the coordinate last: the operator
@@ -301,48 +299,31 @@ def point_prompt(
     if point.corner is None:
         return (
             f"{head}: photodiode on ({x:g}, {y:g}) mm. "
-            f"Press {trigger} when it is still."
+            "Press the robot's button when it is still."
         )
     return (
         f"{head}, {point.where}: {point.how}. "
-        f"Photodiode lands at ({x:g}, {y:g}) mm. Press {trigger} when it is still."
+        f"Photodiode lands at ({x:g}, {y:g}) mm. Press the robot's button when it "
+        "is still."
     )
 
 
-def collect_header(
-    site: Site, source: str, total: int, reads: int, device: str = ""
-) -> str:
+def collect_header(site: Site, source: str, total: int) -> str:
     """The paragraph printed once, before the first capture prompt."""
-    target = f" from {device.upper()}" if device else ""
     zero = (
         site.anchor
         or "the site's anchor, which this config does not describe (add "
         f"`anchor` to [sites.{site.name}])"
     )
     return (
-        f"\nCollecting LH2 calibration{target} in site {site.name} "
+        f"\nCollecting LH2 calibration in site {site.name} "
         f"(from {source}). Coordinates are millimetres in the site's frame: "
         f"x grows right, y grows down, and zero is {zero}. A corner point is "
         "where the photodiode lands with the robot inside the rectangle, its "
         "PCB edges resting on the rectangle's edge lines and its nose toward "
         "the nearest top or bottom edge.\n"
-        f"{_trigger_text(device)}\n"
-        f"{total} point(s), {_reads_text(device, reads)}, in the order listed.\n"
+        "Run the calibrate app on the robot and press its button to capture; "
+        "a capture from any robot takes the outstanding point.\n"
+        f"{total} point(s), the calibrate app's reads each, in the order listed.\n"
     )
 
-
-def _reads_text(device: str, reads: int) -> str:
-    return f"{reads} reads each" if device else "the calibrate app's reads each"
-
-
-def _trigger_text(device: str) -> str:
-    if not device:
-        return (
-            "Run the calibrate app on the robot and press its button to "
-            "capture; a capture from any robot takes the outstanding point."
-        )
-    return (
-        f"Enter captures from {device.upper()} with its app stopped (READY; "
-        "deprecated in favour of the calibrate app); with the calibrate app "
-        "running, the robot's own button captures instead."
-    )
