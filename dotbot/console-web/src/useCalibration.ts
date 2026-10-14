@@ -18,12 +18,7 @@ export interface Calibration {
   busy: boolean;
   error: string;
   pushed: string;
-  start: (
-    points: string[],
-    area?: string,
-    device?: string,
-    reads?: number,
-  ) => Promise<void>;
+  start: (points: string[], area?: string, device?: string) => Promise<void>;
   redo: () => Promise<void>;
   save: (tag?: string) => Promise<void>;
   push: (stale?: string[]) => Promise<void>;
@@ -59,10 +54,10 @@ export function useCalibration(
     busy,
     error,
     pushed,
-    start: (points, area = "", device = "", reads) =>
+    start: (points, area = "", device = "") =>
       run(async () => {
         setPushed("");
-        onSession(await startCalibration(points, device, area, reads));
+        onSession(await startCalibration(points, device, area));
       }),
     redo: () => run(async () => onSession(await redoCalibrationPoint())),
     save: (tag = "") =>

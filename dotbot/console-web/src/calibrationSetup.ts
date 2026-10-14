@@ -1,8 +1,7 @@
 import type { Area, Site } from "./types";
 
 // What the Calibrate tab asks for before a session exists: which rectangle
-// the four corner marks are taken from, and how many reads each point
-// averages.
+// the four corner marks are taken from.
 //
 // The rectangle is named or typed. A name is one of the site's areas; a typed
 // rectangle is `x,y,w,h` in frame millimetres, which is the same literal the
@@ -43,9 +42,3 @@ export function pointsSpec(choice: string, rect: string): string | null {
   return parsed === null ? null : `${parsed.name}:corners`;
 }
 
-/** A reads-per-point entry the controller will take, or null while it is not one. */
-export function parseReads(text: string): number | null {
-  if (!/^\d+$/.test(text.trim())) return null;
-  const n = Number(text.trim());
-  return n >= 1 ? n : null;
-}

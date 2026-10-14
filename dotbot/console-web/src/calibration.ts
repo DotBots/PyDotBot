@@ -102,11 +102,6 @@ export function currentPoint(session: CalibrationSession): CalibrationPoint | nu
   return index === null ? null : session.points[index];
 }
 
-/** How far one station's reads have got, as a fraction of the target. */
-export function readFraction(reads: number, target: number): number {
-  if (target <= 0) return 0;
-  return Math.max(0, Math.min(1, reads / target));
-}
 
 /**
  * The expected-error line, or null. The predictor is a later phase, so the
