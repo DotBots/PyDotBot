@@ -642,7 +642,7 @@ async def calibration_session_start(request: DotBotCalibrationStartModel):
     specs = ([points] if points else []) if isinstance(points, str) else list(points)
     return await _calibration(
         api.controller.calibration_session.start(
-            specs, request.device, request.area, request.reads
+            specs, request.device, request.area
         )
     )
 

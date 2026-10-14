@@ -25,7 +25,6 @@ from dataclasses import dataclass, field
 from dotbot.calibration.lighthouse2 import LH_PERIODS, LH2CalibrationSample, Sample
 from dotbot.calibration.points import CORNERS  # noqa: F401 - the capture order
 
-CAPTURE_READS_DEFAULT = 25
 
 # Each raw sample inside the LOG payload is [lh_index:1][count1:4 LE][count2:4 LE].
 _SAMPLE_SIZE = 9

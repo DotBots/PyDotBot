@@ -15,7 +15,6 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Callable, Sequence
 
-from dotbot.calibration.ota import CAPTURE_READS_DEFAULT
 from dotbot.calibration.points import field_corners, resolve_placement_points
 from dotbot.calibration.push import PushRefused, gate_push, push_worklist
 from dotbot.calibration.session import (
@@ -78,8 +77,7 @@ class SessionDriver:
             "points": [
                 placement_dict(index, placement)
                 for index, placement in enumerate(placements)
-            ],
-            "reads": CAPTURE_READS_DEFAULT,
+            ]
         }
 
     async def start(
@@ -87,13 +85,11 @@ class SessionDriver:
         specs: Sequence[str],
         device: str = "",
         area: str = "",
-        reads: int | None = None,
     ) -> dict:
         """Resolve the points and open a session with point 0 outstanding."""
         async with self._lock:
             self._close_stream()
-            extra = {} if reads is None else {"reads": reads}
-            session = CalibrationSession.resolve(list(specs), site=self.site, **extra)
+            session = CalibrationSession.resolve(list(specs), site=self.site)
             session.device = device.upper()
             session.area = area
             self.session = session
