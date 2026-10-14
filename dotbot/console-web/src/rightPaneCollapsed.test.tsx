@@ -29,7 +29,6 @@ const SESSION = {
   site: "c405-arena",
   area: "arena",
   device: "",
-  reads: 25,
   status: "collecting",
   outstanding: 0,
   captured: 0,

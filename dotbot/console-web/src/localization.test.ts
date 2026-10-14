@@ -65,7 +65,6 @@ const session = (over: Partial<CalibrationSession> = {}): CalibrationSession => 
   site: "c405-arena",
   area: "",
   device: "",
-  reads: 25,
   status: "collecting",
   outstanding: null,
   captured: 4,

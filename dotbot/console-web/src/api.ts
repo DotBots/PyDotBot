@@ -203,11 +203,10 @@ export async function startCalibration(
   points: string[],
   device = "",
   area = "",
-  reads?: number,
 ): Promise<CalibrationSession> {
   return controllerJson(SESSION, {
     method: "POST",
-    body: { points, device, area, ...(reads === undefined ? {} : { reads }) },
+    body: { points, device, area },
   });
 }
 

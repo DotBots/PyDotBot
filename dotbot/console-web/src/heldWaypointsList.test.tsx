@@ -87,7 +87,7 @@ vi.mock("./api", () => ({
   putWaypointBatches: vi.fn(async () => {}),
   clearWaypoints: vi.fn(async () => {}),
   abandonCalibration: vi.fn(async () => {}),
-  previewCalibrationPoints: vi.fn(async () => ({ points: [], reads: 25 })),
+  previewCalibrationPoints: vi.fn(async () => ({ points: [] })),
   pushCalibration: vi.fn(),
   redoCalibrationPoint: vi.fn(),
   saveCalibration: vi.fn(),

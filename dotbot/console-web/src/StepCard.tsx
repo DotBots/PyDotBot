@@ -6,7 +6,6 @@ import {
   expectedErrorLine,
   isComplete,
   placementInstruction,
-  readFraction,
   residualLines,
   stepLabel,
 } from "./calibration";
@@ -49,39 +48,6 @@ function button(kind: "accent" | "plain", disabled: boolean): React.CSSPropertie
     boxSizing: "border-box" as const,
   };
 }
-
-const ReadBar: React.FC<{ station: number; reads: number; target: number }> = ({
-  station,
-  reads,
-  target,
-}) => (
-  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 5 }}>
-    <span style={{ ...mono, fontSize: 11, color: "var(--muted)", width: 62, flex: "none" }}>
-      station {station}
-    </span>
-    <div
-      style={{
-        flex: 1,
-        height: 5,
-        minWidth: 0,
-        background: "var(--elevated)",
-        borderRadius: 3,
-        overflow: "hidden",
-      }}
-    >
-      <div
-        style={{
-          height: "100%",
-          width: `${readFraction(reads, target) * 100}%`,
-          background: "var(--s-Running)",
-        }}
-      />
-    </div>
-    <span style={{ ...mono, fontSize: 11, width: 44, flex: "none", textAlign: "right" }}>
-      {reads}/{target}
-    </span>
-  </div>
-);
 
 interface StepCardProps {
   session: CalibrationSession;
@@ -145,14 +111,6 @@ export const StepCard: React.FC<StepCardProps> = ({
           {session.device && (
             <div style={{ ...mono, fontSize: 12, color: "var(--muted)" }}>
               last capture from {session.device}
-            </div>
-          )}
-          {point && point.reads.length > 0 && (
-            <div>
-              <div style={label10}>Reads per station</div>
-              {point.reads.map((r) => (
-                <ReadBar key={r.station} station={r.station} reads={r.reads} target={r.target} />
-              ))}
             </div>
           )}
           <div style={{ display: "flex", gap: 8, marginTop: 4 }}>

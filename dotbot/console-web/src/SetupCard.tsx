@@ -5,15 +5,13 @@ import {
   TYPED_RECT,
   areaChoices,
   defaultChoice,
-  parseReads,
   pointsSpec,
 } from "./calibrationSetup";
 import type { CalibrationPoint, Site } from "./types";
 import type { Calibration } from "./useCalibration";
 
 // The Calibrate tab before a session exists: which rectangle the four corner
-// marks come from, how many reads each point averages, and the four points
-// themselves in capture order.
+// marks come from, and the four points themselves in capture order.
 //
 // The points are resolved by the controller rather than here, so what the
 // operator checks against the floor is what the session will then ask for,
@@ -56,7 +54,6 @@ export const SetupCard: React.FC<SetupCardProps> = ({
   const names = areaChoices(site);
   const [choice, setChoice] = useState(() => defaultChoice(site));
   const [rect, setRect] = useState("");
-  const [reads, setReads] = useState("");
   const [points, setPoints] = useState<CalibrationPoint[]>([]);
   const [refused, setRefused] = useState("");
 
@@ -83,9 +80,6 @@ export const SetupCard: React.FC<SetupCardProps> = ({
         if (!live) return;
         setPoints(preview.points);
         setRefused("");
-        // The controller owns the default, so the field is seeded from it
-        // rather than from a second copy of the number here.
-        setReads((current) => current || String(preview.reads));
       })
       .catch((e: unknown) => {
         if (!live) return;
@@ -97,8 +91,7 @@ export const SetupCard: React.FC<SetupCardProps> = ({
     };
   }, [spec]);
 
-  const readsValue = parseReads(reads);
-  const ready = spec !== null && readsValue !== null && !calibration.busy;
+  const ready = spec !== null && !calibration.busy;
   const message = refused || calibration.error;
 
   return (
@@ -148,20 +141,6 @@ export const SetupCard: React.FC<SetupCardProps> = ({
       )}
 
       <div>
-        <div style={{ ...label10, marginBottom: 4 }}>Reads per point</div>
-        <input
-          aria-label="Reads per point"
-          value={reads}
-          onChange={(e) => setReads(e.target.value)}
-          inputMode="numeric"
-          style={field}
-        />
-        <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4, lineHeight: 1.5 }}>
-          A single read costs about 60 % of the accuracy at every point.
-        </div>
-      </div>
-
-      <div>
         <div style={{ ...label10, marginBottom: 4 }}>Points</div>
         {points.length === 0 && (
           <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.6 }}>
@@ -198,7 +177,7 @@ export const SetupCard: React.FC<SetupCardProps> = ({
           // A typed rectangle names no area, so the expected error it would
           // be evaluated over is left unchosen rather than named after it.
           const area = choice === TYPED_RECT ? "" : choice;
-          calibration.start([spec!], area, "", readsValue!);
+          calibration.start([spec!], area);
         }}
         style={{
           display: "flex",
