@@ -43,6 +43,14 @@ export function calibrationLabel(bot: UnifiedBot): string {
   return (bot.swarmit?.info?.lh2_calibration_id ?? "").slice(0, 8);
 }
 
+/** "288a810d · virmond": the held calibration's short id and its site, "" for none or unknown. */
+export function calibrationSiteLabel(bot: UnifiedBot): string {
+  const id = calibrationLabel(bot);
+  if (!id) return "";
+  const site = bot.swarmit?.info?.lh2_site_name ?? "";
+  return site ? `${id} · ${site}` : id;
+}
+
 /** Whether the robot reports a calibration other than the one the controller serves. */
 export function calibrationDiffers(bot: UnifiedBot, calibrationId: string): boolean {
   if (!calibrationId || firmwareTooOld(bot)) return false;
