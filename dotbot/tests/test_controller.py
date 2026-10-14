@@ -24,6 +24,7 @@ from dotbot.controller import (
     Controller,
     ControllerSettings,
     HttpBindError,
+    console_url,
     gps_distance,
     lh2_distance,
 )
@@ -1818,6 +1819,19 @@ def test_an_address_asks_for_that_robot_even_when_lost(controller):
     assert controller.matching(query) == ["0000000000000003"]
 
 
+@pytest.mark.parametrize(
+    "host,expected",
+    [
+        ("127.0.0.1", "http://localhost:8000/console"),
+        ("0.0.0.0", "http://localhost:8000/console"),
+        ("192.168.1.20", "http://192.168.1.20:8000/console"),
+        ("fe80::1", "http://[fe80::1]:8000/console"),
+    ],
+)
+def test_console_url_follows_the_host(host, expected):
+    assert console_url(host, 8000, "/console") == expected
+
+
 @pytest.mark.asyncio
 async def test_web_raises_a_bind_error_when_the_port_is_taken(controller):
     holder = socket.socket()
@@ -1832,3 +1846,19 @@ async def test_web_raises_a_bind_error_when_the_port_is_taken(controller):
         holder.close()
     assert exc.value.in_use
     assert exc.value.port == controller.settings.controller_http_port
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("headless", [True, False])
+async def test_console_url_is_printed_headless_or_not(
+    controller, monkeypatch, capsys, headless
+):
+    controller.settings.headless = headless
+    controller.settings.controller_http_port = 8123
+    controller.web_server = MagicMock(started=True)
+    monkeypatch.setattr("dotbot.controller.default_ui_path", lambda: "/console")
+    opened = MagicMock()
+    monkeypatch.setattr("dotbot.controller.webbrowser.open", opened)
+    await controller._open_webbrowser()
+    assert "Console: http://localhost:8123/console\n" in capsys.readouterr().out
+    assert opened.called is not headless

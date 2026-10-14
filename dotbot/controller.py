@@ -206,6 +206,15 @@ class HttpBindError(ControllerException):
         self.in_use = error.errno == errno.EADDRINUSE
 
 
+def console_url(host: str, port: int, path: str) -> str:
+    """URL a browser on this machine reaches the controller's `path` at."""
+    if host in ("", "0.0.0.0", "::", "127.0.0.1", "::1"):
+        host = "localhost"
+    elif ":" in host:
+        host = f"[{host}]"
+    return f"http://{host}:{port}{path}"
+
+
 def _listening_socket(host: str, port: int) -> socket.socket:
     """A TCP socket bound to host:port, raising HttpBindError if it cannot be."""
     try:
@@ -369,6 +378,7 @@ class Controller:
         )
         self.logger = LOGGER.bind(context=__name__)
         self.settings = settings
+        self.web_server: Optional[uvicorn.Server] = None
         self.adapter: GatewayAdapterBase = None
         self.pending_commands: Dict[tuple[str, str], PendingCommand] = {}
         self.batch_ids: Dict[str, int] = {}
@@ -697,23 +707,20 @@ class Controller:
         return twin
 
     async def _open_webbrowser(self):
-        """Wait until the server is ready before opening a web browser."""
-        while 1:
-            try:
-                _, writer = await asyncio.open_connection(
-                    "127.0.0.1", self.settings.controller_http_port
-                )
-            except ConnectionRefusedError:
-                await asyncio.sleep(0.1)
-            else:
-                writer.close()
-                break
+        """Wait until the server is ready, then print the console URL and
+        open it in a web browser unless headless."""
+        while self.web_server is None or not self.web_server.started:
+            await asyncio.sleep(0.1)
         ui_path = default_ui_path()
         if ui_path is None:
             self.logger.warning("No web UI is built, not opening a browser")
             return
-        url = f"http://localhost:{self.settings.controller_http_port}{ui_path}"
-        self.logger.debug("Using frontend URL", url=url)
+        url = console_url(
+            self.settings.controller_http_host,
+            self.settings.controller_http_port,
+            ui_path,
+        )
+        print(f"Console: {url}", flush=True)
         if not self.settings.headless:
             self.logger.info("Opening webbrowser", url=url)
             webbrowser.open(url)
@@ -1353,6 +1360,7 @@ class Controller:
             ws_ping_timeout=5,
         )
         server = uvicorn.Server(config)
+        self.web_server = server
 
         try:
             logger.info("Starting web server")
