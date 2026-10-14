@@ -307,6 +307,18 @@ def _await_point(session, stream, arrivals: queue.Queue):
         "forward). Re-measure it on a different floor."
     ),
 )
+@click.option(
+    "--fw-version",
+    "-f",
+    "fw_version",
+    default=None,
+    help=(
+        "With --spin: the dotbot-firmware set calibrate-spin is flashed from, "
+        "onto the robots running another app: a release tag, 'latest', a set "
+        "built by `dotbot fw build`, or a directory path. Default: the set "
+        "each robot's current app came from, else the release pydotbot pins."
+    ),
+)
 @click.pass_context
 def _collect(
     ctx,
@@ -324,6 +336,7 @@ def _collect(
     push,
     spin,
     spin_radius,
+    fw_version,
 ):
     if spin:
         given = [
@@ -347,6 +360,8 @@ def _collect(
         return
     if spin_radius is not None:
         raise click.UsageError("--spin-radius goes with --spin")
+    if fw_version is not None:
+        raise click.UsageError("-f goes with --spin")
     if _devices(ctx):
         raise click.UsageError(
             "`dotbot swarm -d` picks the robots of push and collect --spin; a "
@@ -488,11 +503,51 @@ def _collect(
             )
 
 
+def _spin_ready(ctx, client, status, devices):
+    """Sort the robots for a spin, flashing calibrate-spin onto those that
+    run another app first. Returns the sorted robots and the sets their
+    images came from before any flash."""
+    from dotbot.calibration.push import stop_robots
+    from dotbot.calibration.spin import check_spin_robots
+    from dotbot.cli._spin_flash import await_flashed, flash_spin_app, robots_sets
+
+    robots = check_spin_robots(status)
+    before = robots_sets(status, sorted(status))
+    if robots.wrong_image:
+        flashed = sorted(robots.wrong_image)
+        flash_spin_app(
+            client, status, flashed, ctx.params.get("fw_version"), stop=stop_robots
+        )
+        click.echo("Reading device info...")
+        fresh = await_flashed(client, flashed, devices)
+        status = {addr: fresh.get(addr, node) for addr, node in status.items()}
+        robots = check_spin_robots(status)
+    return robots, before
+
+
+def _restore_hint(spun: str, sets: list) -> str:
+    """The line that puts back the app the robots ran before the spin."""
+    from dotbot.cli._artifacts import artifacts_dir
+    from dotbot.cli._spin_flash import set_label
+
+    labels = [set_label(folder, artifacts_dir()) for folder in sets]
+    line = f"  dotbot swarm -d {spun} flash -y"
+    if len(labels) == 1:
+        return f"{line} -f {labels[0]} remote-control"
+    if not labels:
+        return f"{line} remote-control"
+    return (
+        f"{line} -f <set> remote-control\n"
+        "  <set>: the one their app before the spin came from, one of "
+        + ", ".join(labels)
+    )
+
+
 def _collect_spin(ctx, conn, swarm_id, site_name, tag, push, spin_radius):
     """`collect --spin`: spin the robots, solve their circles, save, report."""
     from dotbot.calibration.conics import solve_calibration
     from dotbot.calibration.lighthouse2 import write_calibration
-    from dotbot.calibration.spin import capture_spins, check_spin_robots, spin_report
+    from dotbot.calibration.spin import capture_spins, spin_report
     from dotbot.robots import ROBOT_DEFAULT, robot_geometry
 
     site, site_source = site_from_context(ctx, site_name)
@@ -518,7 +573,7 @@ def _collect_spin(ctx, conn, swarm_id, site_name, tag, push, spin_radius):
                     "not heard on the swarm: " + ", ".join(missing)
                 )
             status = {addr: node for addr, node in status.items() if addr in devices}
-        robots = check_spin_robots(status)
+        robots, before = _spin_ready(ctx, client, status, devices)
         refusal = robots.refusal()
         if refusal:
             raise click.ClickException(f"spin refused:\n{refusal}")
@@ -570,7 +625,7 @@ def _collect_spin(ctx, conn, swarm_id, site_name, tag, push, spin_radius):
                 f"  dotbot swarm -d {spun} calibrate-lh2 push {calibration.id8}\n"
             )
             + "The robots still hold the calibrate-spin app; before driving them:\n"
-            f"  dotbot swarm -d {spun} flash -y remote-control"
+            + _restore_hint(spun, before)
         )
 
 
