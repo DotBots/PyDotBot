@@ -60,6 +60,12 @@ export function calibrationCoverage(bots: UnifiedBot[], savedId: string): Covera
   return { id: savedId, carrying, total: bots.length, stale, unchecked, unknown: !wanted };
 }
 
+/** "288a810d (virmond)": the served calibration's short id and the site it was captured on. */
+export function servedCalibrationLabel(coverage: Coverage, site: string): string {
+  const id = coverage.id.slice(0, 8);
+  return site ? `${id} (${site})` : id;
+}
+
 /** "11 of 12 bots", or the absence when the fleet is empty. */
 export function coverageLabel(coverage: Coverage): string {
   if (coverage.total === 0) return "no bots on the control plane";
