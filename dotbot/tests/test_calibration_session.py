@@ -661,6 +661,17 @@ async def test_a_start_with_no_points_opens_on_the_sites_field(rest):
 
 
 @pytest.mark.asyncio
+async def test_a_start_that_carries_reads_is_refused(rest):
+    http, controller, _ = rest
+    response = await http.post(
+        "/controller/calibration/session", json={"points": "arena:corners", "reads": 5}
+    )
+    assert response.status_code == 422
+    assert "`reads` was removed" in response.text
+    assert controller.calibration_session.state() is None
+
+
+@pytest.mark.asyncio
 async def test_a_route_that_needs_a_session_refuses_without_one(rest):
     http, _, _ = rest
     for path in ("redo", "save", "push"):
