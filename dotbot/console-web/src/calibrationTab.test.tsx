@@ -54,7 +54,6 @@ vi.mock("./api", () => ({
   putWaypointBatches: vi.fn(async () => {}),
   clearWaypoints: vi.fn(async () => {}),
   abandonCalibration: vi.fn(async () => {}),
-  captureCalibrationPoint: vi.fn(),
   previewCalibrationPoints: vi.fn(async () => ({ points: [], reads: 25 })),
   pushCalibration: vi.fn(),
   redoCalibrationPoint: vi.fn(),
@@ -127,7 +126,7 @@ describe("the Calibrate tab", () => {
     fireEvent.click(screen.getByText("Calibrate"));
     expect(screen.getByLabelText("Rectangle")).toBeInTheDocument();
     expect(screen.getByText("Start")).toBeInTheDocument();
-    expect(screen.queryByText("Capture")).not.toBeInTheDocument();
+    expect(screen.queryByText("Redo")).not.toBeInTheDocument();
   });
 
   it("opens on the rail's Calibrate action rather than starting a session", () => {
@@ -147,9 +146,9 @@ describe("the Calibrate tab", () => {
     });
 
     expect(tabNames()).toEqual(["Robot", "Layers", "Calibrate"]);
-    // The step card takes the tab over from the setup card, so the capture
+    // The step card takes the tab over from the setup card, so its redo
     // button is on screen the moment the session opens.
-    expect(screen.getByText("Capture")).toBeInTheDocument();
+    expect(screen.getByText("Redo")).toBeInTheDocument();
   });
 
   it("leaves Robot and Layers reachable during a session", () => {
@@ -162,7 +161,7 @@ describe("the Calibrate tab", () => {
     fireEvent.click(screen.getByText("Layers"));
     expect(screen.getByText("Areas")).toBeInTheDocument();
     // The card left with the tab; it is not stacked above the others.
-    expect(screen.queryByText("Capture")).not.toBeInTheDocument();
+    expect(screen.queryByText("Redo")).not.toBeInTheDocument();
   });
 
   it("hands the pane back on Done, to the tab that was open", () => {
@@ -174,14 +173,14 @@ describe("the Calibrate tab", () => {
     act(() => {
       rerender(<App />);
     });
-    expect(screen.getByText("Capture")).toBeInTheDocument();
+    expect(screen.getByText("Redo")).toBeInTheDocument();
 
     session = null;
     act(() => {
       rerender(<App />);
     });
 
-    expect(screen.queryByText("Capture")).not.toBeInTheDocument();
+    expect(screen.queryByText("Redo")).not.toBeInTheDocument();
     // Robot is selected again: its empty-state line is what the tab shows.
     expect(screen.getByText("Select a bot to inspect it.")).toBeInTheDocument();
   });
@@ -213,40 +212,19 @@ const afterCaptures = (
   ...over,
 });
 
-const capturing = () =>
-  screen.getByPlaceholderText(/click a robot on the map/) as HTMLInputElement;
-
 describe("the step card following the robot's button", () => {
-  it("advances the step and adopts the robot that pressed", () => {
+  it("advances the step and names the robot that pressed", () => {
     const { rerender } = render(<App />);
     session = SESSION;
     act(() => rerender(<App />));
     expect(screen.getByText("Step 1 of 4")).toBeInTheDocument();
-    expect(capturing().value).toBe("");
+    expect(screen.queryByText(/last capture from/)).not.toBeInTheDocument();
 
     session = afterCaptures(1, "ABCD");
     act(() => rerender(<App />));
 
     expect(screen.getByText("Step 2 of 4")).toBeInTheDocument();
-    expect(capturing().value).toBe("ABCD");
-  });
-
-  it("replaces a robot typed in the card with the one that pressed", () => {
-    const { rerender } = render(<App />);
-    session = SESSION;
-    act(() => rerender(<App />));
-    fireEvent.change(capturing(), { target: { value: "1234" } });
-    expect(capturing().value).toBe("1234");
-
-    session = afterCaptures(1, "ABCD");
-    act(() => rerender(<App />));
-    expect(capturing().value).toBe("ABCD");
-
-    // A pick made after that capture stands until the next one.
-    fireEvent.change(capturing(), { target: { value: "5678" } });
-    session = afterCaptures(1, "ABCD");
-    act(() => rerender(<App />));
-    expect(capturing().value).toBe("5678");
+    expect(screen.getByText("last capture from ABCD")).toBeInTheDocument();
   });
 
   it("moves to save and push after the last point, never a NaN step", () => {
@@ -267,7 +245,7 @@ describe("the step card following the robot's button", () => {
     expect(screen.getByText("After the last point")).toBeInTheDocument();
     expect(screen.getByText("Save")).toBeInTheDocument();
     expect(screen.getByText("Push")).toBeInTheDocument();
-    expect(screen.queryByText("Capture")).not.toBeInTheDocument();
+    expect(screen.queryByText(/press the calibrate app's button/i)).not.toBeInTheDocument();
   });
 });
 

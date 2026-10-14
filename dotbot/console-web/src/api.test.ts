@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-  captureCalibrationPoint,
   clearWaypoints,
   fetchCalibrationSession,
   fetchMrtaStatus,
@@ -114,13 +113,6 @@ describe("the calibration session", () => {
       method: "POST",
       body: { points: ["arena:corners"], device: "ABCD", area: "arena" },
     });
-  });
-
-  it("names the robot in the capture request", async () => {
-    const calls = stubFetch(200, { outstanding: 1 });
-    await captureCalibrationPoint("ABCD");
-    expect(calls[0].url).toBe("/controller/calibration/session/capture");
-    expect(calls[0].body).toEqual({ device: "ABCD" });
   });
 
   it("reads the session back, and null means there is none", async () => {

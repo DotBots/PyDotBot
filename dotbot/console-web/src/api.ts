@@ -211,15 +211,6 @@ export async function startCalibration(
   });
 }
 
-export async function captureCalibrationPoint(
-  device: string,
-): Promise<CalibrationSession> {
-  return controllerJson(`${SESSION}/capture`, {
-    method: "POST",
-    body: { device },
-  });
-}
-
 export async function redoCalibrationPoint(): Promise<CalibrationSession> {
   return controllerJson(`${SESSION}/redo`, { method: "POST" });
 }

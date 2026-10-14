@@ -54,7 +54,6 @@ const calibration = (): Calibration => ({
   error: "",
   pushed: "",
   start: vi.fn(async () => {}),
-  capture: vi.fn(async () => {}),
   redo: vi.fn(async () => {}),
   save: vi.fn(async () => {}),
   push: vi.fn(async () => {}),
@@ -70,7 +69,7 @@ beforeEach(() => {
 
 describe("the Calibrate tab before a session", () => {
   it("opens on the site's field and asks the controller for its corners", async () => {
-    render(<SetupCard site={site} calibration={calibration()} device="" />);
+    render(<SetupCard site={site} calibration={calibration()} />);
 
     expect(screen.getByLabelText("Rectangle")).toHaveValue("arena");
     await waitFor(() =>
@@ -79,7 +78,7 @@ describe("the Calibrate tab before a session", () => {
   });
 
   it("shows the four resolved corners in capture order, in frame mm", async () => {
-    render(<SetupCard site={site} calibration={calibration()} device="" />);
+    render(<SetupCard site={site} calibration={calibration()} />);
 
     await screen.findByText("top-left");
     expect(
@@ -92,15 +91,15 @@ describe("the Calibrate tab before a session", () => {
   });
 
   it("seeds reads per point from the controller's own default", async () => {
-    render(<SetupCard site={site} calibration={calibration()} device="" />);
+    render(<SetupCard site={site} calibration={calibration()} />);
     await waitFor(() =>
       expect(screen.getByLabelText("Reads per point")).toHaveValue("25"),
     );
   });
 
-  it("starts a session over the chosen area, its reads and the chosen robot", async () => {
+  it("starts a session over the chosen area and its reads", async () => {
     const cal = calibration();
-    render(<SetupCard site={site} calibration={cal} device="ABCD" />);
+    render(<SetupCard site={site} calibration={cal} />);
     await waitFor(() =>
       expect(screen.getByLabelText("Reads per point")).toHaveValue("25"),
     );
@@ -114,12 +113,12 @@ describe("the Calibrate tab before a session", () => {
     });
     fireEvent.click(screen.getByText("Start"));
 
-    expect(cal.start).toHaveBeenCalledWith(["annex:corners"], "annex", "ABCD", 40);
+    expect(cal.start).toHaveBeenCalledWith(["annex:corners"], "annex", "", 40);
   });
 
   it("starts a session over a typed rectangle, which names no area", async () => {
     const cal = calibration();
-    render(<SetupCard site={site} calibration={cal} device="" />);
+    render(<SetupCard site={site} calibration={cal} />);
     await waitFor(() =>
       expect(screen.getByLabelText("Reads per point")).toHaveValue("25"),
     );
@@ -145,7 +144,7 @@ describe("the Calibrate tab before a session", () => {
 
   it("does not start while the typed rectangle is incomplete", async () => {
     const cal = calibration();
-    render(<SetupCard site={site} calibration={cal} device="" />);
+    render(<SetupCard site={site} calibration={cal} />);
     await waitFor(() =>
       expect(screen.getByLabelText("Reads per point")).toHaveValue("25"),
     );
@@ -165,7 +164,7 @@ describe("the Calibrate tab before a session", () => {
 
   it("shows the controller's refusal rather than an empty list", async () => {
     preview.mockRejectedValue(new Error("unknown area 'balcony'"));
-    render(<SetupCard site={site} calibration={calibration()} device="" />);
+    render(<SetupCard site={site} calibration={calibration()} />);
 
     expect(await screen.findByText("unknown area 'balcony'")).toBeInTheDocument();
   });

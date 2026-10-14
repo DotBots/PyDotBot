@@ -89,8 +89,6 @@ const Harness: React.FC = () => {
         onRobotDrawing={setDrawing}
         session={null}
         calibration={{} as Calibration}
-        device=""
-        onDeviceChange={() => {}}
         onCalibrationDone={() => {}}
       />
     </>

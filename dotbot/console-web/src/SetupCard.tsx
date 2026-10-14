@@ -44,8 +44,6 @@ const field: React.CSSProperties = {
 interface SetupCardProps {
   site: Site | null;
   calibration: Calibration;
-  /** The robot chosen to capture, clicked on the map or typed. */
-  device: string;
   /** Leave the card. Given where it is the whole screen and no tab strip is. */
   onLeave?: () => void;
 }
@@ -53,7 +51,6 @@ interface SetupCardProps {
 export const SetupCard: React.FC<SetupCardProps> = ({
   site,
   calibration,
-  device,
   onLeave,
 }) => {
   const names = areaChoices(site);
@@ -201,7 +198,7 @@ export const SetupCard: React.FC<SetupCardProps> = ({
           // A typed rectangle names no area, so the expected error it would
           // be evaluated over is left unchosen rather than named after it.
           const area = choice === TYPED_RECT ? "" : choice;
-          calibration.start([spec!], area, device, readsValue!);
+          calibration.start([spec!], area, "", readsValue!);
         }}
         style={{
           display: "flex",
