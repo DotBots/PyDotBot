@@ -259,6 +259,7 @@ class DotBotSiteModel(BaseModel):
     areas: List[DotBotAreaModel] = []
     field: Optional[str] = None
     calibration: Optional[DotBotCalibrationSpanModel] = None
+    spin_radius_mm: Optional[float] = None
 
     @classmethod
     def from_site(cls, site: Site, calibration: Any = None) -> "DotBotSiteModel":
@@ -269,6 +270,7 @@ class DotBotSiteModel(BaseModel):
             extent_mm=list(site.extent_mm) if site.extent_mm else None,
             areas=[DotBotAreaModel(**a.as_dict()) for a in site.areas.values()],
             field=field.name if field is not None else None,
+            spin_radius_mm=site.spin_radius_mm,
             calibration=(
                 DotBotCalibrationSpanModel.from_calibration(calibration)
                 if calibration is not None
@@ -286,6 +288,7 @@ class DotBotSiteModel(BaseModel):
             areas={
                 a.name: Area(a.x, a.y, a.w, a.h, a.name, a.role) for a in self.areas
             },
+            spin_radius_mm=self.spin_radius_mm,
         )
 
 

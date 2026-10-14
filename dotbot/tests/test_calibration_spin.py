@@ -287,6 +287,19 @@ def test_spins_end_to_end_into_a_self_defined_site(monkeypatch, lab):
     )
 
 
+def test_the_site_spin_radius_is_used_unless_the_flag_overrides_it(
+    monkeypatch, lab
+):
+    toml = lab.project_dir / "sites" / "c405" / "site.toml"
+    toml.write_text(toml.read_text() + "spin_radius_mm = 53.0\n")
+    _, fleet = _fleet()
+    result = _collect(monkeypatch, lab, fleet)
+    assert "spin radius 53 mm (from site c405)" in result.output
+    _, fleet = _fleet()
+    result = _collect(monkeypatch, lab, fleet, "--spin-radius", "50")
+    assert "spin radius 50 mm (from --spin-radius)" in result.output
+
+
 def test_site_init_refuses_an_existing_name(monkeypatch, lab):
     _, fleet = _fleet()
     result = _collect(monkeypatch, lab, fleet)
