@@ -19,7 +19,10 @@ from dotbot.adapter import DotBotSimulatorAdapter, SerialAdapter
 from dotbot.area import Area
 from dotbot.controller import (
     FORGET_AFTER_S,
+    HOLD_TIMEOUT_S,
     LOST_AFTER_S,
+    PROBE_MM,
+    PROBE_THRESHOLD_MM,
     STALE_AFTER_S,
     Controller,
     ControllerSettings,
@@ -1863,3 +1866,193 @@ async def test_console_url_is_printed_headless_or_not(
     await controller._open_webbrowser()
     assert "Console: http://localhost:8123/console\n" in capsys.readouterr().out
     assert opened.called is not headless
+
+
+# --- a batch held until its robot has a heading ------------------------------
+
+
+def _headingless(**fields) -> Frame:
+    return _report(direction=DIRECTION_NONE, **fields)
+
+
+@pytest.mark.asyncio
+async def test_a_robot_with_no_heading_gets_a_probe_move_first(controller, clock):
+    controller.send_payload = MagicMock()
+    controller.handle_received_frame(_headingless(batch_id=3))
+    address = addr_to_hex(BOT)
+    batch = _batch()
+    assert controller.send_waypoints(address, batch)
+
+    probe = controller.send_payload.call_args.args[1]
+    assert probe is not batch and probe.count == 1
+    assert probe.threshold == PROBE_THRESHOLD_MM
+    # From the fix at (1000, 1000), toward the first point at (1000, 500)
+    assert (probe.waypoints[0].pos_x, probe.waypoints[0].pos_y) == (
+        1000,
+        1000 - PROBE_MM,
+    )
+    assert controller.dotbots[address].waypoints_awaiting_heading
+
+
+@pytest.mark.asyncio
+async def test_a_held_batch_waits_for_a_heading_and_the_probe_end(controller, clock):
+    controller.send_payload = MagicMock()
+    controller.handle_received_frame(_headingless(batch_id=3))
+    address = addr_to_hex(BOT)
+    batch = _batch()
+    controller.send_waypoints(address, batch)
+    probe_id = controller.send_payload.call_args.args[1].batch_id
+
+    in_progress = dict(batch_id=probe_id, waypoints_status=WaypointsStatus.IN_PROGRESS)
+    controller.handle_received_frame(_headingless(**in_progress))
+    controller.handle_received_frame(_report(**in_progress))
+    assert controller.send_payload.call_count == 1  # tracking, still probing
+
+    controller.handle_received_frame(
+        _report(batch_id=probe_id, waypoints_status=WaypointsStatus.ARRIVED)
+    )
+    assert controller.send_payload.call_args.args == (BOT, batch)
+    assert batch.batch_id == probe_id + 1
+    assert not controller.dotbots[address].waypoints_awaiting_heading
+    assert not controller.held_batches
+
+
+@pytest.mark.asyncio
+async def test_a_probe_ending_without_a_heading_drops_the_batch(controller, clock):
+    controller.send_payload = MagicMock()
+    controller.handle_received_frame(_headingless(batch_id=3))
+    address = addr_to_hex(BOT)
+    controller.send_waypoints(address, _batch())
+    probe_id = controller.send_payload.call_args.args[1].batch_id
+
+    controller.handle_received_frame(
+        _headingless(
+            batch_id=probe_id,
+            waypoints_status=WaypointsStatus.FAILED,
+            waypoints_reason=1,
+        )
+    )
+    dotbot = controller.dotbots[address]
+    assert not dotbot.waypoints_awaiting_heading
+    assert dotbot.waypoints_reason == "NO_HEADING"
+    # A heading that comes later does not revive it
+    controller.handle_received_frame(_report(batch_id=probe_id))
+    assert controller.send_payload.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_a_robot_with_a_heading_or_a_short_first_leg_is_not_held(
+    controller, clock
+):
+    controller.send_payload = MagicMock()
+    address = addr_to_hex(BOT)
+    controller.handle_received_frame(_report(batch_id=3))
+    batch = _batch()
+    controller.send_waypoints(address, batch)
+    assert controller.send_payload.call_args.args == (BOT, batch)
+
+    controller.handle_received_frame(_headingless(batch_id=3, pos_x=1000, pos_y=530))
+    batch = _batch()
+    controller.send_waypoints(address, batch)
+    assert controller.send_payload.call_args.args == (BOT, batch)
+    assert not controller.dotbots[address].waypoints_awaiting_heading
+
+
+@pytest.mark.asyncio
+async def test_a_new_batch_replaces_a_held_one(controller, clock):
+    controller.send_payload = MagicMock()
+    controller.handle_received_frame(_headingless(batch_id=3))
+    address = addr_to_hex(BOT)
+    controller.send_waypoints(address, _batch())
+    stop = _batch(count=0)
+    controller.send_waypoints(address, stop)
+    assert controller.send_payload.call_args.args == (BOT, stop)
+    assert not controller.held_batches
+    assert not controller.dotbots[address].waypoints_awaiting_heading
+
+
+@pytest.mark.asyncio
+async def test_a_robot_without_a_report_is_released_by_its_heading(controller, clock):
+    controller.send_payload = MagicMock()
+    address = addr_to_hex(BOT)
+    fix = dict(pos_x=1000, pos_y=1000)
+    controller.handle_received_frame(_advertised(BOT, direction=DIRECTION_NONE, **fix))
+    batch = _batch()
+    controller.send_waypoints(address, batch)
+    controller.handle_received_frame(_advertised(BOT, direction=DIRECTION_NONE, **fix))
+    assert controller.send_payload.call_count == 1
+    controller.handle_received_frame(_advertised(BOT, direction=180, **fix))
+    assert controller.send_payload.call_args.args == (BOT, batch)
+
+
+@pytest.mark.asyncio
+async def test_a_held_batch_is_dropped_after_the_timeout(controller, clock):
+    controller.send_payload = MagicMock()
+    address = addr_to_hex(BOT)
+    fix = dict(pos_x=1000, pos_y=1000)
+    controller.handle_received_frame(_advertised(BOT, direction=DIRECTION_NONE, **fix))
+    controller.send_waypoints(address, _batch())
+    clock.now += HOLD_TIMEOUT_S + 1
+    controller.handle_received_frame(_advertised(BOT, direction=DIRECTION_NONE, **fix))
+    assert not controller.held_batches
+    assert not controller.dotbots[address].waypoints_awaiting_heading
+
+
+@pytest.mark.asyncio
+async def test_a_report_of_the_batch_before_the_probe_does_not_release(
+    controller, clock
+):
+    controller.send_payload = MagicMock()
+    controller.handle_received_frame(_headingless(batch_id=3))
+    address = addr_to_hex(BOT)
+    batch = _batch()
+    controller.send_waypoints(address, batch)
+    probe_id = controller.send_payload.call_args.args[1].batch_id
+    controller.handle_received_frame(
+        _report(batch_id=3, waypoints_status=WaypointsStatus.ARRIVED)
+    )
+    assert controller.send_payload.call_count == 1
+    controller.handle_received_frame(
+        _report(batch_id=probe_id, waypoints_status=WaypointsStatus.ARRIVED)
+    )
+    assert controller.send_payload.call_args.args == (BOT, batch)
+
+
+@pytest.mark.asyncio
+async def test_a_probe_superseded_by_another_controller_releases_on_a_heading(
+    controller, clock
+):
+    controller.send_payload = MagicMock()
+    controller.handle_received_frame(_headingless(batch_id=3))
+    address = addr_to_hex(BOT)
+    batch = _batch()
+    controller.send_waypoints(address, batch)
+    controller.handle_received_frame(_report(batch_id=99))
+    assert controller.send_payload.call_args.args == (BOT, batch)
+    assert not controller.held_batches
+
+
+@pytest.mark.asyncio
+async def test_a_dropped_batch_leaves_no_waypoints_behind(controller, clock):
+    controller.send_payload = MagicMock()
+    controller.handle_received_frame(_headingless(batch_id=3))
+    address = addr_to_hex(BOT)
+    controller.send_waypoints(address, _batch())
+    controller.update_dotbot(address, waypoints=[DotBotLH2Position(x=1000, y=500)])
+    probe_id = controller.send_payload.call_args.args[1].batch_id
+    controller.handle_received_frame(
+        _headingless(batch_id=probe_id, waypoints_status=WaypointsStatus.ARRIVED)
+    )
+    dotbot = controller.dotbots[address]
+    assert dotbot.waypoints == [] and not dotbot.waypoints_awaiting_heading
+
+
+@pytest.mark.asyncio
+async def test_a_direct_command_drops_a_held_batch(controller, clock):
+    controller.adapter = MagicMock()
+    controller.handle_received_frame(_headingless(batch_id=3))
+    address = addr_to_hex(BOT)
+    controller.send_waypoints(address, _batch())
+    controller.send_payload(BOT, PayloadCommandMoveRaw(left_y=50, right_y=50))
+    assert not controller.held_batches
+    assert not controller.dotbots[address].waypoints_awaiting_heading
