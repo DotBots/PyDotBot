@@ -30,6 +30,16 @@ export function formatLh2(bot: UnifiedBot): string {
   return bot.swarmit?.info?.lh2_summary ?? "unknown (no device info)";
 }
 
+/** Matches swarmit's LH2_FLAG_SENSOR_FAILED: the bot's LH2 receiver did not initialise this boot. */
+const LH2_FLAG_SENSOR_FAILED = 1 << 2;
+
+/** "1204, 877", or why there is no position. */
+export function formatPosition(bot: UnifiedBot): string {
+  if (bot.position) return `${Math.round(bot.position.x)}, ${Math.round(bot.position.y)}`;
+  if ((bot.swarmit?.info?.lh2_flags ?? 0) & LH2_FLAG_SENSOR_FAILED) return "LH2 sensor failed";
+  return "no fix";
+}
+
 /** The site the held calibration was made for and its short id; null without device info. */
 export function formatLh2Site(bot: UnifiedBot): string | null {
   const info = bot.swarmit?.info;
@@ -89,7 +99,7 @@ export function infoText(bot: UnifiedBot): string {
   out.push(`Reports           ${REPORTS_LABEL[bot.link]} (${reportsWire(bot)})`);
   out.push(`Battery           ${bot.battery.toFixed(2)}V`);
   out.push(
-    `Position          ${bot.position ? `${Math.round(bot.position.x)}, ${Math.round(bot.position.y)}` : "no fix"}`,
+    `Position          ${formatPosition(bot)}`,
   );
   out.push(`Heading           ${formatHeading(bot)}`);
   if (info) {
@@ -198,10 +208,7 @@ const Card: React.FC<{ bot: UnifiedBot; camera: CameraRobot | null; cameras: boo
       <Row k="Sandbox" v={stateLabel(bot.state)} />
       <Row k="Reports" v={`${REPORTS_LABEL[bot.link]} (${reportsWire(bot)})`} />
       <Row k="Battery" v={`${bot.battery.toFixed(2)}V`} />
-      <Row
-        k="Position"
-        v={bot.position ? `${Math.round(bot.position.x)}, ${Math.round(bot.position.y)}` : "no fix"}
-      />
+      <Row k="Position" v={formatPosition(bot)} />
       <Row k="Heading" v={formatHeading(bot)} />
       {cameras && <Row k="Camera" v={formatCameraHeading(camera)} />}
 
