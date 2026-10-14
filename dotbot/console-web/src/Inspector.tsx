@@ -30,6 +30,14 @@ export function formatLh2(bot: UnifiedBot): string {
   return bot.swarmit?.info?.lh2_summary ?? "unknown (no device info)";
 }
 
+/** The site the held calibration was made for and its short id; null without device info. */
+export function formatLh2Site(bot: UnifiedBot): string | null {
+  const info = bot.swarmit?.info;
+  if (!info) return null;
+  const id = (info.lh2_calibration_id ?? "").slice(0, 8);
+  return `${info.lh2_site_name || "none"}  (id ${id || "none"})`;
+}
+
 /**
  * The body heading, and where it came from. A travel bearing is the robot's
  * direction of motion, so it is its heading only while it drives straight;
@@ -99,6 +107,8 @@ export function infoText(bot: UnifiedBot): string {
   }
   out.push("");
   out.push(`LH2 calibration   ${formatLh2(bot)}`);
+  const lh2Site = formatLh2Site(bot);
+  if (lh2Site !== null) out.push(`  site            ${lh2Site}`);
   if (sw?.reset_reason !== undefined) {
     out.push("");
     out.push(`Last reset        ${bot.resetCause}`);
@@ -215,6 +225,7 @@ const Card: React.FC<{ bot: UnifiedBot; camera: CameraRobot | null; cameras: boo
 
       <div style={{ height: 8 }} />
       <Row k="LH2 calib" v={formatLh2(bot)} />
+      {formatLh2Site(bot) !== null && <Row k="site" v={formatLh2Site(bot)!} indent />}
 
       {sw?.reset_reason !== undefined && (
         <>
