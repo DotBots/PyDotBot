@@ -9,10 +9,12 @@
 
 import asyncio
 import dataclasses
+import errno
 import math
 import os
 import random
 import secrets
+import socket
 import time
 import webbrowser
 from dataclasses import dataclass
@@ -194,6 +196,45 @@ class ControllerException(Exception):
     """Exception raised by Dotbot controllers."""
 
 
+class HttpBindError(ControllerException):
+    """The web server could not listen on its host and port."""
+
+    def __init__(self, host: str, port: int, error: OSError):
+        super().__init__(error.strerror or str(error))
+        self.host = host
+        self.port = port
+        self.in_use = error.errno == errno.EADDRINUSE
+
+
+def console_url(host: str, port: int, path: str) -> str:
+    """URL a browser on this machine reaches the controller's `path` at."""
+    if host in ("", "0.0.0.0", "::", "127.0.0.1", "::1"):
+        host = "localhost"
+    elif ":" in host:
+        host = f"[{host}]"
+    return f"http://{host}:{port}{path}"
+
+
+def _listening_socket(host: str, port: int) -> socket.socket:
+    """A TCP socket bound to host:port, raising HttpBindError if it cannot be."""
+    try:
+        family, kind, proto, _, address = socket.getaddrinfo(
+            host, port, type=socket.SOCK_STREAM, flags=socket.AI_PASSIVE
+        )[0]
+        sock = socket.socket(family, kind, proto)
+    except OSError as exc:
+        raise HttpBindError(host, port, exc) from exc
+    try:
+        # On Windows SO_REUSEADDR lets a second process bind a listening port.
+        if os.name != "nt":
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind(address)
+    except OSError as exc:
+        sock.close()
+        raise HttpBindError(host, port, exc) from exc
+    return sock
+
+
 @dataclass
 class ControllerSettings:
     """Data class that holds controller settings."""
@@ -337,6 +378,7 @@ class Controller:
         )
         self.logger = LOGGER.bind(context=__name__)
         self.settings = settings
+        self.web_server: Optional[uvicorn.Server] = None
         self.adapter: GatewayAdapterBase = None
         self.pending_commands: Dict[tuple[str, str], PendingCommand] = {}
         self.batch_ids: Dict[str, int] = {}
@@ -665,23 +707,20 @@ class Controller:
         return twin
 
     async def _open_webbrowser(self):
-        """Wait until the server is ready before opening a web browser."""
-        while 1:
-            try:
-                _, writer = await asyncio.open_connection(
-                    "127.0.0.1", self.settings.controller_http_port
-                )
-            except ConnectionRefusedError:
-                await asyncio.sleep(0.1)
-            else:
-                writer.close()
-                break
+        """Wait until the server is ready, then print the console URL and
+        open it in a web browser unless headless."""
+        while self.web_server is None or not self.web_server.started:
+            await asyncio.sleep(0.1)
         ui_path = default_ui_path()
         if ui_path is None:
             self.logger.warning("No web UI is built, not opening a browser")
             return
-        url = f"http://localhost:{self.settings.controller_http_port}{ui_path}"
-        self.logger.debug("Using frontend URL", url=url)
+        url = console_url(
+            self.settings.controller_http_host,
+            self.settings.controller_http_port,
+            ui_path,
+        )
+        print(f"Console: {url}", flush=True)
         if not self.settings.headless:
             self.logger.info("Opening webbrowser", url=url)
             webbrowser.open(url)
@@ -1303,10 +1342,14 @@ class Controller:
                 "and /swarmit/* and /mrta/* reach their servers from here too",
                 host=host,
             )
+        port = self.settings.controller_http_port
+        # Bound here rather than by uvicorn, which logs a bind failure at a
+        # level the controller silences and then exits as though stopped.
+        sock = _listening_socket(host, port)
         config = uvicorn.Config(
             api,
             host=host,
-            port=self.settings.controller_http_port,
+            port=port,
             log_level="critical",
             # The stream stays open for as long as a browser tab is, so a
             # graceful shutdown that waits for connections never returns.
@@ -1317,10 +1360,11 @@ class Controller:
             ws_ping_timeout=5,
         )
         server = uvicorn.Server(config)
+        self.web_server = server
 
         try:
             logger.info("Starting web server")
-            await server.serve()
+            await server.serve(sockets=[sock])
         except asyncio.exceptions.CancelledError:
             logger.info("Web server cancelled")
         else:

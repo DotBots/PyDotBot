@@ -3,6 +3,7 @@
 import asyncio
 import json
 import pathlib
+import socket
 import time
 from unittest import mock
 from unittest.mock import MagicMock
@@ -22,6 +23,8 @@ from dotbot.controller import (
     STALE_AFTER_S,
     Controller,
     ControllerSettings,
+    HttpBindError,
+    console_url,
     gps_distance,
     lh2_distance,
 )
@@ -283,6 +286,14 @@ def test_a_robot_object_returns_the_newest_trail_points(controller, trail, expec
     assert len(_trail(controller, address)) == 10
 
 
+def _free_port() -> int:
+    """A TCP port nothing listens on now; the port bind would fail on a
+    machine already running a controller or swarm server."""
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
 def test_controller_sailbot_simulator():
     """Check controller called for sailbot simulator."""
 
@@ -291,7 +302,7 @@ def test_controller_sailbot_simulator():
             adapter="sailbot-simulator",
             network_id="0",
             gw_address="78",
-            controller_http_port=8002,
+            controller_http_port=_free_port(),
             headless=True,
         )
         controller = Controller(settings)
@@ -311,7 +322,7 @@ def test_controller_dotbot_simulator():
             adapter="dotbot-simulator",
             network_id="0",
             gw_address="78",
-            controller_http_port=8001,
+            controller_http_port=_free_port(),
             headless=True,
         )
         controller = Controller(settings)
@@ -1806,3 +1817,48 @@ async def test_robots_forgotten_in_one_pass_are_null_in_seq_order():
 def test_an_address_asks_for_that_robot_even_when_lost(controller):
     query = DotBotQueryModel(address="0000000000000003")
     assert controller.matching(query) == ["0000000000000003"]
+
+
+@pytest.mark.parametrize(
+    "host,expected",
+    [
+        ("127.0.0.1", "http://localhost:8000/console"),
+        ("0.0.0.0", "http://localhost:8000/console"),
+        ("192.168.1.20", "http://192.168.1.20:8000/console"),
+        ("fe80::1", "http://[fe80::1]:8000/console"),
+    ],
+)
+def test_console_url_follows_the_host(host, expected):
+    assert console_url(host, 8000, "/console") == expected
+
+
+@pytest.mark.asyncio
+async def test_web_raises_a_bind_error_when_the_port_is_taken(controller):
+    holder = socket.socket()
+    holder.bind(("127.0.0.1", 0))
+    holder.listen()
+    controller.settings.controller_http_host = "127.0.0.1"
+    controller.settings.controller_http_port = holder.getsockname()[1]
+    try:
+        with pytest.raises(HttpBindError) as exc:
+            await controller.web()
+    finally:
+        holder.close()
+    assert exc.value.in_use
+    assert exc.value.port == controller.settings.controller_http_port
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("headless", [True, False])
+async def test_console_url_is_printed_headless_or_not(
+    controller, monkeypatch, capsys, headless
+):
+    controller.settings.headless = headless
+    controller.settings.controller_http_port = 8123
+    controller.web_server = MagicMock(started=True)
+    monkeypatch.setattr("dotbot.controller.default_ui_path", lambda: "/console")
+    opened = MagicMock()
+    monkeypatch.setattr("dotbot.controller.webbrowser.open", opened)
+    await controller._open_webbrowser()
+    assert "Console: http://localhost:8123/console\n" in capsys.readouterr().out
+    assert opened.called is not headless

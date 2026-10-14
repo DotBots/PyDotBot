@@ -11,6 +11,7 @@ import asyncio
 import os
 import shutil
 import signal
+import subprocess
 import sys
 from pathlib import Path
 
@@ -44,6 +45,7 @@ from dotbot.controller import (
     STALE_AFTER_S,
     Controller,
     ControllerSettings,
+    HttpBindError,
 )
 from dotbot.logger import setup_logging
 from dotbot.mqtt_tls import LOCAL_HOSTS
@@ -78,6 +80,52 @@ def _resolve_controller_key(ctx, key, flag, default):
     except ConfigError as exc:
         raise click.ClickException(f"{key}: {exc}") from exc
     return resolved.value, resolved.source
+
+
+def _port_listeners(port: int) -> list[tuple[int, str]]:
+    """(pid, command line) of each process listening on TCP `port`, found
+    with lsof and ps; empty where those are missing or fail."""
+    try:
+        found = subprocess.run(
+            ["lsof", "-nP", "-t", f"-iTCP:{port}", "-sTCP:LISTEN"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return []
+    listeners = []
+    for pid in dict.fromkeys(found.stdout.split()):
+        if not pid.isdigit():
+            continue
+        try:
+            command = subprocess.run(
+                ["ps", "-o", "command=", "-p", pid],
+                capture_output=True,
+                text=True,
+                timeout=2,
+                check=False,
+            ).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            command = ""
+        listeners.append((int(pid), command))
+    return listeners
+
+
+def _bind_error_message(exc: HttpBindError) -> str:
+    """What to tell the operator when the web server cannot listen."""
+    where = f"{exc.host}:{exc.port}"
+    if not exc.in_use:
+        return f"cannot serve the controller on {where}: {exc}"
+    lines = [
+        f"cannot serve the controller on {where}: the port is already in use, "
+        "probably by another controller. Stop it, or pick another port with "
+        "--controller-http-port."
+    ]
+    for pid, command in _port_listeners(exc.port):
+        lines.append(f"  pid {pid}: {command or '(command line unavailable)'}")
+    return "\n".join(lines)
 
 
 def _swarm_server(ctx, flag, settings: ControllerSettings):
@@ -768,6 +816,8 @@ def main(
         signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     try:
         asyncio.run(controller.run())
+    except HttpBindError as exc:
+        raise click.ClickException(_bind_error_message(exc)) from exc
     except serial.serialutil.SerialException as exc:
         sys.exit(f"Serial error: {exc}")
     except (SystemExit, KeyboardInterrupt):
