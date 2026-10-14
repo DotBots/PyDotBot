@@ -7,6 +7,7 @@ import {
   appLabel,
   areaLabel,
   calibrationDiffers,
+  calibrationSiteLabel,
   detailText,
   FleetContext,
   firmwareTooOld,
@@ -94,6 +95,13 @@ describe("botFacts", () => {
     expect(calibrationDiffers(other, ctx.calibrationId)).toBe(true);
     expect(calibrationDiffers(bot("A"), ctx.calibrationId)).toBe(false);
     expect(calibrationDiffers(other, "")).toBe(false);
+  });
+
+  it("names the held calibration's short id and its site", () => {
+    const withSite = bot("A", { swarmit: { ...bot("A").swarmit!, info: info({ lh2_site_name: "virmond" }) } });
+    expect(calibrationSiteLabel(withSite)).toBe("abcd1234 · virmond");
+    expect(calibrationSiteLabel(bot("A"))).toBe("abcd1234");
+    expect(calibrationSiteLabel(bot("A", { swarmit: null }))).toBe("");
   });
 
   it("picks the smallest area the robot stands in", () => {

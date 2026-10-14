@@ -5,7 +5,7 @@ import {
   areaLabel,
   bootloaderLabel,
   calibrationDiffers,
-  calibrationLabel,
+  calibrationSiteLabel,
   detailText,
   FleetContext,
   firmwareTooOld,
@@ -274,7 +274,7 @@ export const GridView: React.FC<GridViewProps> = ({ bots, selection, onSelect, c
                         )
                       }
                     >
-                      {calibrationLabel(b) || dash}
+                      {calibrationSiteLabel(b) || dash}
                     </Fact>
                     <Fact k="Device">{b.deviceType}</Fact>
                     {b.severity !== "normal" && <Fact k="Last reset">{b.resetCause ?? b.severity}</Fact>}
