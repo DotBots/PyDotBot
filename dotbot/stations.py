@@ -25,6 +25,7 @@ SERIAL_RE = re.compile(r"[0-9A-F]{8}")
 VALVE_USB_VID = 0x28DE
 LH2_USB_PID = 0x2500
 VALVE_BLE_COMPANY = 0x055D
+BLE_CHANNEL_CHAR = "00001524-1212-efde-1523-785feabcd124"
 _BLE_NAME_RE = re.compile(r"LHB-([0-9A-F]{8})", re.IGNORECASE)
 _BLE_POWER = {
     0x00: "sleep",
@@ -55,8 +56,8 @@ class Station:
 
 
 class Transport(Protocol):
-    """How stations are reached. `write` persists the channel and puts it on
-    air; `confirm` re-reads it after that."""
+    """How stations are reached. `write` sets a station's channel; `confirm`
+    reads back the channel the station then reports."""
 
     name: str
 
@@ -261,44 +262,111 @@ def decode_advert(name: str | None, manufacturer_data: Mapping[int, bytes]) -> S
     return Station(m.group(1).upper(), channel, "ble", name or "", power)
 
 
+class BleRadio(Protocol):
+    def scan(self, seconds: float) -> list[tuple[str, str | None, Mapping[int, bytes]]]:
+        """(address, name, manufacturer data) of every device heard."""
+        ...
+
+    def write(self, address: str, characteristic: str, data: bytes) -> None: ...
+
+
+def check_gatt_write(characteristic: str, data: bytes) -> None:
+    """Refuse every Bluetooth write but a channel, 1 to 16, to the channel
+    characteristic."""
+    if characteristic.lower() != BLE_CHANNEL_CHAR or len(data) != 1 or data[0] not in CHANNELS:
+        raise ValueError(f"refusing to write {data.hex()} to {characteristic} on a base station")
+
+
 class BleTransport:
-    """Stations over Bluetooth: reads their advertisements; writing is not
-    built yet (whether a written channel persists across a power cycle is
-    still to be measured)."""
+    """Stations over Bluetooth. A channel is written to one characteristic,
+    no pairing, and read back from the advertisement: GATT reads of it are
+    unreliable on radio firmware 1.1. Whether a channel written this way
+    survives a power cycle is not yet measured."""
 
     name = "ble"
 
-    def __init__(self, scan_s: float = 8.0, scanner: Callable[[float], list[tuple[str, Mapping[int, bytes]]]] | None = None):
+    def __init__(self, scan_s: float = 8.0, radio: BleRadio | None = None, confirm_s: float = 30.0, poll_s: float = 2.0, clock=time.monotonic):
         self._scan_s = scan_s
-        self._scanner = scanner or _bleak_scan
+        self._radio = radio or BleakRadio()
+        self._confirm_s = confirm_s
+        self._poll_s = poll_s
+        self._clock = clock
+        self._where: dict[str, str] = {}
+        self._asked: dict[str, int] = {}
 
-    def scan(self) -> list[Station]:
-        found = (decode_advert(name, md) for name, md in self._scanner(self._scan_s))
-        return [st for st in found if st is not None]
+    def scan(self, seconds: float | None = None) -> list[Station]:
+        found = []
+        for address, name, md in self._radio.scan(self._scan_s if seconds is None else seconds):
+            st = decode_advert(name, md)
+            if st is not None:
+                st.where = address
+                self._where[st.serial] = address
+                found.append(st)
+        return found
 
     def write(self, serial: str, channel: int) -> None:
-        raise NotImplementedError("writing a channel over Bluetooth is not built yet; use --via usb")
+        if channel not in CHANNELS:
+            raise ValueError(f"channel {channel} outside 1 to 16")
+        if serial not in self._where:
+            self.scan()
+        if serial not in self._where:
+            raise LookupError(f"station {serial} not found over Bluetooth")
+        self._radio.write(self._where[serial], BLE_CHANNEL_CHAR, bytes([channel]))
+        self._asked[serial] = channel
 
     def confirm(self, serial: str) -> int | None:
-        for st in self.scan():
-            if st.serial == serial:
-                return st.channel
-        return None
+        """The advertised channel once it is the one written, or the last one
+        heard when it is not within `confirm_s`."""
+        seen = None
+        deadline = self._clock() + self._confirm_s
+        while True:
+            for st in self.scan(self._poll_s):
+                if st.serial == serial:
+                    seen = st.channel
+            if seen == self._asked.get(serial) or self._clock() >= deadline:
+                return seen
 
 
-def _bleak_scan(seconds: float) -> list[tuple[str, Mapping[int, bytes]]]:
+def _bleak():
     try:
+        import bleak
+    except ImportError as exc:
+        raise RuntimeError("Bluetooth needs the bleak package: pip install 'pydotbot[stations]'") from exc
+    return bleak
+
+
+class BleakRadio:
+    def scan(self, seconds: float) -> list[tuple[str, str | None, Mapping[int, bytes]]]:
         import asyncio
 
-        from bleak import BleakScanner
-    except ImportError as exc:
-        raise RuntimeError("Bluetooth needs the bleak package (pip install bleak)") from exc
+        bleak = _bleak()
 
-    async def run():
-        seen = await BleakScanner.discover(timeout=seconds, return_adv=True)
-        return [(adv.local_name or dev.name, adv.manufacturer_data) for dev, adv in seen.values()]
+        async def run():
+            seen = await bleak.BleakScanner.discover(timeout=seconds, return_adv=True)
+            return [(dev.address, adv.local_name or dev.name, adv.manufacturer_data) for dev, adv in seen.values()]
 
-    return asyncio.run(run())
+        try:
+            return asyncio.run(run())
+        except bleak.exc.BleakError as exc:
+            raise RuntimeError(f"Bluetooth scan failed: {exc}") from exc
+
+    def write(self, address: str, characteristic: str, data: bytes) -> None:
+        import asyncio
+
+        check_gatt_write(characteristic, data)
+        bleak = _bleak()
+
+        async def run():
+            async with bleak.BleakClient(address, timeout=20.0) as client:
+                char = client.services.get_characteristic(characteristic)
+                if char is None:
+                    raise LookupError(f"{address} has no characteristic {characteristic}")
+                await client.write_gatt_char(char, data, response="write" in char.properties)
+
+        try:
+            asyncio.run(run())
+        except (bleak.exc.BleakError, TimeoutError) as exc:
+            raise OSError(f"Bluetooth write to {address} failed: {exc or type(exc).__name__}") from exc
 
 
 # ------------------------------------------------------------- registry --

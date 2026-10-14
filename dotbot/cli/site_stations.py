@@ -99,24 +99,36 @@ def _apply(ctx, found, used, moves, yes, dry_run):
     else:
         if not yes:
             click.confirm(
-                "Write these channels? Each station reboots, so a console open on it closes",
+                "Write these channels? A station written over USB reboots, so a console open on it closes",
                 abort=True,
             )
+        failed = None
         for serial, channel in moves.items():
             transport = used[serial]
-            if transport.name != "usb":
-                transport = lh.UsbTransport()
             try:
                 transport.write(serial, channel)
-            except (NotImplementedError, LookupError) as exc:
-                raise click.ClickException(f"{serial}: {exc}") from exc
-            got = transport.confirm(serial)
+                got = transport.confirm(serial)
+            except (LookupError, OSError, RuntimeError) as exc:
+                failed = f"{serial}: {exc}"
+                break
+            if got is not None:
+                found[serial].channel = got
             if got != channel:
-                raise click.ClickException(f"{serial}: asked for channel {channel}, reads {got}")
-            found[serial].channel = got
+                failed = f"{serial}: asked for channel {channel} over {transport.name}, reads {got}"
+                break
             click.echo(f"  {serial}: on channel {got} (index {got - 1})")
+        # The stations already moved are recorded even when a later one fails.
+        _record(ctx, found)
+        if failed:
+            raise click.ClickException(failed)
+        return
+    if not dry_run:
+        _record(ctx, found)
+
+
+def _record(ctx, found):
     path, registry = _site_toml(ctx)
-    if path is None or dry_run:
+    if path is None:
         return
     record = {serial: st.channel for serial, st in found.items() if st.channel is not None}
     if record != registry:
@@ -132,8 +144,8 @@ def _apply(ctx, found, used, moves, yes, dry_run):
 def assign(ctx, via, dry_run, yes):
     """Give every station a channel no other station holds: a station keeps
     its channel unless a lower serial holds it, the others take the lowest
-    free ones. Writes over USB, reboots, reads back, and records the
-    channels in the site."""
+    free ones. Writes over USB where a station is cabled, otherwise over
+    Bluetooth, reads back, and records the channels in the site."""
     found, used = _discover(via)
     _, registry = _site_toml(ctx)
     _echo(found, registry)
