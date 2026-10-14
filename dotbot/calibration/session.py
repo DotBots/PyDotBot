@@ -30,7 +30,6 @@ from dotbot.calibration.lighthouse2 import (
     read_calibration_file,
 )
 from dotbot.calibration.ota import (
-    CAPTURE_READS_DEFAULT,
     PointCapture,
     samples_from_reads,
 )
@@ -63,7 +62,6 @@ class SessionPoint:
     device: str = ""
     # Reads received per station while this point's capture is running.
     reads_per_station: dict[int, int] = field(default_factory=dict)
-    reads_target: int = 0
 
     @property
     def captured(self) -> bool:
@@ -86,7 +84,6 @@ class CalibrationSession:
     area: str = ""
     device: str = ""
     robot: str = ROBOT_DEFAULT
-    reads: int = CAPTURE_READS_DEFAULT
     tag: str = ""
     stations: list[StationSolution] = field(default_factory=list)
     unsolved: list[tuple[int, int]] = field(default_factory=list)
@@ -201,7 +198,6 @@ class CalibrationSession:
         point.capture = None
         point.device = ""
         point.reads_per_station = {}
-        point.reads_target = 0
         self.stations = []
         self.saved_path = None
         self.saved_id = ""
@@ -270,7 +266,6 @@ class CalibrationSession:
             "site": self.site.name,
             "area": self.area,
             "device": self.device,
-            "reads": self.reads,
             "status": self.status,
             "outstanding": None if self.complete else self.outstanding.index,
             "captured": self.captured_count,
@@ -333,11 +328,7 @@ def _point_dict(point: SessionPoint) -> dict:
         **placement_dict(point.index, point.placement),
         "captured": point.captured,
         "reads": [
-            {
-                "station": station,
-                "reads": count,
-                "target": point.reads_target or count,
-            }
+            {"station": station, "reads": count}
             for station, count in sorted(point.reads_per_station.items())
         ],
         "dropped": (point.capture.drop_count if point.capture else 0),

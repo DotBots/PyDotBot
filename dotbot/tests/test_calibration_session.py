@@ -236,7 +236,7 @@ async def test_a_capture_stores_the_reads_and_advances_to_the_next_point():
     assert state["captured"] == 1
     assert state["device"] == "ABCD"
     assert state["points"][0]["captured"] is True
-    assert state["points"][0]["reads"] == [{"station": 0, "reads": 25, "target": 25}]
+    assert state["points"][0]["reads"] == [{"station": 0, "reads": 25}]
     assert state["points"][1]["captured"] is False
 
 
@@ -316,7 +316,7 @@ async def test_a_capture_arriving_while_point_k_is_outstanding_is_point_k():
     state = driver.state()
     assert state["outstanding"] == 2
     assert state["points"][1]["captured"] is True
-    assert state["points"][1]["reads"] == [{"station": 0, "reads": 1, "target": 1}]
+    assert state["points"][1]["reads"] == [{"station": 0, "reads": 1}]
 
 
 @pytest.mark.asyncio
@@ -725,7 +725,6 @@ async def test_a_preview_resolves_the_same_points_a_start_would(rest):
         (p["x"], p["y"]) for p in started["points"]
     ]
     assert [p["corner"] for p in preview["points"]] == list(CORNERS)
-    assert preview["reads"] == started["reads"]
 
 
 @pytest.mark.asyncio
@@ -758,15 +757,21 @@ async def test_a_preview_of_points_no_area_answers_to_is_refused(rest):
 
 
 @pytest.mark.asyncio
-async def test_a_session_takes_the_reads_per_point_it_is_started_with(rest):
+async def test_a_session_and_its_preview_carry_no_reads_per_point(rest):
+    """The calibrate app sets the reads of a press, so neither names a count."""
     http, _, _ = rest
-    body = (
-        await http.post(
-            "/controller/calibration/session",
-            json={"points": ["arena:corners"], "reads": 40},
+    preview = (
+        await http.get(
+            "/controller/calibration/session/preview",
+            params={"points": "arena:corners"},
         )
     ).json()
-    assert body["reads"] == 40
+    body = (
+        await http.post(
+            "/controller/calibration/session", json={"points": ["arena:corners"]}
+        )
+    ).json()
+    assert "reads" not in preview and "reads" not in body
 
 
 # --- rehearsing without a fleet ---------------------------------------------
