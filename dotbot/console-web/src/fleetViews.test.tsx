@@ -6,7 +6,9 @@ import {
   ageLabel,
   appLabel,
   areaLabel,
+  calibrationDetail,
   calibrationDiffers,
+  calibrationMismatch,
   calibrationSiteLabel,
   detailText,
   FleetContext,
@@ -237,5 +239,68 @@ describe("GridView", () => {
     renderGrid();
     expect(screen.getByRole("button", { name: "Compact" }).getAttribute("aria-pressed")).toBe("true");
     spy.mockRestore();
+  });
+});
+
+describe("a calibration other than the one served", () => {
+  beforeEach(() => window.localStorage.clear());
+  afterEach(cleanup);
+
+  const held = (over: Partial<SwarmitDeviceInfo>) =>
+    ({ swarmit: { ...bot("A").swarmit!, info: info({ lh2_site_name: "lab", ...over }) } }) as Partial<UnifiedBot>;
+  const matching = bot("CCCC000000000001", held({}));
+  const otherId = bot("CCCC000000000002", held({ lh2_calibration_id: "99999999eeee" }));
+  const otherSite = bot("CCCC000000000003", held({ lh2_site_name: "workshop", lh2_calibration_id: "99999999eeee" }));
+  const fleet = [matching, otherId, otherSite];
+  const rowOf = (id: string) => screen.getAllByRole("row").find((r) => r.textContent?.includes(id))!;
+
+  it("ranks another site above another id, and needs both site names to compare", () => {
+    expect(calibrationMismatch(matching, ctx)).toBe("none");
+    expect(calibrationMismatch(otherId, ctx)).toBe("other-id");
+    expect(calibrationMismatch(otherSite, ctx)).toBe("other-site");
+    // Same id, other site: still another frame.
+    expect(calibrationMismatch(bot("A", held({ lh2_site_name: "workshop" })), ctx)).toBe("other-site");
+    expect(calibrationMismatch(bot("A", held({ lh2_site_name: "" })), ctx)).toBe("none");
+    expect(calibrationMismatch(otherSite, { ...ctx, site: null })).toBe("other-id");
+    expect(calibrationMismatch(bot("A", held({ lh2_site_name: "LAB" })), ctx)).toBe("none");
+    expect(calibrationMismatch(bot("A", held({ info_version: 2, lh2_site_name: "workshop" })), ctx)).toBe("none");
+    expect(detailText(otherSite, ctx)).toContain("! holds a calibration of site workshop");
+    expect(detailText(otherSite, ctx)).not.toContain("push it");
+  });
+
+  it("spells the held calibration out in full, with its stations", () => {
+    expect(calibrationDetail(bot("A", held({ lh2_station_mask: 0b11 })))).toBe("lab · abcd1234ffff · stations 0, 1");
+    expect(calibrationDetail(bot("A", held({ lh2_station_mask: 0 })))).toBe("lab · abcd1234ffff · no stations");
+    expect(calibrationDetail(bot("A", held({ lh2_site_name: "" })))).toBe("abcd1234ffff");
+    expect(calibrationDetail(bot("A", held({ lh2_calibration_id: "" })))).toBe("");
+  });
+
+  it("is flagged once per robot in the list, the site louder than the id", () => {
+    render(<ListView bots={fleet} selection={new Set()} onSelect={() => {}} ctx={ctx} />);
+    const m = rowOf("CCCC000000000001");
+    expect(within(m).queryByText("differs")).toBeNull();
+    expect(within(m).queryByText(/other site/)).toBeNull();
+    const i = rowOf("CCCC000000000002");
+    expect(within(i).getByText("differs").getAttribute("data-tone")).toBe("warn");
+    expect(within(i).queryByText(/other site/)).toBeNull();
+    const s = rowOf("CCCC000000000003");
+    expect(within(s).getByText("other site: workshop").getAttribute("data-tone")).toBe("alert");
+    expect(within(s).queryByText("differs")).toBeNull();
+  });
+
+  it("carries the full calibration as the list cell's tooltip", () => {
+    const withMask = bot("CCCC000000000004", held({ lh2_station_mask: 0b11 }));
+    render(<ListView bots={[withMask]} selection={new Set()} onSelect={() => {}} ctx={ctx} />);
+    expect(screen.getByText("abcd1234").getAttribute("title")).toBe("lab · abcd1234ffff · stations 0, 1");
+  });
+
+  it("is flagged the same way on compact and full grid cards", () => {
+    render(<GridView bots={fleet} selection={new Set()} onSelect={() => {}} ctx={ctx} />);
+    expect(screen.getAllByText("cal differs")).toHaveLength(1);
+    expect(screen.getAllByText("other site: workshop")).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Full" }));
+    expect(screen.getAllByText("differs")).toHaveLength(1);
+    expect(screen.getAllByText("other site: workshop")).toHaveLength(1);
+    expect(screen.getByText("99999999 · workshop").getAttribute("title")).toBe("workshop · 99999999eeee");
   });
 });
