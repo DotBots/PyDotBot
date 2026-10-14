@@ -202,15 +202,17 @@ class UsbTransport:
         try:
             for command in (f"mode {channel}", "param save"):
                 console_command(console, command)
-            try:
-                console_command(console, "reboot")
-            except OSError:
-                pass  # the station drops its USB port as it restarts
+            _reboot(console)
         finally:
-            try:
-                console.close()
-            except OSError:
-                pass
+            _close(console)
+
+    def reboot(self, serial: str) -> None:
+        """Restart a station so the channel it holds goes on air."""
+        console = self._open(self._port(serial))
+        try:
+            _reboot(console)
+        finally:
+            _close(console)
 
     def confirm(self, serial: str) -> int | None:
         """The channel after a reboot, once the port is back."""
@@ -229,6 +231,20 @@ class UsbTransport:
         if serial not in self._where:
             raise LookupError(f"station {serial} not found on USB")
         return self._where[serial]
+
+
+def _reboot(console: Console) -> None:
+    try:
+        console_command(console, "reboot")
+    except OSError:
+        pass  # the station drops its USB port as it restarts
+
+
+def _close(console: Console) -> None:
+    try:
+        console.close()
+    except OSError:
+        pass
 
 
 def _valve_ports() -> list[str]:
@@ -280,8 +296,8 @@ def check_gatt_write(characteristic: str, data: bytes) -> None:
 class BleTransport:
     """Stations over Bluetooth. A channel is written to one characteristic,
     no pairing, and read back from the advertisement: GATT reads of it are
-    unreliable on radio firmware 1.1. Whether a channel written this way
-    survives a power cycle is not yet measured."""
+    unreliable on radio firmware 1.1. A channel written this way survives a
+    reboot; whether it goes on air without one is unverified."""
 
     name = "ble"
 

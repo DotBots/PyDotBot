@@ -57,6 +57,13 @@ def _usb(stations):
     return t, consoles
 
 
+@pytest.fixture(autouse=True)
+def _no_real_usb(monkeypatch):
+    from dotbot.cli import site_stations
+
+    monkeypatch.setattr(site_stations, "_cabled", lambda: _usb({})[0])
+
+
 def test_plan_keeps_unique_channels_and_moves_duplicates_lowest_serial_first():
     assert lh.plan({"A": 1, "B": 2}) == {}
     assert lh.plan({"B": 1, "A": 1, "C": 1}) == {"B": 2, "C": 3}
@@ -215,7 +222,56 @@ def test_set_writes_over_bluetooth_a_station_without_usb(tmp_path, monkeypatch):
     assert result.exit_code == 0, result.output
     assert radio.writes == [("AA:01", lh.BLE_CHANNEL_CHAR, b"\x09")]
     assert "DED2B22A: on channel 9 (index 8)" in result.output
+    assert "reboot DED2B22A to apply channel 9" in result.output
     assert tomllib.loads(path.read_text())["stations"] == {"0FF22226": 1, "DED2B22A": 9}
+
+
+def _ble_and_usb(saved_by_ble):
+    """One station heard over Bluetooth and cabled; a Bluetooth write sets the
+    channel `saved_by_ble` maps it to, which a USB reboot then puts in force."""
+    usb_side = {"/dev/b": {"serial": "DED2B22A", "mode": 2}}
+    usb, consoles = _usb(usb_side)
+    ble, radio = _ble({"AA:01": {"serial": "DED2B22A", "channel": 2}})
+
+    def write(address, characteristic, data):
+        FakeRadio.write(radio, address, characteristic, data)
+        usb_side["/dev/b"]["saved"] = saved_by_ble(data[0])
+
+    radio.write = write
+    return ble, usb, consoles, usb_side
+
+
+def test_set_over_bluetooth_reboots_a_cabled_station_over_usb_and_reads_it_back(tmp_path, monkeypatch):
+    from dotbot.cli import site_stations
+
+    ble, usb, consoles, usb_side = _ble_and_usb(lambda channel: channel)
+    path = tmp_path / "site.toml"
+    path.write_text('anchor = "door"\n')
+    monkeypatch.setattr(site_stations, "_transports", lambda via: [ble])
+    monkeypatch.setattr(site_stations, "_cabled", lambda: usb)
+    monkeypatch.setattr(site_stations, "_site_toml", lambda ctx: (path, {}))
+    result = CliRunner().invoke(site_stations.stations, ["set", "DED2B22A", "9", "--via", "ble", "-y"])
+    assert result.exit_code == 0, result.output
+    assert ["reboot"] in [c.sent for c in consoles["/dev/b"]]
+    assert usb_side["/dev/b"]["mode"] == 9
+    assert "DED2B22A: on channel 9 (index 8)" in result.output
+    assert "to apply" not in result.output
+    assert tomllib.loads(path.read_text())["stations"] == {"DED2B22A": 9}
+
+
+def test_set_over_bluetooth_fails_when_the_usb_reboot_reads_another_channel(tmp_path, monkeypatch):
+    from dotbot.cli import site_stations
+
+    ble, usb, _, _ = _ble_and_usb(lambda channel: 2)
+    path = tmp_path / "site.toml"
+    path.write_text('anchor = "door"\n')
+    monkeypatch.setattr(site_stations, "_transports", lambda via: [ble])
+    monkeypatch.setattr(site_stations, "_cabled", lambda: usb)
+    monkeypatch.setattr(site_stations, "_site_toml", lambda ctx: (path, {}))
+    result = CliRunner().invoke(site_stations.stations, ["set", "DED2B22A", "9", "--via", "ble", "-y"])
+    assert result.exit_code == 1
+    assert "reads 2 after a USB reboot" in result.output
+    assert tomllib.loads(path.read_text())["stations"] == {"DED2B22A": 2}
 
 
 def test_the_bleak_radio_refuses_a_forbidden_write_before_connecting():

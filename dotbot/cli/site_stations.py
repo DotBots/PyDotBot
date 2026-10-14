@@ -40,6 +40,23 @@ def _discover(via: str):
     return merged, {serial: by_name[st.transport] for serial, st in merged.items()}
 
 
+def _cabled():
+    return lh.UsbTransport()
+
+
+def _reboot_over_usb(serial, usb):
+    """A Bluetooth-written station's channel after a USB reboot, or None when
+    it is not cabled."""
+    try:
+        usb.reboot(serial)
+    except LookupError:
+        return None
+    got = usb.confirm(serial)
+    if got is None:
+        raise OSError("not back on USB after its reboot")
+    return got
+
+
 def _site_toml(ctx):
     from dotbot.cli._site import active_site
     from dotbot.site_packs import PACK_FILE
@@ -99,10 +116,10 @@ def _apply(ctx, found, used, moves, yes, dry_run):
     else:
         if not yes:
             click.confirm(
-                "Write these channels? A station written over USB reboots, so a console open on it closes",
+                "Write these channels? A station on USB reboots, so a console open on it closes",
                 abort=True,
             )
-        failed = None
+        failed, usb, unapplied = None, None, []
         for serial, channel in moves.items():
             transport = used[serial]
             try:
@@ -116,7 +133,23 @@ def _apply(ctx, found, used, moves, yes, dry_run):
             if got != channel:
                 failed = f"{serial}: asked for channel {channel} over {transport.name}, reads {got}"
                 break
+            if transport.name == "ble":
+                usb = usb or _cabled()
+                try:
+                    got = _reboot_over_usb(serial, usb)
+                except OSError as exc:
+                    failed = f"{serial}: USB reboot failed: {exc}"
+                    break
+                if got is None:
+                    unapplied.append((serial, channel))
+                    got = channel
+                elif got != channel:
+                    found[serial].channel = got
+                    failed = f"{serial}: asked for channel {channel} over ble, reads {got} after a USB reboot"
+                    break
             click.echo(f"  {serial}: on channel {got} (index {got - 1})")
+        for serial, channel in unapplied:
+            click.echo(f"reboot {serial} to apply channel {channel}")
         # The stations already moved are recorded even when a later one fails.
         _record(ctx, found)
         if failed:
@@ -145,7 +178,8 @@ def assign(ctx, via, dry_run, yes):
     """Give every station a channel no other station holds: a station keeps
     its channel unless a lower serial holds it, the others take the lowest
     free ones. Writes over USB where a station is cabled, otherwise over
-    Bluetooth, reads back, and records the channels in the site."""
+    Bluetooth, reads back, and records the channels in the site. A station
+    written over Bluetooth is rebooted over USB if cabled, else by hand."""
     found, used = _discover(via)
     _, registry = _site_toml(ctx)
     _echo(found, registry)
