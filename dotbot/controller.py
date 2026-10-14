@@ -9,10 +9,12 @@
 
 import asyncio
 import dataclasses
+import errno
 import math
 import os
 import random
 import secrets
+import socket
 import time
 import webbrowser
 from dataclasses import dataclass
@@ -192,6 +194,36 @@ class RobotRecord:
 
 class ControllerException(Exception):
     """Exception raised by Dotbot controllers."""
+
+
+class HttpBindError(ControllerException):
+    """The web server could not listen on its host and port."""
+
+    def __init__(self, host: str, port: int, error: OSError):
+        super().__init__(error.strerror or str(error))
+        self.host = host
+        self.port = port
+        self.in_use = error.errno == errno.EADDRINUSE
+
+
+def _listening_socket(host: str, port: int) -> socket.socket:
+    """A TCP socket bound to host:port, raising HttpBindError if it cannot be."""
+    try:
+        family, kind, proto, _, address = socket.getaddrinfo(
+            host, port, type=socket.SOCK_STREAM, flags=socket.AI_PASSIVE
+        )[0]
+        sock = socket.socket(family, kind, proto)
+    except OSError as exc:
+        raise HttpBindError(host, port, exc) from exc
+    try:
+        # On Windows SO_REUSEADDR lets a second process bind a listening port.
+        if os.name != "nt":
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind(address)
+    except OSError as exc:
+        sock.close()
+        raise HttpBindError(host, port, exc) from exc
+    return sock
 
 
 @dataclass
@@ -1303,10 +1335,14 @@ class Controller:
                 "and /swarmit/* and /mrta/* reach their servers from here too",
                 host=host,
             )
+        port = self.settings.controller_http_port
+        # Bound here rather than by uvicorn, which logs a bind failure at a
+        # level the controller silences and then exits as though stopped.
+        sock = _listening_socket(host, port)
         config = uvicorn.Config(
             api,
             host=host,
-            port=self.settings.controller_http_port,
+            port=port,
             log_level="critical",
             # The stream stays open for as long as a browser tab is, so a
             # graceful shutdown that waits for connections never returns.
@@ -1320,7 +1356,7 @@ class Controller:
 
         try:
             logger.info("Starting web server")
-            await server.serve()
+            await server.serve(sockets=[sock])
         except asyncio.exceptions.CancelledError:
             logger.info("Web server cancelled")
         else:

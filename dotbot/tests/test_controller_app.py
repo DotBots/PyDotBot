@@ -1,5 +1,6 @@
 """Test module for the main function."""
 
+import errno
 import sys
 from importlib.metadata import PackageNotFoundError
 from unittest.mock import MagicMock, patch
@@ -8,7 +9,8 @@ import pytest
 import serial
 from click.testing import CliRunner
 
-from dotbot.controller_app import main
+from dotbot.controller import HttpBindError
+from dotbot.controller_app import _port_listeners, main
 from dotbot.tests.config_project import write_project as _write_project
 
 
@@ -822,3 +824,48 @@ def test_a_silence_threshold_from_the_environment_must_be_seconds(
     assert result.exit_code != 0
     assert "stale_after_s" in result.output
     controller.assert_not_called()
+
+
+def _bind_error(in_use=True):
+    error = OSError(errno.EADDRINUSE if in_use else errno.EACCES, "refused")
+    return HttpBindError("127.0.0.1", 8000, error)
+
+
+@patch("dotbot.controller_app._port_listeners")
+@patch("dotbot.controller.Controller.run")
+def test_a_taken_port_is_reported_with_its_listeners(run, listeners):
+    run.side_effect = _bind_error()
+    listeners.return_value = [(4242, "python dotbot run controller")]
+    result = CliRunner().invoke(main, ["--conn", "simulator", "--headless"])
+    assert result.exit_code == 1
+    assert "cannot serve the controller on 127.0.0.1:8000" in result.output
+    assert "already in use, probably by another controller" in result.output
+    assert "pid 4242: python dotbot run controller" in result.output
+    listeners.assert_called_once_with(8000)
+
+
+@patch("dotbot.controller_app._port_listeners")
+@patch("dotbot.controller.Controller.run")
+def test_another_bind_error_is_reported_as_is(run, listeners):
+    run.side_effect = _bind_error(in_use=False)
+    result = CliRunner().invoke(main, ["--conn", "simulator", "--headless"])
+    assert result.exit_code == 1
+    assert "cannot serve the controller on 127.0.0.1:8000: refused" in result.output
+    listeners.assert_not_called()
+
+
+def test_port_listeners_reads_lsof_then_ps(monkeypatch):
+    def fake_run(cmd, **_):
+        out = "101\n101\n202\n" if cmd[0] == "lsof" else f"cmd-{cmd[-1]}\n"
+        return MagicMock(stdout=out)
+
+    monkeypatch.setattr("dotbot.controller_app.subprocess.run", fake_run)
+    assert _port_listeners(8000) == [(101, "cmd-101"), (202, "cmd-202")]
+
+
+def test_port_listeners_is_empty_without_lsof(monkeypatch):
+    monkeypatch.setattr(
+        "dotbot.controller_app.subprocess.run",
+        MagicMock(side_effect=FileNotFoundError("lsof")),
+    )
+    assert _port_listeners(8000) == []
