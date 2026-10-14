@@ -80,7 +80,8 @@ describe("formatLh2Site", () => {
   });
 
   it("says none for a robot holding no calibration, and nothing without device info", () => {
-    expect(formatLh2Site(withInfo({}))).toBe("none  (id none)");
+    expect(formatLh2Site(withInfo({}))).toBe("none");
+    expect(formatLh2Site(withInfo({ lh2_station_mask: 0, lh2_site_name: "virmond", lh2_calibration_id: "288a810d1234abcd" }))).toBe("none");
     expect(formatLh2Site(bot({ swarmit: null }))).toBeNull();
   });
 });
