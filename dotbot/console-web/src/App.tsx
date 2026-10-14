@@ -75,7 +75,7 @@ import {
   Waypoint,
 } from "./types";
 import type { FleetContext } from "./botFacts";
-import { useCalibration, useCapturer } from "./useCalibration";
+import { useCalibration } from "./useCalibration";
 import { useFleet } from "./useFleet";
 import { useMrta } from "./useMrta";
 import { useOrchestration } from "./useOrchestration";
@@ -184,9 +184,6 @@ export const App: React.FC = () => {
     () => ({ calibrationId: session?.saved_id ?? "", site, now: Date.now() / 1000 }),
     [session?.saved_id, site, bots],
   );
-  // The robot chosen to capture: clicked on the map, typed in the card, or
-  // the one whose button took the last point.
-  const [capturer, setCapturer] = useCapturer(session);
   const preselRef = useRef(false);
   React.useEffect(() => {
     if (preselRef.current || bots.length === 0) return;
@@ -882,8 +879,6 @@ export const App: React.FC = () => {
             session={session}
             calibration={calibration}
             areaNames={session.area ? [session.area] : []}
-            device={capturer}
-            onDeviceChange={setCapturer}
             phone
             onDone={() => calibration.abandon()}
           />
@@ -891,7 +886,6 @@ export const App: React.FC = () => {
           <SetupCard
             site={site}
             calibration={calibration}
-            device={capturer}
             onLeave={() => setRightTab("layers")}
           />
         )}
@@ -1112,7 +1106,6 @@ export const App: React.FC = () => {
               onPoseMode={setPoseMode}
               waypointSettings={wpSettings}
               session={session}
-              onPickCapturer={(id) => setCapturer(id.toUpperCase())}
               site={site}
               onZoom={zoomTo}
               onShortcuts={() => setShortcuts(true)}
@@ -1225,8 +1218,6 @@ export const App: React.FC = () => {
           onRobotOpacity={onRobotOpacity}
           session={session}
           calibration={calibration}
-          device={capturer}
-          onDeviceChange={setCapturer}
           onCalibrationDone={() => calibration.abandon()}
         />
       </div>

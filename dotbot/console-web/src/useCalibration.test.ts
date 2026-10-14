@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./api", () => ({
   abandonCalibration: vi.fn(),
-  captureCalibrationPoint: vi.fn(),
   pushCalibration: vi.fn(async () => ({ id: "00", bytes: 84, stale: [] })),
   redoCalibrationPoint: vi.fn(),
   saveCalibration: vi.fn(),

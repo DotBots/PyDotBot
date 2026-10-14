@@ -533,8 +533,6 @@ interface RightPaneProps {
   onRobotOpacity?: (area: string, value: number) => void;
   session: CalibrationSession | null;
   calibration: Calibration;
-  device: string;
-  onDeviceChange: (device: string) => void;
   onCalibrationDone: () => void;
 }
 
@@ -626,15 +624,12 @@ export const RightPane: React.FC<RightPaneProps> = (props) => {
               session={props.session}
               calibration={props.calibration}
               areaNames={props.session.area ? [props.session.area] : []}
-              device={props.device}
-              onDeviceChange={props.onDeviceChange}
               onDone={props.onCalibrationDone}
             />
           ) : (
             <SetupCard
               site={props.site}
               calibration={props.calibration}
-              device={props.device}
             />
           ))}
 

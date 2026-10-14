@@ -87,9 +87,6 @@ interface StepCardProps {
   session: CalibrationSession;
   calibration: Calibration;
   areaNames: string[];
-  /** The robot chosen to capture, clicked on the map or typed. */
-  device: string;
-  onDeviceChange: (device: string) => void;
   phone?: boolean;
   onDone: () => void;
 }
@@ -98,8 +95,6 @@ export const StepCard: React.FC<StepCardProps> = ({
   session,
   calibration,
   areaNames,
-  device,
-  onDeviceChange,
   phone = false,
   onDone,
 }) => {
@@ -144,24 +139,14 @@ export const StepCard: React.FC<StepCardProps> = ({
 
       {!done && (
         <>
-          <div style={{ ...label10, marginTop: 4 }}>Capturing</div>
-          <input
-            value={device}
-            onChange={(e) => onDeviceChange(e.target.value)}
-            placeholder="click a robot on the map, or type its address"
-            style={{
-              ...mono,
-              fontSize: 12,
-              width: "100%",
-              boxSizing: "border-box",
-              minWidth: 0,
-              padding: "7px 9px",
-              borderRadius: 7,
-              border: "1px solid var(--hairline)",
-              background: "var(--elevated)",
-              color: "var(--text)",
-            }}
-          />
+          <div style={{ fontSize: 12, marginTop: 4 }}>
+            Press the calibrate app's button on the robot when it is still.
+          </div>
+          {session.device && (
+            <div style={{ ...mono, fontSize: 12, color: "var(--muted)" }}>
+              last capture from {session.device}
+            </div>
+          )}
           {point && point.reads.length > 0 && (
             <div>
               <div style={label10}>Reads per station</div>
@@ -171,16 +156,6 @@ export const StepCard: React.FC<StepCardProps> = ({
             </div>
           )}
           <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-            <div
-              onClick={() => !calibration.busy && device && calibration.capture(device)}
-              style={{
-                ...button("accent", calibration.busy || !device),
-                padding: phone ? "16px 14px" : "9px 14px",
-                fontSize: phone ? 16 : 13,
-              }}
-            >
-              {calibration.busy ? "Capturing…" : "Capture"}
-            </div>
             <div
               onClick={() =>
                 !calibration.busy && session.captured > 0 && calibration.redo()
