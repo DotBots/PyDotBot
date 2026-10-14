@@ -301,10 +301,10 @@ def _await_point(session, stream, arrivals: queue.Queue):
     metavar="MM",
     help=(
         "With --spin: radius of the photodiode's circle in a spin, in mm, "
-        "which sets the scale of every distance. Default: the robot model's "
-        "measured value (51.4 mm on a DotBot v3, under the 53.5 mm from "
-        "photodiode to axle because the caster drags the turning point "
-        "forward). Re-measure it on a different floor."
+        "which sets the scale of every distance. Default: the site's "
+        "spin_radius_mm, else the robot model's measured value (51.4 mm on "
+        "a DotBot v3, under the 53.5 mm from photodiode to axle because the "
+        "caster drags the turning point forward). It changes with the floor."
     ),
 )
 @click.option(
@@ -652,7 +652,10 @@ def _collect_spin(
             f"{round_} earlier round(s))."
         )
     radius_from = "--spin-radius"
-    if spin_radius is None:
+    if spin_radius is None and site.spin_radius_mm is not None:
+        spin_radius = site.spin_radius_mm
+        radius_from = f"site {site.name}"
+    elif spin_radius is None:
         spin_radius = robot_geometry(ROBOT_DEFAULT).spin_radius_mm
         radius_from = f"{ROBOT_DEFAULT}'s measured value"
     devices = _devices(ctx)

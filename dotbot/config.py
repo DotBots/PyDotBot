@@ -220,6 +220,8 @@ class SiteSection(_Strict):
     areas: dict[str, AreaSection] = Field(default_factory=dict)
     # LH2 base stations by serial, each with the channel it is set to
     stations: dict[str, int] = Field(default_factory=dict)
+    # The photodiode's circle when a robot spins in place on this floor
+    spin_radius_mm: float | None = Field(default=None, ge=1.0, le=200.0)
 
     @model_validator(mode="after")
     def _stations(self) -> SiteSection:
