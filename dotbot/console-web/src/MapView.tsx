@@ -31,6 +31,7 @@ import {
   ticksInSite,
 } from "./grid";
 import { hasHeading } from "./BotGlyph";
+import { calibrationOtherSite } from "./botFacts";
 import { BotMarker, MARKER_SCALE_VAR, WAYPOINT_MIN_PX, botDraw as drawBot } from "./BotMarker";
 import { useMarkerPerMm } from "./markerScale";
 import { BodyColorMode, DEFAULT_BODY_COLOR_MODE } from "./bodyColor";
@@ -1569,6 +1570,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                   botCount={props.bots.length}
                   batteryBars={props.layers.batteryBars}
                   colorMode={colorMode}
+                  otherSite={calibrationOtherSite(b, props.site)}
                   attach={attachBot}
                   onPointerDown={onBotPointerDown}
                   onHover={setHoverId}
