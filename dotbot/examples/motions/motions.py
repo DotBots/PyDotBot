@@ -145,7 +145,10 @@ async def _wait_for_waypoints_done(
                 bot = dotbots[0]
                 if not bot.waypoints:
                     break
-                if bot.mode == ControlModeType.MANUAL:
+                if (
+                    bot.mode == ControlModeType.MANUAL
+                    and not bot.waypoints_awaiting_heading
+                ):
                     break
             await asyncio.sleep(WAYPOINT_POLL_INTERVAL)
 

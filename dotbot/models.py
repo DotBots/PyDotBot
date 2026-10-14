@@ -677,6 +677,9 @@ class DotBotModel(BaseModel):
     # The waypoint report, from apps that send one (the sandbox dotbot app)
     waypoints_status: Optional[WaypointsStatus] = None
     waypoints_reason: Optional[str] = None  # why FAILED or ABORTED
+    # The controller holds the batch until the robot has a heading; the
+    # waypoint report meanwhile is the probe move's
+    waypoints_awaiting_heading: bool = False
     waypoint_index: Optional[int] = (
         None  # the point being driven to; the count once arrived
     )

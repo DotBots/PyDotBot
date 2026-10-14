@@ -120,6 +120,30 @@ async def test_a_robot_without_heading_acquires_it_before_driving(scenario):
     assert axle_error_mm(robot, 900, 900) <= 20
 
 
+async def test_a_batch_waits_near_the_start_until_the_robot_has_a_heading(scenario):
+    """Guards the controller's hold: a robot with no heading drives only the
+    probe move until it has one, then the whole batch."""
+    s = scenario([_bot()])
+    await s.run(1.0)
+    robot = s.robots[A]
+    start = (robot.pos_x, robot.pos_y)
+    held_travel = []
+
+    def watch():
+        if s.dotbot(A).waypoints_awaiting_heading:
+            held_travel.append(math.dist((robot.pos_x, robot.pos_y), start))
+
+    await s.waypoints(A, [(1500, 500), (1500, 1000)], threshold=20)
+    assert s.dotbot(A).waypoints_awaiting_heading
+    assert await s.run_until_reported([A], "ARRIVED", seconds=30, each_tick=watch)
+
+    assert held_travel and max(held_travel) < 100
+    assert axle_error_mm(robot, 1500, 1000) <= 20
+    # The stream told the console it was held, then that it no longer is
+    held = [p["waypoints_awaiting_heading"] for p in s.socket.robot_states() if "waypoints_awaiting_heading" in p]
+    assert True in held and held[-1] is False
+
+
 async def test_a_robot_that_never_sees_lh2_fails_no_heading(scenario):
     """Guards the NO_HEADING timeout and its FAILED report."""
     s = scenario([_bot()])
