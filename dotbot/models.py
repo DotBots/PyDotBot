@@ -12,7 +12,7 @@
 from enum import IntEnum
 from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
-from pydantic import BaseModel, BeforeValidator, Field, field_validator
+from pydantic import BaseModel, BeforeValidator, Field, field_validator, model_validator
 
 from dotbot.area import Area, Role
 from dotbot.calibration.points import PointsKind
@@ -452,6 +452,15 @@ class DotBotCalibrationStartModel(BaseModel):
     points: Union[str, List[str]] = []
     device: str = ""
     area: str = ""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _refuse_reads(cls, data):
+        if isinstance(data, dict) and "reads" in data:
+            raise ValueError(
+                "`reads` was removed: the calibrate app sets its own read count"
+            )
+        return data
 
 
 class DotBotCalibrationPreviewModel(BaseModel):
