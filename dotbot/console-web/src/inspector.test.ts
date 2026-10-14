@@ -5,6 +5,7 @@ import {
   formatCameraHeading,
   formatLh2,
   formatLh2Site,
+  formatPosition,
   formatUptime,
   infoText,
 } from "./Inspector";
@@ -162,5 +163,15 @@ describe("the camera's heading for the selected robot", () => {
     const robot = cameraRobotFor(bot(), { "dev-corner": detection(null, "found") });
     expect(robot).toBeNull();
     expect(formatCameraHeading(robot)).toBe("not seen");
+  });
+});
+
+describe("formatPosition", () => {
+  const info = { bl_version: "", net_version: "", boot_count: 0, uptime_s: 0, image_name: "", image_version: "", image_digest: "" };
+  it("names a failed LH2 sensor instead of no fix", () => {
+    const failed = bot({ position: null, swarmit: node({ info: { ...info, lh2_station_mask: 3, lh2_flags: 0b111 } }) });
+    expect(formatPosition(failed)).toBe("LH2 sensor failed");
+    expect(formatPosition(bot({ position: null, swarmit: node({ info: { ...info, lh2_flags: 0b011 } }) }))).toBe("no fix");
+    expect(formatPosition(bot())).toBe("1552, 267");
   });
 });
