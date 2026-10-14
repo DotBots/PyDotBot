@@ -38,9 +38,18 @@ export function firmwareTooOld(bot: UnifiedBot): boolean {
   return !!info && (info.info_version ?? 0) < DEVICE_INFO_VERSION_MIN;
 }
 
+/** The full LH2 calibration id the robot holds, "" for none or unknown. An
+ * empty station mask means no homography is held, whatever id the device
+ * info still carries. */
+export function heldCalibrationId(bot: UnifiedBot): string {
+  const info = bot.swarmit?.info;
+  if (!info || info.lh2_station_mask === 0) return "";
+  return info.lh2_calibration_id ?? "";
+}
+
 /** The LH2 calibration id the robot holds: its first 8 characters, "" for none or unknown. */
 export function calibrationLabel(bot: UnifiedBot): string {
-  return (bot.swarmit?.info?.lh2_calibration_id ?? "").slice(0, 8);
+  return heldCalibrationId(bot).slice(0, 8);
 }
 
 /** "288a810d · virmond": the held calibration's short id and its site, "" for none or unknown. */
@@ -56,13 +65,13 @@ export function calibrationDiffers(bot: UnifiedBot, calibrationId: string): bool
   if (!calibrationId || firmwareTooOld(bot)) return false;
   const info = bot.swarmit?.info;
   if (!info) return false;
-  return (info.lh2_calibration_id ?? "").toLowerCase() !== calibrationId.toLowerCase();
+  return heldCalibrationId(bot).toLowerCase() !== calibrationId.toLowerCase();
 }
 
 /** The site of the calibration the robot holds when it is not `site`, "" otherwise or when either is unknown. */
 export function calibrationOtherSite(bot: UnifiedBot, site: Site | null): string {
   const info = bot.swarmit?.info;
-  if (!info || firmwareTooOld(bot) || !info.lh2_calibration_id) return "";
+  if (!info || firmwareTooOld(bot) || !heldCalibrationId(bot)) return "";
   const held = info.lh2_site_name ?? "";
   const active = site?.name ?? "";
   if (!held || !active || held.toLowerCase() === active.toLowerCase()) return "";
@@ -91,9 +100,9 @@ export function calibrationStations(bot: UnifiedBot): number[] | null {
 
 /** "virmond · 288a810d1234abcd · stations 0, 1": the held calibration in full, "" for none or unknown. */
 export function calibrationDetail(bot: UnifiedBot): string {
-  const info = bot.swarmit?.info;
-  if (!info?.lh2_calibration_id) return "";
-  const parts = [info.lh2_site_name ?? "", info.lh2_calibration_id];
+  const id = heldCalibrationId(bot);
+  if (!id) return "";
+  const parts = [bot.swarmit?.info?.lh2_site_name ?? "", id];
   const stations = calibrationStations(bot);
   if (stations) parts.push(stations.length ? `stations ${stations.join(", ")}` : "no stations");
   return parts.filter(Boolean).join(" · ");

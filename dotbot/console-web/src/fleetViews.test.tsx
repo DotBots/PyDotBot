@@ -104,6 +104,9 @@ describe("botFacts", () => {
     expect(calibrationSiteLabel(withSite)).toBe("abcd1234 · virmond");
     expect(calibrationSiteLabel(bot("A"))).toBe("abcd1234");
     expect(calibrationSiteLabel(bot("A", { swarmit: null }))).toBe("");
+    const emptied = bot("A", { swarmit: { ...bot("A").swarmit!, info: info({ lh2_station_mask: 0, lh2_site_name: "virmond" }) } });
+    expect(calibrationSiteLabel(emptied)).toBe("");
+    expect(calibrationDiffers(emptied, ctx.calibrationId)).toBe(true);
   });
 
   it("picks the smallest area the robot stands in", () => {
@@ -270,7 +273,7 @@ describe("a calibration other than the one served", () => {
 
   it("spells the held calibration out in full, with its stations", () => {
     expect(calibrationDetail(bot("A", held({ lh2_station_mask: 0b11 })))).toBe("lab · abcd1234ffff · stations 0, 1");
-    expect(calibrationDetail(bot("A", held({ lh2_station_mask: 0 })))).toBe("lab · abcd1234ffff · no stations");
+    expect(calibrationDetail(bot("A", held({ lh2_station_mask: 0 })))).toBe("");
     expect(calibrationDetail(bot("A", held({ lh2_site_name: "" })))).toBe("abcd1234ffff");
     expect(calibrationDetail(bot("A", held({ lh2_calibration_id: "" })))).toBe("");
   });

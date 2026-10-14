@@ -53,7 +53,7 @@ export function calibrationCoverage(bots: UnifiedBot[], savedId: string): Covera
     for (const bot of bots) {
       const info = bot.swarmit?.info;
       if (!info || (info.info_version ?? 0) < DEVICE_INFO_VERSION_MIN) unchecked.push(bot.id);
-      else if ((info.lh2_calibration_id ?? "").toLowerCase() === wanted) carrying += 1;
+      else if (info.lh2_station_mask !== 0 && (info.lh2_calibration_id ?? "").toLowerCase() === wanted) carrying += 1;
       else stale.push(bot.id);
     }
   }

@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 
-import { reportsWire } from "./botFacts";
+import { heldCalibrationId, reportsWire } from "./botFacts";
 import { stateLabel } from "./viewChrome";
 
 import { CameraDetection, CameraRobot, REPORTS_LABEL, UnifiedBot } from "./types";
@@ -34,8 +34,8 @@ export function formatLh2(bot: UnifiedBot): string {
 export function formatLh2Site(bot: UnifiedBot): string | null {
   const info = bot.swarmit?.info;
   if (!info) return null;
-  const id = (info.lh2_calibration_id ?? "").slice(0, 8);
-  return `${info.lh2_site_name || "none"}  (id ${id || "none"})`;
+  const id = heldCalibrationId(bot).slice(0, 8);
+  return id ? `${info.lh2_site_name || "none"}  (id ${id})` : "none";
 }
 
 /**
