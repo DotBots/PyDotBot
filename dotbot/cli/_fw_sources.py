@@ -431,6 +431,7 @@ def write_build_manifest(
     for f in files:
         entries[f.name] = {
             "sha256": sha256(f),
+            "repo": str(Path(repo).resolve()),
             "git_sha": sha,
             "dirty": dirty,
             "build_config": config,
@@ -451,6 +452,18 @@ def write_build_manifest(
     }
     path.write_text(json.dumps(manifest, indent=2) + "\n")
     return manifest
+
+
+def recorded_repo(out_dir: Path) -> Path | None:
+    """The source folder a built set's manifest names, or None."""
+    try:
+        manifest = json.loads((out_dir / MANIFEST_NAME).read_text())
+    except (OSError, ValueError):
+        return None
+    if not isinstance(manifest, dict) or manifest.get("kind") != "build":
+        return None
+    repo = manifest.get("repo")
+    return Path(repo) if repo else None
 
 
 def collect(files: Iterable[Path], out_dir: Path) -> list[Path]:

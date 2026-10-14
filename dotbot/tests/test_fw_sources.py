@@ -958,3 +958,29 @@ def test_list_survives_a_malformed_manifest(isolated, manifest):
     assert result.exit_code == 0, result.output
     assert "swarmit-odd" in result.output
     assert "  netcore-nrf5340-net.hex" in result.output
+
+
+# --- the set's source folder ----------------------------------------------
+
+
+def test_build_into_a_set_from_another_folder_is_refused(
+    isolated, swarmit_repo, fake_build
+):
+    other = isolated / "wt-swarmit"
+    shutil.copytree(swarmit_repo, other)
+    assert build("swarmit-sandbox", "--as", "bench").exit_code == 0
+    result = build("swarmit-sandbox", "--path", str(other), "--as", "bench")
+    assert result.exit_code != 0
+    assert str(swarmit_repo.resolve()) in result.output
+    assert str(other.resolve()) in result.output
+    assert "--force" in result.output
+    forced = build("swarmit-sandbox", "--path", str(other), "--as", "bench", "--force")
+    assert forced.exit_code == 0, forced.output
+    assert f"from {other}" in forced.output
+
+
+def test_build_says_which_source_folder_it_builds_from(
+    isolated, firmware_repo, fake_make
+):
+    result = build("dotbot")
+    assert f"from {firmware_repo} (configured source)" in result.output

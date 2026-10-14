@@ -222,6 +222,15 @@ def _source_repo(source: str, path: Path | None, explicit: bool) -> Path:
     default=False,
     help="Print where each artifact would be collected, without building.",
 )
+@click.option(
+    "--force",
+    is_flag=True,
+    default=False,
+    help=(
+        "Build into an --as set that was built from another source folder, "
+        "which then names this one. Its other images stay as they were built."
+    ),
+)
 @_verbose_option
 @click.pass_context
 def build(
@@ -236,6 +245,7 @@ def build(
     set_name,
     rebuild,
     print_path,
+    force,
     verbose,
 ):
     """Build firmware from your source folders into the cache.
@@ -329,6 +339,19 @@ def build(
             planned.append((source, src_repo, cfg, target, files, df_apps))
 
     root = artifacts_dir()
+    for source, src_repo, *_ in planned:
+        out = fs.set_dir(source, set_name, root)
+        recorded = fs.recorded_repo(out)
+        if force or recorded is None or recorded == src_repo.resolve():
+            continue
+        raise click.ClickException(
+            f"The '{set_name}' {source} set was built from {recorded}, not "
+            f"{src_repo.resolve()}: images from two source folders in one set "
+            "can disagree, e.g. on the swarmit NSC table.\n"
+            f"  - build from the set's folder: --path {recorded}\n"
+            "  - or build into another set: --as <name>\n"
+            "  - or mix them anyway: --force"
+        )
     if print_path:
         for source, _, _, _, files, _ in planned:
             out = fs.set_dir(source, set_name, root)
@@ -340,8 +363,11 @@ def build(
     t0 = time.perf_counter()
     for source, src_repo, cfg, board, _, selection in planned:
         mode = "rebuild" if rebuild or source != APP_SOURCE else "incremental"
+        origin = "--path" if path is not None else "configured source"
         click.echo(
-            f"Building {_LABELS[source]} for {board} ({cfg}, {mode})...", err=True
+            f"Building {_LABELS[source]} for {board} ({cfg}, {mode}) from "
+            f"{src_repo} ({origin})...",
+            err=True,
         )
         if source == "swarmit":
             files = fs.build_swarmit(
