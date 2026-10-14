@@ -114,6 +114,9 @@ export interface PyDotBot {
   // one: 0 NONE, 1 IN_PROGRESS, 2 ARRIVED, 3 FAILED, 4 ABORTED.
   waypoints_status?: number | null;
   waypoints_reason?: string | null;
+  // The controller holds the batch until the robot has a heading, and the
+  // report meanwhile is a short probe move's.
+  waypoints_awaiting_heading?: boolean;
   waypoint_index?: number | null;
   rgb_led?: RgbLed;
   battery?: number; // volts
@@ -362,6 +365,7 @@ const MISSION_REASONS: Record<string, string> = {
   STOP: "stopped",
   DIRECT: "driven by hand",
   CONTROL_MODE: "mode changed",
+  AWAITING_HEADING: "waiting for a heading",
 };
 
 const MISSION_STATES: Record<number, MissionState> = {
@@ -373,6 +377,9 @@ const MISSION_STATES: Record<number, MissionState> = {
 
 /** The robot's report on its batch, or null when it sends none. */
 export function missionReport(py: Partial<PyDotBot> | undefined): MissionReport | null {
+  if (py?.waypoints_awaiting_heading) {
+    return { state: "in_progress", index: 0, reason: MISSION_REASONS.AWAITING_HEADING, code: "AWAITING_HEADING" };
+  }
   const state = MISSION_STATES[py?.waypoints_status ?? 0];
   if (!state) return null;
   const code = py?.waypoints_reason ?? null;
