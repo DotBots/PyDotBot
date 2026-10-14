@@ -721,3 +721,21 @@ def test_active_spins_where_suggested_beat_random_spins():
     ]
     assert planned < joint.error_map.worst_mm
     assert planned < np.mean(random)
+
+
+def test_anchored_calibration_rectangles_are_the_site_extent():
+    a, b = two_stations()
+    centres = floor_grid([a, b])
+    tracks = F.spins([a, b], centres, noise=0.5, seed=7)
+    corners = [0, len(centres) - 1, 3, len(centres) - 4]
+    anchors = [ms.Anchor(ms.CircleKey(f"R{i:02d}", 0), tuple(centres[i])) for i in corners]
+    site = Site(name="arena", anchor="door corner", extent_mm=(6000, 4000))
+    calibration, joint, _ = conics.solve_calibration(F.samples(tracks), site, anchors=anchors)
+    assert joint.rectangles[a.index] != (0, 0, 6000, 4000)
+    assert {s.valid_mm for s in calibration.stations} == {(0, 0, 6000, 4000)}
+    assert calibration.valid_mm == (0, 0, 6000, 4000)
+    # a free solve has no site frame, so it keeps the box around its spins
+    free, free_joint, _ = conics.solve_calibration(F.samples(tracks), site)
+    assert [s.valid_mm for s in free.stations] == [
+        free_joint.rectangles[s.index] for s in free.stations
+    ]
