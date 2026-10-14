@@ -4,15 +4,10 @@
 """The controller's side of a calibration session: one at a time, with events.
 
 The capture loop itself is `CalibrationSession`; this drives it from async
-routes. It owns the swarmit client, built when a session starts and rebuilt
-when the robot changes, and a start with no fleet in reach still opens; it
-turns every state change into exactly one WebSocket notification, in the
-order the changes happened; and it routes a capture that arrives from the
-robot's own button to the outstanding point.
-
-The blocking capture runs in a worker thread. Progress is published from
-there by handing the coroutine back to the loop and waiting for it, so the
-notifications keep the order the reads arrived in.
+routes. It owns the swarmit client, built when a session starts, and a start
+with no fleet in reach still opens; it turns every state change into exactly
+one WebSocket notification, in the order the changes happened; and it routes
+a capture that arrives from a robot's button to the outstanding point.
 """
 
 from __future__ import annotations
@@ -34,33 +29,19 @@ from dotbot.site import Site
 # Seconds between two checks for a button press given up incomplete.
 EXPIRED_PRESS_POLL_INTERVAL = 1.0
 
-# The swarmit log-event tag a raw-count capture carries. Imported lazily so
-# the swarmit protocol registry stays out of PyDotBot test collection.
-_CAPTURE_TAG: int | None = None
-
-
-def capture_tag() -> int:
-    global _CAPTURE_TAG
-    if _CAPTURE_TAG is None:
-        from swarmit.testbed.protocol import LH2_CALIB_TAG
-
-        _CAPTURE_TAG = LH2_CALIB_TAG
-    return _CAPTURE_TAG
-
-
 class SessionDriver:
     """One calibration session at a time, with its transport and its events.
 
-    `client_factory` takes the device address and returns a swarmit client,
-    injected so a test drives the whole loop without a fleet.
+    `client_factory` returns a swarmit client, injected so a test drives the
+    whole loop without a fleet.
     """
 
     def __init__(
         self,
-        client_factory: Callable[[str], Any],
+        client_factory: Callable[[], Any],
         notify: Callable[[dict | None], Any],
         site: Site | None = None,
-        stream_factory: Callable[[Any, str, Callable], Any] | None = None,
+        stream_factory: Callable[[Any, Callable], Any] | None = None,
     ):
         self._client_factory = client_factory
         self._notify = notify
@@ -70,7 +51,6 @@ class SessionDriver:
         self.logger = LOGGER.bind(context=__name__)
         self._client: Any = None
         self._stream: Any = None
-        self._device = ""
         self._lock = asyncio.Lock()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._expiry_watch: asyncio.Task | None = None
@@ -119,36 +99,10 @@ class SessionDriver:
             self.session = session
             self._loop = asyncio.get_running_loop()
             # Button captures come unrequested from any robot, so the stream
-            # is listening from the start rather than from the first capture.
-            await asyncio.to_thread(self._listen_for_buttons, session.device)
+            # is listening from the start.
+            await asyncio.to_thread(self._listen_for_buttons)
             if self._expiry_watch is None or self._expiry_watch.done():
                 self._expiry_watch = asyncio.create_task(self._watch_expired_presses())
-            await self._emit()
-            return session.as_dict()
-
-    async def capture(self, device: str = "") -> dict:
-        """Take the outstanding point's reads from `device`, then advance."""
-        async with self._lock:
-            session = self._require()
-            if device:
-                session.device = device.upper()
-            if not session.device:
-                raise SessionError(
-                    "no robot chosen: click one on the map, or name it in the "
-                    "capture request"
-                )
-            loop = asyncio.get_running_loop()
-            self._loop = loop
-            stream = await asyncio.to_thread(self._ensure_stream, session.device)
-
-            def on_progress(_point) -> None:
-                asyncio.run_coroutine_threadsafe(self._emit(), loop).result()
-
-            try:
-                await asyncio.to_thread(session.capture, stream, on_progress)
-                session.error = ""
-            except TimeoutError as exc:
-                session.error = str(exc)
             await self._emit()
             return session.as_dict()
 
@@ -186,7 +140,7 @@ class SessionDriver:
         async with self._lock:
             session = self._require()
             payload = session.push_payload()
-            client = await asyncio.to_thread(self._ensure_client, "")
+            client = await asyncio.to_thread(self._ensure_client)
             try:
                 try:
                     check = await asyncio.to_thread(
@@ -205,7 +159,7 @@ class SessionDriver:
                     check.info_gens,
                 )
             finally:
-                await asyncio.to_thread(self._listen_for_buttons, "")
+                await asyncio.to_thread(self._listen_for_buttons)
             await self._emit()
             return {
                 "id": session.saved_id,
@@ -301,30 +255,25 @@ class SessionDriver:
             )
         return self.session
 
-    def _ensure_client(self, device: str) -> Any:
-        if self._client is None or device != self._device:
-            self._close_stream()
-            if self._client is not None:
-                self._client.__exit__(None, None, None)
-                self._client = None
-            self._client = self._client_factory(device)
+    def _ensure_client(self) -> Any:
+        if self._client is None:
+            self._client = self._client_factory()
             self._client.__enter__()
-            self._device = device
         return self._client
 
-    def _ensure_stream(self, device: str) -> Any:
-        client = self._ensure_client(device)
+    def _ensure_stream(self) -> Any:
+        client = self._ensure_client()
         if self._stream is None:
-            self._stream = self._stream_factory(client, device, self.on_button_capture)
+            self._stream = self._stream_factory(client, self.on_button_capture)
             self._stream.__enter__()
         return self._stream
 
-    def _listen_for_buttons(self, device: str) -> None:
+    def _listen_for_buttons(self) -> None:
         try:
-            self._ensure_stream(device)
+            self._ensure_stream()
         except Exception as exc:  # a fleet out of reach is not a failure
             self.logger.warning(
-                "Not listening for button captures until a capture reaches the fleet",
+                "Not listening for button captures: the fleet is out of reach",
                 error=str(exc),
             )
 
@@ -338,9 +287,7 @@ class SessionDriver:
         self._loop = loop
 
 
-def _default_stream(client: Any, device: str, on_button_capture: Callable) -> Any:
+def _default_stream(client: Any, on_button_capture: Callable) -> Any:
     from dotbot.calibration.ota import CaptureSession
 
-    return CaptureSession(
-        client, device, capture_tag(), on_button_capture=on_button_capture
-    )
+    return CaptureSession(client, on_button_capture=on_button_capture)

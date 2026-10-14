@@ -13,7 +13,6 @@ behaviour - none of this is hardware validation.
 import asyncio
 import queue
 import re
-import threading
 from types import SimpleNamespace
 
 import pytest
@@ -23,19 +22,14 @@ from dotbot.calibration import lighthouse2
 from dotbot.calibration.driver import SessionDriver
 from dotbot.calibration.lighthouse2 import (
     LH2_CALIBRATION_MESSAGE_BYTES,
+    LH2CalibrationSample,
     message_site,
     read_calibration_file,
 )
-from dotbot.calibration.ota import (
-    ButtonCapture,
-    CaptureSession,
-    parse_capture_payload,
-)
+from dotbot.calibration.ota import ButtonCapture, CaptureSession
 from dotbot.calibration.points import CORNERS, PointsFrom
 from dotbot.calibration.session import CalibrationSession, SessionError
 from dotbot.site import Site
-
-_TAG = 0xCA
 
 C405 = Site(
     name="c405-arena",
@@ -62,20 +56,22 @@ def _record(lh_index: int, count1: int, count2: int) -> bytes:
     )
 
 
-def _payload(*records: bytes) -> bytes:
-    return bytes([_TAG]) + b"".join(records)
+def _reads(lh_index: int, count1: int, count2: int) -> list:
+    """One read: one station's record."""
+    return [LH2CalibrationSample(lh_index, count1, count2)]
 
 
-def _reads(lh_index: int, count1: int, count2: int, n: int = 1) -> list:
-    """One capture's worth of decoded records, `n` of them."""
-    return parse_capture_payload(_payload(_record(lh_index, count1, count2)), _TAG)
-
-
-def _press(lh_index: int, count1: int, count2: int, n: int = 1) -> ButtonCapture:
+def _press(
+    lh_index: int, count1: int, count2: int, n: int = 1, device: str = "ABCD"
+) -> ButtonCapture:
     """One button capture of `n` identical reads from one station."""
     return ButtonCapture(
-        device="ABCD", press=0, reads=[_reads(lh_index, count1, count2)] * n
+        device=device, press=0, reads=[_reads(lh_index, count1, count2)] * n
     )
+
+
+async def _store(driver, capture: ButtonCapture) -> None:
+    await asyncio.wrap_future(driver.on_button_capture(capture))
 
 
 def _info(version=4, site="", calibration_id=""):
@@ -90,27 +86,13 @@ def _info(version=4, site="", calibration_id=""):
 
 
 class _FakeClient:
-    """Emits one tagged event per trigger, for whichever counts are set.
-
-    Mirrors the firmware contract: raw counts only arrive in reply to a
-    request, so the drain-then-trigger ordering is exercised as on a bot.
-    """
+    """The swarmit client surface a session pushes and listens through."""
 
     def __init__(self, device: str = "ABCD"):
         self.device = device.upper()
-        self.records = _record(0, *CORNER_COUNTS[0])
-        self.triggers = 0
         self.pushed: list[bytes] = []
         self.entered = 0
-        self._triggered = threading.Event()
         self.infos = {self.device: _info()}
-
-    def at_corner(self, index: int, station: int = 0) -> None:
-        self.records = _record(station, *CORNER_COUNTS[index])
-
-    def request_lh2_capture(self, device: str) -> None:
-        self.triggers += 1
-        self._triggered.set()
 
     def send_lh2_calibration(self, payload: bytes, devices=None) -> None:
         self.pushed.append(payload)
@@ -136,10 +118,7 @@ class _FakeClient:
         }
 
     def watch_log_events(self):
-        while True:
-            if self._triggered.wait(timeout=0.05):
-                self._triggered.clear()
-                yield {"addr": self.device, "data_hex": _payload(self.records).hex()}
+        return iter(())
 
     def __enter__(self):
         self.entered += 1
@@ -157,24 +136,20 @@ def _driver(client=None, site=C405, notify=None):
         seen.append(state)
 
     driver = SessionDriver(
-        client_factory=lambda device: client,
+        client_factory=lambda: client,
         notify=notify or record,
         site=site,
-        stream_factory=lambda c, device, on_button: CaptureSession(
-            c, device, _TAG, on_button_capture=on_button
+        stream_factory=lambda c, on_button: CaptureSession(
+            c, on_button_capture=on_button
         ),
     )
     return driver, client, seen
 
 
-async def _walk(driver, client, reads=1):
-    """Capture all four corners, one per corner's counts."""
-    driver.session.reads = reads
-    driver.session.timeout = 2.0
-    driver.session.retries = 0
+async def _walk(driver):
+    """Capture all four corners from the button, one per corner's counts."""
     for index in range(4):
-        client.at_corner(index)
-        await driver.capture("ABCD")
+        await _store(driver, _press(0, *CORNER_COUNTS[index]))
 
 
 # --- the points a session opens on ------------------------------------------
@@ -250,16 +225,13 @@ def test_fewer_than_four_points_is_refused_with_the_span_rule():
 
 
 @pytest.mark.asyncio
-async def test_capture_stores_the_reads_and_advances_to_the_next_point():
-    driver, client, _ = _driver()
+async def test_a_capture_stores_the_reads_and_advances_to_the_next_point():
+    driver, _, _ = _driver()
     await driver.start(["arena:corners"])
-    driver.session.reads = 25
-    driver.session.timeout = 2.0
-    driver.session.retries = 0
 
-    state = await driver.capture("abcd")
+    await _store(driver, _press(0, *CORNER_COUNTS[0], n=25))
 
-    assert client.triggers == 25
+    state = driver.state()
     assert state["outstanding"] == 1
     assert state["captured"] == 1
     assert state["device"] == "ABCD"
@@ -269,34 +241,31 @@ async def test_capture_stores_the_reads_and_advances_to_the_next_point():
 
 
 @pytest.mark.asyncio
-async def test_capture_keeps_every_visible_station_and_drops_the_impossible():
+async def test_a_capture_keeps_every_visible_station_and_drops_the_impossible():
     """Two stations in view are two sample entries; a phantom is not a third."""
-    driver, client, _ = _driver()
+    driver, _, _ = _driver()
     await driver.start(["arena:corners"])
-    driver.session.reads = 4
-    driver.session.timeout = 2.0
-    driver.session.retries = 0
     # Station 1 is real; station 4's two sweeps share an LFSR index, which no
     # real pair of sweeps can produce.
-    client.records = (
-        _record(0, 41290, 51728) + _record(1, 88102, 97640) + _record(4, 129713, 129713)
-    )
+    read = [
+        LH2CalibrationSample(0, 41290, 51728),
+        LH2CalibrationSample(1, 88102, 97640),
+        LH2CalibrationSample(4, 129713, 129713),
+    ]
 
-    state = await driver.capture("ABCD")
+    await _store(driver, ButtonCapture(device="ABCD", press=0, reads=[read] * 4))
 
+    state = driver.state()
     assert [r["station"] for r in state["points"][0]["reads"]] == [0, 1]
     assert state["points"][0]["dropped"] == 4
 
 
 @pytest.mark.asyncio
 async def test_redo_discards_the_last_point_and_re_opens_it():
-    driver, client, _ = _driver()
+    driver, _, _ = _driver()
     await driver.start(["arena:corners"])
-    driver.session.reads = 1
-    driver.session.timeout = 2.0
-    driver.session.retries = 0
-    await driver.capture("ABCD")
-    await driver.capture("ABCD")
+    await _store(driver, _press(0, *CORNER_COUNTS[0]))
+    await _store(driver, _press(0, *CORNER_COUNTS[1]))
     assert driver.state()["outstanding"] == 2
 
     state = await driver.redo()
@@ -313,33 +282,6 @@ async def test_redo_with_nothing_captured_is_refused():
     await driver.start(["arena:corners"])
     with pytest.raises(SessionError):
         await driver.redo()
-
-
-@pytest.mark.asyncio
-async def test_a_capture_with_no_robot_chosen_is_refused():
-    driver, _, _ = _driver()
-    await driver.start(["arena:corners"])
-    with pytest.raises(SessionError) as exc:
-        await driver.capture()
-    assert "no robot chosen" in str(exc.value)
-
-
-@pytest.mark.asyncio
-async def test_a_capture_timeout_is_reported_as_a_line_not_an_exception():
-    class _Silent(_FakeClient):
-        def request_lh2_capture(self, device):
-            self.triggers += 1
-
-    driver, _, _ = _driver(client=_Silent())
-    await driver.start(["arena:corners"])
-    driver.session.reads = 1
-    driver.session.timeout = 0.2
-    driver.session.retries = 0
-
-    state = await driver.capture("ABCD")
-
-    assert state["outstanding"] == 0
-    assert "no LH2 samples" in state["error"]
 
 
 # --- the robot's own trigger ------------------------------------------------
@@ -364,15 +306,12 @@ async def test_a_session_listens_for_the_button_before_any_capture():
 
 @pytest.mark.asyncio
 async def test_a_capture_arriving_while_point_k_is_outstanding_is_point_k():
-    driver, client, _ = _driver()
+    driver, _, _ = _driver()
     await driver.start(["arena:corners"])
-    driver.session.reads = 1
-    driver.session.timeout = 2.0
-    driver.session.retries = 0
-    await driver.capture("ABCD")  # point 0 the requested way
+    await _store(driver, _press(0, *CORNER_COUNTS[0]))
     assert driver.state()["outstanding"] == 1
 
-    await asyncio.wrap_future(driver.on_button_capture(_press(0, *CORNER_COUNTS[1])))
+    await _store(driver, _press(0, *CORNER_COUNTS[1]))
 
     state = driver.state()
     assert state["outstanding"] == 2
@@ -413,7 +352,7 @@ def test_a_capture_arriving_with_no_session_is_dropped():
 async def test_a_capture_arriving_with_every_point_captured_is_dropped():
     driver, client, _ = _driver()
     await driver.start(["arena:corners"])
-    await _walk(driver, client)
+    await _walk(driver)
     before = driver.state()
 
     await asyncio.wrap_future(driver.on_button_capture(_press(0, 44444, 55555)))
@@ -431,7 +370,7 @@ async def test_four_points_carry_a_residual_per_station_and_no_expected_error(
     monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
     driver, client, _ = _driver()
     await driver.start(["arena:corners"])
-    await _walk(driver, client)
+    await _walk(driver)
 
     saved = await driver.save()
     state = saved["session"]
@@ -455,7 +394,7 @@ async def test_save_writes_a_schema_4_file_under_the_site_directory(
     monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
     driver, client, _ = _driver()
     await driver.start(["arena:corners"])
-    await _walk(driver, client)
+    await _walk(driver)
 
     saved = await driver.save(tag="arena-relay")
 
@@ -469,12 +408,9 @@ async def test_save_writes_a_schema_4_file_under_the_site_directory(
 
 @pytest.mark.asyncio
 async def test_solving_before_every_point_is_captured_is_refused():
-    driver, client, _ = _driver()
+    driver, _, _ = _driver()
     await driver.start(["arena:corners"])
-    driver.session.reads = 1
-    driver.session.timeout = 2.0
-    driver.session.retries = 0
-    await driver.capture("ABCD")
+    await _store(driver, _press(0, *CORNER_COUNTS[0]))
     with pytest.raises(SessionError) as exc:
         driver.session.solve()
     assert "1 of 4 points captured" in str(exc.value)
@@ -487,7 +423,7 @@ async def test_push_sends_the_float32_messages_and_returns_the_stale_worklist(
     monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
     driver, client, _ = _driver()
     await driver.start(["arena:corners"])
-    await _walk(driver, client)
+    await _walk(driver)
     await driver.save()
 
     pushed = await driver.push()
@@ -506,7 +442,7 @@ async def test_a_console_push_to_a_robot_of_another_site_is_refused(
     driver, client, _ = _driver()
     client.infos["ABCD"] = _info(site="demo-dcoss-2026", calibration_id="00" * 8)
     await driver.start(["arena:corners"])
-    await _walk(driver, client)
+    await _walk(driver)
     await driver.save()
 
     with pytest.raises(SessionError) as exc:
@@ -528,7 +464,7 @@ async def test_abandoning_leaves_no_session_and_writes_nothing(monkeypatch, tmp_
     monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
     driver, client, _ = _driver()
     await driver.start(["arena:corners"])
-    await _walk(driver, client)
+    await _walk(driver)
 
     await driver.abandon()
 
@@ -553,19 +489,15 @@ async def test_collect_and_a_controller_session_write_the_same_file_for_the_same
 
     driver, client, _ = _driver()
     await driver.start(["arena:corners"])
-    await _walk(driver, client)
+    await _walk(driver)
     from_console = await driver.save()
     console_body = _undated(open(driver.session.saved_path, encoding="utf-8").read())
 
     # The same reads, taken the way `collect` takes them: one session object,
-    # one CaptureSession stream, the same prompt order.
+    # the same prompt order.
     direct = CalibrationSession.resolve(["arena:corners"], site=C405)
-    direct.reads, direct.timeout, direct.retries = 1, 2.0, 0
-    cli_client = _FakeClient()
-    with CaptureSession(cli_client, "ABCD", _TAG) as stream:
-        for index in range(4):
-            cli_client.at_corner(index)
-            direct.capture(stream)
+    for index in range(4):
+        direct.store_reads(_press(0, *CORNER_COUNTS[index]).reads, "ABCD")
     from_cli = direct.save()
     cli_body = _undated(open(direct.saved_path, encoding="utf-8").read())
 
@@ -594,30 +526,14 @@ async def test_every_state_change_is_one_notification_in_order(monkeypatch, tmp_
     async def notify(state):
         sent.append(state)
 
-    driver, client, _ = _driver(notify=notify)
+    driver, _, _ = _driver(notify=notify)
     await driver.start(["arena:corners"])
-    driver.session.reads = 2
-    driver.session.timeout = 2.0
-    driver.session.retries = 0
-    client.at_corner(0)
-    await driver.capture("ABCD")
+    await _store(driver, _press(0, *CORNER_COUNTS[0], n=2))
     await driver.redo()
     await driver.abandon()
 
-    # start, two read-progress events, the finished capture, redo, abandon.
-    assert [_phase(s) for s in sent] == [
-        (0, 0),
-        (0, 0),
-        (0, 0),
-        (1, 1),
-        (0, 0),
-        None,
-    ]
-    # The progress events carry the reads as they land, never out of order.
-    assert [s["points"][0]["reads"] for s in sent[1:3]] == [
-        [{"station": 0, "reads": 1, "target": 2}],
-        [{"station": 0, "reads": 2, "target": 2}],
-    ]
+    # start, the capture, redo, abandon.
+    assert [_phase(s) for s in sent] == [(0, 0), (1, 1), (0, 0), None]
 
 
 def _phase(state):
@@ -625,16 +541,17 @@ def _phase(state):
 
 
 @pytest.mark.asyncio
-async def test_the_session_survives_a_client_that_is_built_only_once():
-    """The transport is built at start, for the button, and reused by captures."""
+async def test_the_session_survives_a_client_that_is_built_only_once(
+    monkeypatch, tmp_path
+):
+    """The transport is built at start, for the button, and reused by a push."""
+    monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
     driver, client, _ = _driver()
     await driver.start(["arena:corners"], device="ABCD")
     assert client.entered == 1
-    driver.session.reads = 1
-    driver.session.timeout = 2.0
-    driver.session.retries = 0
-    await driver.capture("ABCD")
-    await driver.capture("ABCD")
+    await _walk(driver)
+    await driver.save()
+    await driver.push()
     assert client.entered == 1
 
 
@@ -643,14 +560,14 @@ async def test_the_session_survives_a_client_that_is_built_only_once():
 
 @pytest.mark.asyncio
 async def test_two_captures_at_once_do_not_share_a_point():
-    """The session serialises: the second call takes the next point, not the same."""
-    driver, client, _ = _driver()
+    """The session serialises: the second press takes the next point, not the same."""
+    driver, _, _ = _driver()
     await driver.start(["arena:corners"])
-    driver.session.reads = 1
-    driver.session.timeout = 2.0
-    driver.session.retries = 0
 
-    await asyncio.gather(driver.capture("ABCD"), driver.capture("ABCD"))
+    await asyncio.gather(
+        _store(driver, _press(0, *CORNER_COUNTS[0])),
+        _store(driver, _press(0, *CORNER_COUNTS[1])),
+    )
 
     state = driver.state()
     assert state["captured"] == 2
@@ -705,16 +622,8 @@ async def test_the_routes_walk_a_session_from_start_to_push(
     assert body["expected_error_mm"] is None
     assert body["points"][0]["where"] == "top-left corner of arena"
 
-    controller.calibration_session.session.reads = 1
-    controller.calibration_session.session.timeout = 2.0
-    controller.calibration_session.session.retries = 0
-    for index in range(4):
-        client.at_corner(index)
-        body = (
-            await http.post(
-                "/controller/calibration/session/capture", json={"device": "ABCD"}
-            )
-        ).json()
+    await _walk(controller.calibration_session)
+    body = (await http.get("/controller/calibration/session/state")).json()
     assert body["outstanding"] is None
     assert body["captured"] == 4
 
@@ -754,7 +663,7 @@ async def test_a_start_with_no_points_opens_on_the_sites_field(rest):
 @pytest.mark.asyncio
 async def test_a_route_that_needs_a_session_refuses_without_one(rest):
     http, _, _ = rest
-    for path in ("capture", "redo", "save", "push"):
+    for path in ("redo", "save", "push"):
         response = await http.post(f"/controller/calibration/session/{path}", json={})
         assert response.status_code == 409
         assert "no calibration session is open" in response.json()["detail"]
@@ -864,7 +773,7 @@ async def test_a_session_takes_the_reads_per_point_it_is_started_with(rest):
 
 
 @pytest.mark.asyncio
-async def test_the_simulated_client_answers_the_point_the_session_is_asking_about(
+async def test_the_simulated_robot_presses_at_the_point_the_session_is_asking_about(
     monkeypatch, tmp_path
 ):
     """A controller on the simulator walks the whole mode and solves.
@@ -877,30 +786,32 @@ async def test_the_simulated_client_answers_the_point_the_session_is_asking_abou
 
     holder: dict = {}
     driver = SessionDriver(
-        client_factory=lambda device: SimulatedCaptureClient(
-            device,
+        client_factory=lambda: SimulatedCaptureClient(
             lambda: (
-                holder["driver"].session.outstanding.mm
+                (
+                    holder["driver"].session.outstanding.index,
+                    holder["driver"].session.outstanding.mm,
+                )
                 if holder["driver"].session
                 and holder["driver"].session.outstanding is not None
                 else None
             ),
+            press_delay_s=0.0,
         ),
         notify=_noop,
         site=C405,
-        stream_factory=lambda c, device, on_button: CaptureSession(
-            c, device, _TAG, on_button_capture=on_button
+        stream_factory=lambda c, on_button: CaptureSession(
+            c, on_button_capture=on_button
         ),
     )
     holder["driver"] = driver
-    monkeypatch.setattr("dotbot.calibration.simulated._SAMPLE_TAG", _TAG)
 
     await driver.start(["arena:corners"])
-    driver.session.reads = 3
-    driver.session.timeout = 2.0
-    driver.session.retries = 0
-    for _ in range(4):
-        await driver.capture("ABCD")
+    for _ in range(200):
+        if driver.session.complete:
+            break
+        await asyncio.sleep(0.02)
+    assert driver.state()["device"] == "SIMULATED"
 
     saved = await driver.save()
     stations = saved["session"]["stations"]
@@ -912,14 +823,33 @@ async def _noop(_state):
     return None
 
 
+def test_the_simulated_robot_presses_once_per_opening_of_a_point():
+    """A point re-opened by a redo is pressed again."""
+    from dotbot.calibration.ota import parse_button_payload
+    from dotbot.calibration.simulated import SimulatedCaptureClient
+
+    opened = [(0, (47.0, 18.5))]
+    client = SimulatedCaptureClient(lambda: opened[-1], press_delay_s=0.0)
+    events = client.watch_log_events()
+
+    def next_press():
+        chunk = parse_button_payload(bytes.fromhex(next(events)["data_hex"]))
+        assert chunk.chunk == 0 and len(chunk.records) < 13
+        return chunk.press
+
+    assert next_press() == 0
+    opened.append((1, (1953.0, 18.5)))
+    assert next_press() == 1
+    opened.append((0, (47.0, 18.5)))
+    assert next_press() == 2
+
+
 def test_a_button_capture_missing_a_station_an_earlier_point_saw_is_stored():
     session = CalibrationSession.resolve(["arena:corners"], site=C405)
-    two = parse_capture_payload(
-        _payload(_record(0, 41290, 51728), _record(1, 30000, 40000)), _TAG
-    )
+    two = [LH2CalibrationSample(0, 41290, 51728), LH2CalibrationSample(1, 30000, 40000)]
     assert session.store_reads([two] * 3).index == 0
 
-    # A station occluded at one point is the solver's concern, as with Enter.
+    # A station occluded at one point is the solver's concern.
     assert session.store_reads([_reads(0, *CORNER_COUNTS[1])] * 3).index == 1
     assert session.outstanding.index == 2
 
@@ -936,10 +866,10 @@ async def test_a_button_press_given_up_incomplete_is_reported(monkeypatch):
         expired_presses=lambda: expired.pop() if expired else [],
     )
     driver = SessionDriver(
-        client_factory=lambda device: _FakeClient(),
+        client_factory=lambda: _FakeClient(),
         notify=_noop,
         site=C405,
-        stream_factory=lambda client, device, on_button: stream,
+        stream_factory=lambda client, on_button: stream,
     )
     await driver.start(["arena:corners"])
     for _ in range(100):
@@ -959,11 +889,8 @@ def test_collect_takes_a_button_press_as_the_outstanding_point(capsys):
     stream = SimpleNamespace(expired_presses=lambda: [("FEED", 7)])
     arrivals: queue.Queue = queue.Queue()
     arrivals.put(
-        (
-            "button",
-            ButtonCapture(
-                device="FEED", press=2, reads=[_reads(0, *CORNER_COUNTS[0])] * 3, lost=1
-            ),
+        ButtonCapture(
+            device="FEED", press=2, reads=[_reads(0, *CORNER_COUNTS[0])] * 3, lost=1
         )
     )
 
@@ -975,7 +902,7 @@ def test_collect_takes_a_button_press_as_the_outstanding_point(capsys):
     assert "1 capture(s) lost before press 2" in captured.err
 
 
-# --- collect, with and without --device -------------------------------------
+# --- collect -----------------------------------------------------------------
 
 _CORNER_POINTS = [
     "--points=47,18.5",
@@ -986,12 +913,12 @@ _CORNER_POINTS = [
 
 
 class _CollectClient(_FakeClient):
-    """Button presses queued up front, and READY replies to each trigger."""
+    """Button presses at the four corners, queued up front."""
 
-    def __init__(self, presses=(), device="ABCD"):
-        super().__init__(device)
-        # Enter captures take the corners the button presses left.
-        self.first_corner = len(presses)
+    def __init__(
+        self, presses=(("FEED", 0), ("FEED", 1), ("FEED", 2), ("FEED", 3))
+    ):
+        super().__init__()
         self.events: queue.Queue = queue.Queue()
         for press, (addr, corner) in enumerate(presses):
             record = _record(0, *CORNER_COUNTS[corner])
@@ -999,11 +926,6 @@ class _CollectClient(_FakeClient):
                 {"addr": addr, "data_hex": (bytes([0xCB, press << 3]) + record).hex()}
             )
             self.infos[addr] = _info()
-
-    def request_lh2_capture(self, device: str) -> None:
-        self.triggers += 1
-        record = _record(0, *CORNER_COUNTS[self.first_corner + self.triggers - 1])
-        self.events.put({"addr": self.device, "data_hex": _payload(record).hex()})
 
     def watch_log_events(self):
         while True:
@@ -1013,21 +935,17 @@ class _CollectClient(_FakeClient):
                 continue
 
 
-def _collect(monkeypatch, tmp_path, client, *args, stdin=""):
+def _collect(monkeypatch, tmp_path, client, *args):
     from click.testing import CliRunner
 
     from dotbot.cli import swarm_lh2
 
     monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
     monkeypatch.setattr(swarm_lh2, "_swarmit_client", lambda *a: client)
-    return CliRunner().invoke(
-        swarm_lh2.cmd,
-        ["collect", *_CORNER_POINTS, "--reads=1", "--timeout=2", "--retries=0", *args],
-        input=stdin,
-    )
+    return CliRunner().invoke(swarm_lh2.cmd, ["collect", *_CORNER_POINTS, *args])
 
 
-def test_collect_without_a_device_takes_every_point_from_the_button(
+def test_collect_takes_every_point_from_the_button_and_pushes_to_its_robots(
     monkeypatch, tmp_path
 ):
     client = _CollectClient(
@@ -1037,43 +955,20 @@ def test_collect_without_a_device_takes_every_point_from_the_button(
     result = _collect(monkeypatch, tmp_path, client, "--push")
 
     assert result.exit_code == 0, result.output
-    assert client.triggers == 0
     assert "Press the robot's button when it is still." in result.output
-    assert "Press Enter" not in result.output
     assert "received from BEEF as point 3" in result.output
     assert client.pushed_to == ["BEEF", "FEED"]
 
 
-def test_collect_with_a_device_captures_on_enter_and_pushes_to_it(
-    monkeypatch, tmp_path
-):
-    client = _CollectClient()
+def test_collect_has_no_device_capture():
+    from click.testing import CliRunner
 
-    result = _collect(
-        monkeypatch, tmp_path, client, "--device=abcd", "--push", stdin="\n" * 4
-    )
+    from dotbot.cli import swarm_lh2
 
-    assert result.exit_code == 0, result.output
-    assert client.triggers == 4
-    assert "Enter captures from ABCD" in result.output
-    assert "Press Enter when it is still." in result.output
-    assert client.pushed_to == ["ABCD"]
+    result = CliRunner().invoke(swarm_lh2.cmd, ["collect", "--device=ABCD"])
 
-
-def test_collect_with_a_device_still_takes_another_robot_s_button(
-    monkeypatch, tmp_path
-):
-    # The press is read while collect prints its header, before stdin is.
-    client = _CollectClient(presses=[("FEED", 0)])
-
-    result = _collect(
-        monkeypatch, tmp_path, client, "--device=ABCD", "--push", stdin="\n" * 3
-    )
-
-    assert result.exit_code == 0, result.output
-    assert "received from FEED as point 0" in result.output
-    assert client.triggers == 3
-    assert client.pushed_to == ["ABCD", "FEED"]
+    assert result.exit_code == 2
+    assert "No such option '--device'" in result.output
 
 
 ROLED = Site(
@@ -1088,7 +983,7 @@ ROLED = Site(
 
 
 def _collect_in(monkeypatch, tmp_path, site, *args):
-    """`collect` over `site` with its own point flags, captured on Enter."""
+    """`collect` over `site` with its own point flags, captured on the button."""
     from click.testing import CliRunner
 
     from dotbot.cli import swarm_lh2
@@ -1098,11 +993,7 @@ def _collect_in(monkeypatch, tmp_path, site, *args):
     monkeypatch.setattr(
         swarm_lh2, "site_from_context", lambda ctx, flag=None: (site, "the test")
     )
-    return CliRunner().invoke(
-        swarm_lh2.cmd,
-        ["collect", "--device=ABCD", "--reads=1", "--timeout=2", "--retries=0", *args],
-        input="\n" * 4,
-    )
+    return CliRunner().invoke(swarm_lh2.cmd, ["collect", *args])
 
 
 def _saved_points_from(tmp_path) -> PointsFrom | None:
@@ -1151,24 +1042,6 @@ def test_collect_takes_one_way_of_choosing_the_points(monkeypatch, tmp_path, fla
 
     assert result.exit_code == 2
     assert "each choose the points; pass one" in result.output
-
-
-def test_collect_help_marks_the_enter_capture_deprecated():
-    from click.testing import CliRunner
-
-    from dotbot.cli import swarm_lh2
-
-    result = CliRunner().invoke(swarm_lh2.cmd, ["collect", "--help"])
-
-    assert "Deprecated in favour of the calibrate app's button" in " ".join(
-        result.output.split()
-    )
-
-
-def test_a_button_only_stream_refuses_a_triggered_capture():
-    with CaptureSession(_FakeClient(), None, _TAG) as stream:
-        with pytest.raises(ValueError, match="only takes button captures"):
-            stream.capture(timeout=0.1, retries=0)
 
 
 async def _button_session(driver, device: str) -> None:

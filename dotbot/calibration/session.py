@@ -11,14 +11,14 @@ same solver and same writer, so a file saved from either is byte-identical
 for the same reads.
 
 Nothing here talks to a transport. The caller hands in a `PointCapture`, or
-a swarmit `CaptureSession` to take one with.
+the reads of a button capture.
 """
 
 from __future__ import annotations
 
 import datetime
 from dataclasses import dataclass, field
-from typing import Any, Callable, Sequence
+from typing import Any, Sequence
 
 from dotbot.calibration.lighthouse2 import (
     VALID_MM_DEFAULT,
@@ -31,8 +31,6 @@ from dotbot.calibration.lighthouse2 import (
 )
 from dotbot.calibration.ota import (
     CAPTURE_READS_DEFAULT,
-    CAPTURE_RETRIES_DEFAULT,
-    CAPTURE_TIMEOUT_DEFAULT,
     PointCapture,
     samples_from_reads,
 )
@@ -89,8 +87,6 @@ class CalibrationSession:
     device: str = ""
     robot: str = ROBOT_DEFAULT
     reads: int = CAPTURE_READS_DEFAULT
-    timeout: float = CAPTURE_TIMEOUT_DEFAULT
-    retries: int = CAPTURE_RETRIES_DEFAULT
     tag: str = ""
     stations: list[StationSolution] = field(default_factory=list)
     unsolved: list[tuple[int, int]] = field(default_factory=list)
@@ -195,32 +191,6 @@ class CalibrationSession:
         if point is None:
             return None
         return self.store(point.index, samples_from_reads(reads, point.index), device)
-
-    def capture(self, stream, on_progress: Callable | None = None) -> SessionPoint:
-        """Take the outstanding point's reads over `stream`, a `CaptureSession`."""
-        point = self.outstanding
-        if point is None:
-            raise SessionError("every point of this session is already captured")
-        point.reads_target = self.reads
-        point.reads_per_station = {}
-
-        def on_read(done: int, total: int, collected: list) -> None:
-            counts: dict[int, int] = {}
-            for read in collected:
-                for record in read:
-                    counts[record.lh_index] = counts.get(record.lh_index, 0) + 1
-            point.reads_per_station = counts
-            if on_progress is not None:
-                on_progress(point)
-
-        capture = stream.capture_point(
-            point=point.index,
-            reads=self.reads,
-            timeout=self.timeout,
-            retries=self.retries,
-            on_read=on_read,
-        )
-        return self.store(point.index, capture, stream.device)
 
     def redo(self) -> SessionPoint:
         """Discard the last captured point's reads and re-open it."""
