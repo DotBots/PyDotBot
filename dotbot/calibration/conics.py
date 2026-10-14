@@ -728,8 +728,13 @@ def solve_calibration(
     )
     solved_from = "conics-joint" if joint.joint else "conics-free"
     anchor = FREE_FRAME_ANCHOR
+    rectangles, valid_mm = dict(joint.rectangles), joint.valid_mm
     if joint.anchored:
         solved_from, anchor = "conics-anchored", site.anchor
+        # In the site's frame, every station's rectangle is the site extent
+        if site.valid_mm is not None:
+            valid_mm = site.valid_mm
+            rectangles = {station: valid_mm for station in rectangles}
     stations = [
         StationSolution(
             index=station,
@@ -737,14 +742,14 @@ def solve_calibration(
             points=sum(t.points for t in joint.solutions[station].tracks),
             residual_mm=joint.station_rms_mm[station],
             solved_from=solved_from,
-            valid_mm=joint.rectangles[station],
+            valid_mm=rectangles[station],
         )
         for station, H in sorted(joint.homographies.items())
     ]
     now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     calibration = Calibration(
         site=Site(name=site.name, anchor=anchor),
-        valid_mm=joint.valid_mm,
+        valid_mm=valid_mm,
         stations=stations,
         tracks=list(samples),
         links=sorted(joint.graph.links, key=lambda k: (k.a, k.b)),
@@ -792,8 +797,9 @@ def self_defined_site(
     The site is the starter site (`starter_layout`) around the robots'
     field (`spin_field`): a margin of floor round it, or a `size_mm` site
     with it centred, and a staging strip below it. The calibration is
-    shifted by the field's offset, each station's rectangle with it, and a
-    tag gets `-<name>` appended, so the two files answer to different tags.
+    shifted by the field's offset, each station's rectangle becomes the
+    site extent, and a tag gets `-<name>` appended, so the two files answer
+    to different tags.
     """
     if (
         not calibration.stations
@@ -828,12 +834,7 @@ def self_defined_site(
                 points=st.points,
                 residual_mm=st.residual_mm,
                 solved_from=st.solved_from,
-                valid_mm=(
-                    st.valid_mm[0] + dx,
-                    st.valid_mm[1] + dy,
-                    st.valid_mm[2] + dx,
-                    st.valid_mm[3] + dy,
-                ),
+                valid_mm=(0, 0, int(extent[0]), int(extent[1])),
             )
         )
     site = Site(
