@@ -14,6 +14,7 @@ export interface HeldRow {
 
 function statusOf(b: UnifiedBot, n: number): Pick<HeldRow, "status" | "tone"> {
   const m = b.mission;
+  if (m?.code === "AWAITING_HEADING") return { status: m.reason ?? m.code, tone: "run" };
   if (b.nav === "auto") {
     const at = m?.state === "in_progress" && m.index !== null ? Math.min(m.index + 1, n) : null;
     return { status: at === null ? "under way" : `to ${at} of ${n}`, tone: "run" };
