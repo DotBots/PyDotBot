@@ -4,6 +4,7 @@ import {
   cameraRobotFor,
   formatCameraHeading,
   formatLh2,
+  formatLh2Site,
   formatUptime,
   infoText,
 } from "./Inspector";
@@ -65,6 +66,22 @@ describe("formatLh2", () => {
     expect(formatLh2(withInfo({ lh2_summary: "2 basestations (valid, from flash)" }))).toBe(
       "2 basestations (valid, from flash)",
     );
+  });
+});
+
+describe("formatLh2Site", () => {
+  const info = { bl_version: "", net_version: "", boot_count: 0, uptime_s: 0, image_name: "", image_version: "", image_digest: "" };
+  const withInfo = (over: object) => bot({ swarmit: node({ info: { ...info, ...over } }) });
+
+  it("names the site and the short calibration id the robot holds", () => {
+    expect(formatLh2Site(withInfo({ lh2_site_name: "virmond", lh2_calibration_id: "288a810d1234abcd" }))).toBe(
+      "virmond  (id 288a810d)",
+    );
+  });
+
+  it("says none for a robot holding no calibration, and nothing without device info", () => {
+    expect(formatLh2Site(withInfo({}))).toBe("none  (id none)");
+    expect(formatLh2Site(bot({ swarmit: null }))).toBeNull();
   });
 });
 
