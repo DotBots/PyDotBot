@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { clearWaypoints, fetchBuild, fetchConnection, putWaypointBatches } from "./api";
 import type { WaypointsSent } from "./api";
@@ -45,6 +45,7 @@ import {
   withView,
 } from "./savedView";
 import { SetupCard } from "./SetupCard";
+import { SITE_EDITOR_BASE, siteEditable } from "./siteEditorPanel";
 import { SpreadPanel, SpreadRun } from "./SpreadPanel";
 import { describeHazards, hazardCount, planSpread, spreadColor, swap } from "./spread";
 import { WaypointSettings, batchFields, loadWaypointSettings, saveWaypointSettings } from "./arrival";
@@ -133,9 +134,17 @@ function robotsNotice(ids: string[], what: string): string {
   return `${ids.length} robot${ids.length === 1 ? "" : "s"} ${what}: ${names.join(", ")}${more}`;
 }
 
+// Loaded only when opened
+const SiteEditor = lazy(() => import("./siteEditor/SiteEditor").then((m) => ({ default: m.SiteEditor })));
+
 export const App: React.FC = () => {
   const { bots, site, cameras, cameraDetections, session, setSession, viewport, wsUp } =
     useFleet();
+  const [canEditSite, setCanEditSite] = useState(false);
+  const [editingSite, setEditingSite] = useState(false);
+  useEffect(() => {
+    void siteEditable().then(setCanEditSite);
+  }, [site?.name]);
   // ?theme=dark|light presets the theme (handy for dev/screenshots).
   const [theme, setTheme] = useState<"dark" | "light">(() =>
     new URLSearchParams(window.location.search).get("theme") === "light" ? "light" : "dark",
@@ -474,10 +483,12 @@ export const App: React.FC = () => {
   // The shortcuts panel: its key opens it with nothing selected and closes
   // it again; Escape closes it; a key typed into a field is left alone.
   const [shortcuts, setShortcuts] = useState(false);
+  // The console's keys, all but the stop key, stay off under the site editor
+  const keysOff = shortcuts || editingSite;
   const nothingSelected = selection.size === 0;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (typingIn(e.target)) return;
+      if (editingSite || typingIn(e.target)) return;
       if (e.key === SHORTCUTS_KEY) {
         if (shortcuts) setShortcuts(false);
         else if (nothingSelected) setShortcuts(true);
@@ -490,12 +501,12 @@ export const App: React.FC = () => {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [shortcuts, nothingSelected]);
+  }, [shortcuts, nothingSelected, editingSite]);
 
   // Each side panel's key collapses it or expands it again, once per press.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (shortcuts || e.repeat || typingIn(e.target)) return;
+      if (keysOff || e.repeat || typingIn(e.target)) return;
       if (pressed(e, ACTION_KEY.leftPanel)) setRailCollapsed((c) => !c);
       else if (pressed(e, ACTION_KEY.rightPanel)) setRightCollapsed((c) => !c);
       else return;
@@ -503,7 +514,7 @@ export const App: React.FC = () => {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [shortcuts]);
+  }, [keysOff]);
 
   // Start and Stop act on the selection at once. With none they act on the
   // whole fleet, on a second press of the same key or button, or Enter; Esc
@@ -529,6 +540,7 @@ export const App: React.FC = () => {
     const onKey = (e: KeyboardEvent) => {
       if (e.repeat || typingIn(e.target)) return;
       if (pressed(e, ACTION_KEY.stop)) requestTestbed("stop");
+      else if (editingSite) return;
       else if (!shortcuts && pressed(e, ACTION_KEY.start)) requestTestbed("start");
       // Enter confirms whatever holds the focus, so it never also presses it.
       else if (e.key === "Enter" && confirmTestbed()) e.stopImmediatePropagation();
@@ -538,7 +550,7 @@ export const App: React.FC = () => {
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [shortcuts, requestTestbed, confirmTestbed, cancelTestbed]);
+  }, [shortcuts, editingSite, requestTestbed, confirmTestbed, cancelTestbed]);
 
   // replace = set selection to ids · toggle = flip each id · add = union (range select)
   const onSelect = useCallback((ids: string[], mode: "replace" | "toggle" | "add") => {
@@ -730,7 +742,7 @@ export const App: React.FC = () => {
   const queued = pending.length;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (shortcuts || typingIn(e.target) || !pressed(e, ACTION_KEY.go)) return;
+      if (keysOff || typingIn(e.target) || !pressed(e, ACTION_KEY.go)) return;
       if (selectedCount === 0) showToast("Nothing selected");
       else if (drivableCount === 0) showToast("Not drivable");
       else if (anyAuto) onStopNav();
@@ -742,7 +754,7 @@ export const App: React.FC = () => {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [shortcuts, selectedCount, drivableCount, anyAuto, queued, onGo, onStopNav, showToast]);
+  }, [keysOff, selectedCount, drivableCount, anyAuto, queued, onGo, onStopNav, showToast]);
 
   const onClearQueue = useCallback(() => {
     setPlanned((prev) => prev.filter((m) => m.key !== selKey));
@@ -781,7 +793,7 @@ export const App: React.FC = () => {
   const [poseMode, setPoseMode] = useState(false);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (shortcuts || e.repeat || typingIn(e.target)) return;
+      if (keysOff || e.repeat || typingIn(e.target)) return;
       if (pressed(e, ACTION_KEY.poseMode)) {
         setPoseMode((on) => !on);
         e.preventDefault();
@@ -794,7 +806,7 @@ export const App: React.FC = () => {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [shortcuts, queued, onRemovePending, showToast]);
+  }, [keysOff, queued, onRemovePending, showToast]);
 
   // Recently-completed missions: a bot flipping AUTO -> MANUAL just arrived.
   const [doneMissions, setDoneMissions] = useState<DoneMission[]>([]);
@@ -1191,6 +1203,16 @@ export const App: React.FC = () => {
           )}
 
           <ShortcutsPanel open={shortcuts} onClose={() => setShortcuts(false)} />
+          {editingSite && (
+            <div
+              data-testid="site-editor-panel"
+              style={{ position: "fixed", inset: 0, zIndex: 50, background: "var(--canvas)" }}
+            >
+              <Suspense fallback={null}>
+                <SiteEditor base={SITE_EDITOR_BASE} theme={theme} onClose={() => setEditingSite(false)} />
+              </Suspense>
+            </div>
+          )}
         </div>
         <RightPane
           tab={rightTab}
@@ -1201,6 +1223,7 @@ export const App: React.FC = () => {
           site={site}
           hiddenAreas={hiddenAreas}
           onAreaToggle={onAreaToggle}
+          onEditSite={canEditSite ? () => setEditingSite(true) : undefined}
           onZoom={zoomTo}
           layers={layers}
           layerRows={layerRows}

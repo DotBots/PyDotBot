@@ -179,10 +179,10 @@ def test_the_advertisement_starts_the_encoder_deltas_over():
     second = core.advertisement(0, 2900)
     assert len(first) == control.ADVERTISEMENT_BYTES
     # Type, calibration, direction, x, y, battery, duties, mode, then the deltas
-    assert int.from_bytes(first[17:21], "little", signed=True) == 7
-    assert int.from_bytes(first[21:25], "little", signed=True) == -3
-    assert int.from_bytes(second[17:25], "little") == 0
-    assert int.from_bytes(first[12:14], "little") == 2900
+    assert int.from_bytes(first[18:22], "little", signed=True) == 7
+    assert int.from_bytes(first[22:26], "little", signed=True) == -3
+    assert int.from_bytes(second[18:26], "little") == 0
+    assert int.from_bytes(first[13:15], "little") == 2900
 
 
 def test_a_seeded_robot_tracks_the_pose_it_is_given():
@@ -206,7 +206,10 @@ def test_the_batched_advertisements_are_those_the_step_asked_for():
     indices, packets = core.advertisements(np.array([3000, 3001, 3002, 3003]))
     assert indices.tolist() == [1, 3]
     assert packets.shape == (2, control.ADVERTISEMENT_BYTES)
-    assert [int.from_bytes(p[12:14], "little") for p in packets] == [3001, 3003]
-    assert [int.from_bytes(p[17:21], "little") for p in packets] == [11, 13]
+    assert [int.from_bytes(p[13:15], "little") for p in packets] == [3001, 3003]
+    assert [int.from_bytes(p[18:22], "little") for p in packets] == [11, 13]
     empty_indices, empty_packets = core.advertisements(np.zeros(4))
-    assert empty_indices.size == 0 and empty_packets.shape == (0, 42)
+    assert empty_indices.size == 0 and empty_packets.shape == (
+        0,
+        control.ADVERTISEMENT_BYTES,
+    )

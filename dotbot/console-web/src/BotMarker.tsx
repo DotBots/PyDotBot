@@ -154,6 +154,8 @@ export interface BotMarkerProps {
   batteryBars: boolean;
   /** What the body is filled with: the swarmit state, or the LED colour. */
   colorMode: BodyColorMode;
+  /** The site of the robot's calibration when it is not the map's, "" otherwise. */
+  otherSite?: string;
   attach: (id: string, el: HTMLElement | null) => void;
   onPointerDown: (e: React.PointerEvent, id: string) => void;
   onHover: React.Dispatch<React.SetStateAction<string | null>>;
@@ -174,6 +176,7 @@ export const BotMarker = React.memo(function BotMarker({
   botCount,
   batteryBars,
   colorMode,
+  otherSite = "",
   attach,
   onPointerDown,
   onHover,
@@ -235,6 +238,30 @@ export const BotMarker = React.memo(function BotMarker({
         >
           <ResetBadge bot={b} size={13} />
         </div>
+        {/* calibrated for another site: the position is in another frame */}
+        {otherSite && (
+          <div
+            data-testid={`other-site-${b.id}`}
+            title={`Calibrated for site ${otherSite}: its position is in another frame`}
+            style={{
+              position: "absolute",
+              left: footprintPx / 2,
+              top: -footprintPx / 2,
+              transform: "translate(-50%, -50%)",
+              zIndex: 4,
+              width: 11,
+              height: 11,
+              borderRadius: "50%",
+              background: "var(--s-Stopping)",
+              border: "1px solid var(--surface)",
+              color: "#fff",
+              font: "700 8px/9px var(--font-mono)",
+              textAlign: "center",
+            }}
+          >
+            !
+          </div>
+        )}
         {/* selection ring, hugging the board */}
         {selected && (
           <div
@@ -333,6 +360,7 @@ function sameMarkerProps(a: BotMarkerProps, b: BotMarkerProps): boolean {
     a.botCount === b.botCount &&
     a.batteryBars === b.batteryBars &&
     a.colorMode === b.colorMode &&
+    a.otherSite === b.otherSite &&
     a.attach === b.attach &&
     a.onPointerDown === b.onPointerDown &&
     a.onHover === b.onHover &&

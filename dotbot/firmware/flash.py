@@ -52,22 +52,27 @@ CONFIG_ADDR = 0x0103F800
 # swarmit's `swarmit_config_t` (SWARMIT_CONFIG_MAGIC_VALUE). Each value must
 # match its firmware's.
 CONFIG_MAGIC_BY_ROLE = {
-    "dotbot-v3": 0x5753524F,
+    "dotbot-v3": 0x57535250,
     "gateway": 0x5753524D,
 }
 CONFIG_MANIFEST_NAME = "config-manifest.json"
 # swarmit_config_t, little-endian and packed: magic, has_net_id, net_id,
-# homography_count, sixteen 3x3 float32 matrices, valid_mm[4], site_name[16],
-# calibration_id[8]. Every byte the calibration does not set is 0xFF, the
-# erase state the firmware reads as "absent".
+# station_mask, sixteen 3x3 float32 matrices by slot, sixteen valid_mm[4] by
+# slot, site_name[16], calibration_id[8]; 872 bytes. Every byte the
+# calibration does not set is 0xFF, the erase state the firmware reads as
+# "absent"; slots outside the mask are ignored.
 LH2_MATRIX_BYTES = 3 * 3 * 4
+LH2_VALID_MM_BYTES = 4 * 4
 LH2_MAX_HOMOGRAPHIES = 16
-SWARMIT_CONFIG_COUNT_OFFSET = 12
-SWARMIT_CONFIG_MATRICES_OFFSET = SWARMIT_CONFIG_COUNT_OFFSET + 4
-SWARMIT_CONFIG_SITE_OFFSET = (
+SWARMIT_CONFIG_MASK_OFFSET = 12
+SWARMIT_CONFIG_MATRICES_OFFSET = SWARMIT_CONFIG_MASK_OFFSET + 4
+SWARMIT_CONFIG_VALID_MM_OFFSET = (
     SWARMIT_CONFIG_MATRICES_OFFSET + LH2_MAX_HOMOGRAPHIES * LH2_MATRIX_BYTES
 )
-SWARMIT_CONFIG_SITE_BYTES = 4 * 4 + 16 + 8
+SWARMIT_CONFIG_SITE_OFFSET = (
+    SWARMIT_CONFIG_VALID_MM_OFFSET + LH2_MAX_HOMOGRAPHIES * LH2_VALID_MM_BYTES
+)
+SWARMIT_CONFIG_SITE_BYTES = 16 + 8
 SWARMIT_CONFIG_BYTES = SWARMIT_CONFIG_SITE_OFFSET + SWARMIT_CONFIG_SITE_BYTES
 # Application images are linked after the bootloader.
 APP_FLASH_BASE_ADDR = 0x00010000
@@ -163,17 +168,15 @@ def make_config_hex_path(
 
 
 def load_calibration_file(path: Path):
-    """Read a schema 3 calibration file, refused when a robot could not take it."""
+    """Read a calibration file, refused when a robot could not take it."""
     from dotbot.calibration.lighthouse2 import (
-        pushable_stations,
+        calibration_messages,
         read_calibration_file,
-        site_fields_as_bytes,
     )
 
     try:
         calibration = read_calibration_file(Path(path))
-        pushable_stations(calibration)
-        site_fields_as_bytes(calibration)
+        calibration_messages(calibration)
     except (OSError, ValueError) as exc:
         raise click.ClickException(
             f"Cannot use calibration file {path}: {exc}"
@@ -187,21 +190,27 @@ def swarmit_config_page(net_id_value: int, calibration=None) -> bytes:
         homography_as_float32,
         pushable_stations,
         site_fields_as_bytes,
+        station_mask,
+        valid_mm_as_bytes,
     )
 
     page = bytearray(b"\xff" * SWARMIT_CONFIG_BYTES)
-    page[:SWARMIT_CONFIG_COUNT_OFFSET] = struct.pack(
+    page[:SWARMIT_CONFIG_MASK_OFFSET] = struct.pack(
         "<III", CONFIG_MAGIC_BY_ROLE["dotbot-v3"], 1, net_id_value
     )
     if calibration is not None:
         stations = pushable_stations(calibration)
-        page[SWARMIT_CONFIG_COUNT_OFFSET:SWARMIT_CONFIG_MATRICES_OFFSET] = struct.pack(
-            "<I", len(stations)
+        page[SWARMIT_CONFIG_MASK_OFFSET:SWARMIT_CONFIG_MATRICES_OFFSET] = struct.pack(
+            "<I", station_mask(calibration)
         )
         for station in stations:
             offset = SWARMIT_CONFIG_MATRICES_OFFSET + station.index * LH2_MATRIX_BYTES
             page[offset : offset + LH2_MATRIX_BYTES] = homography_as_float32(
                 station.homography
+            )
+            offset = SWARMIT_CONFIG_VALID_MM_OFFSET + station.index * LH2_VALID_MM_BYTES
+            page[offset : offset + LH2_VALID_MM_BYTES] = valid_mm_as_bytes(
+                station.valid_mm
             )
         page[SWARMIT_CONFIG_SITE_OFFSET:] = site_fields_as_bytes(calibration)
     return bytes(page)
@@ -410,9 +419,10 @@ def flash_role(
             )
         calibration = load_calibration_file(calibration_path)
         page = swarmit_config_page(net_id_val, calibration)
-        calibration_hex = page[SWARMIT_CONFIG_COUNT_OFFSET:].hex()
+        calibration_hex = page[SWARMIT_CONFIG_MASK_OFFSET:].hex()
         click.echo(
-            f"[INFO] calibration: {len(calibration.stations)} matrices, "
+            f"[INFO] calibration: stations "
+            f"{', '.join(str(s.index) for s in calibration.stations)}, "
             f"site {calibration.site.name}, id {calibration.id} "
             f"from {calibration_path}"
         )
