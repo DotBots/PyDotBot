@@ -7,6 +7,7 @@ frame, its anchor rewritten, no other number of site.toml changed."""
 import dataclasses
 
 import pytest
+from click.testing import CliRunner
 
 from dotbot.calibration import conics, lighthouse2
 from dotbot.calibration.lighthouse2 import read_calibration_file, write_calibration
@@ -206,3 +207,66 @@ def test_a_floor_marked_anchor_is_refused_until_confirmed(client, pack, home, pl
     assert refused.status_code == 422
     assert "floor marks" in refused.json()["detail"]
     assert _turn(client, marks_confirmed=True).status_code == 200
+
+
+def _lab(tmp_path):
+    lab = tmp_path / "lab"
+    (lab / "sites" / "arena").mkdir(parents=True)
+    (lab / "sites" / "arena" / "site.toml").write_text(SITE_TOML)
+    (lab / "dotbot.toml").write_text('site = "arena"\n')
+    return lab
+
+
+def _site_cmd(lab, *args, input=None):
+    from dotbot.cli import site_cmd
+    from dotbot.config import load_discovered
+
+    return CliRunner().invoke(
+        site_cmd.cmd,
+        ["turn", *args],
+        obj={"config": load_discovered(environ={}, start_dir=lab)},
+        input=input,
+    )
+
+
+def test_site_turn_does_what_the_editor_s_save_does(tmp_path, home, placed):
+    lab = _lab(tmp_path)
+    write_calibration(placed)
+    result = _site_cmd(lab, "arena", "--rotate", "5", "--about", "1500,2000", "--note")
+    assert result.exit_code == 0, result.output
+    (written,) = set((home / "arena").glob("*.toml")) - {placed.path}
+    cal = read_calibration_file(written)
+    expected = turned(
+        placed,
+        ARENA,
+        5,
+        (1500, 2000),
+        cal.site.anchor,
+    )
+    assert cal.id == expected.id
+    text = (lab / "sites" / "arena" / "site.toml").read_text()
+    assert "Turned 5 deg about (1500, 2000) mm on" in text
+    assert text.startswith("# kept as it is\n")
+    assert f"dotbot swarm calibrate-lh2 push {cal.id8} --site arena" in result.output
+
+
+def test_site_turn_asks_when_the_anchor_is_a_floor_mark(tmp_path, home, placed):
+    lab = _lab(tmp_path)
+    path = lab / "sites" / "arena" / "site.toml"
+    path.write_text(SITE_TOML.replace(SELF, "the door corner"))
+    marked = Site(name="arena", anchor="the door corner", extent_mm=(3000, 4000))
+    write_calibration(dataclasses.replace(placed, site=marked))
+    result = _site_cmd(lab, "--rotate", "5", "--anchor", "moved", input="n\n")
+    assert result.exit_code != 0
+    assert "names a mark in the room" in result.output
+    assert "the door corner" in path.read_text()
+    result = _site_cmd(lab, "--rotate", "5", "--anchor", "moved", "-y")
+    assert result.exit_code == 0, result.output
+    assert 'anchor = "moved"' in path.read_text()
+
+
+def test_site_turn_needs_an_anchor_or_a_note(tmp_path, home):
+    result = _site_cmd(_lab(tmp_path), "--rotate", "5")
+    assert result.exit_code == 2
+    assert "--anchor, or --note" in result.output
+

@@ -7,8 +7,8 @@ A site pack is a folder holding `site.toml` and optionally `calibrations/`
 (`dotbot.site_packs`). `add` copies one into ~/.dotbot/sites/, where every
 folder finds it; `init` writes one around a spin calibration's robots; `use`
 makes a site the active one; `list` and `show` read; `export` writes one as a
-zip; `new` and `edit` open the site editor on a pack. The same folders can be
-shared with git, cp or unzip.
+zip; `new` and `edit` open the site editor on a pack; `turn` turns one on
+the floor. The same folders can be shared with git, cp or unzip.
 """
 
 import json
@@ -44,7 +44,8 @@ _GIT_PREFIXES = ("git@", "git://", "ssh://", "git+")
     name="site",
     help=(
         "The places you work in: add a site pack, switch with use, "
-        "list / show, export one to share, new / edit to draw one."
+        "list / show, export one to share, new / edit to draw one, turn it on "
+        "the floor."
     ),
 )
 def cmd():
@@ -910,6 +911,31 @@ def new(ctx, name, field_spec, port, headless):
     click.echo(f"Work in it with `dotbot site use {name}`, or --site {name}.")
 
 
+def _pack_of(ctx, site) -> tuple[str, Path]:
+    """The name and pack folder SITE names: a site name or a pack's path,
+    by default the active site."""
+    from dotbot.site_packs import is_pack_path, pack_at
+
+    if site is not None and is_pack_path(site):
+        try:
+            entry = pack_at(site)
+        except ConfigError as exc:
+            raise click.ClickException(str(exc)) from exc
+        return entry.name, entry.pack
+    if site is None:
+        active = active_site(ctx)
+        if active.entry is not None:
+            return active.name, active.entry.pack
+        site = active.name
+    entry = _catalog(ctx).get(site)
+    if entry is None:
+        raise click.ClickException(
+            f"unknown site {site!r}; `dotbot site list` names the known ones, "
+            "and `dotbot site new` makes one"
+        )
+    return site, entry.pack
+
+
 @cmd.command()
 @click.argument("site", required=False)
 @_PORT
@@ -921,28 +947,137 @@ def edit(ctx, site, port, headless):
     SITE is a site name or a pack folder's path; it defaults to the active
     site.
     """
-    from dotbot.site_packs import is_pack_path, pack_at
+    name, pack = _pack_of(ctx, site)
+    _serve_editor(name, pack, _editor_socket(port), headless)
 
-    if site is not None and is_pack_path(site):
-        try:
-            entry = pack_at(site)
-        except ConfigError as exc:
-            raise click.ClickException(str(exc)) from exc
-        _serve_editor(entry.name, entry.pack, _editor_socket(port), headless)
-        return
-    if site is None:
-        active = active_site(ctx)
-        if active.entry is not None:
-            _serve_editor(
-                active.name, active.entry.pack, _editor_socket(port), headless
-            )
-            return
-        site = active.name
-    name = site
-    entry = _catalog(ctx).get(name)
-    if entry is None:
-        raise click.ClickException(
-            f"unknown site {name!r}; `dotbot site list` names the known ones, "
-            "and `dotbot site new` makes one"
+
+def _parse_point(_ctx, _param, value):
+    if value is None:
+        return None
+    try:
+        x, y = (float(v) for v in value.split(","))
+    except ValueError as exc:
+        raise click.BadParameter("takes two numbers in mm, `x,y`") from exc
+    return (x, y)
+
+
+@cmd.command()
+@click.argument("site", required=False)
+@click.option(
+    "--rotate",
+    type=float,
+    required=True,
+    help=(
+        "Degrees the site turns on the floor; positive turns x toward y, "
+        "clockwise as drawn."
+    ),
+)
+@click.option(
+    "--about",
+    callback=_parse_point,
+    default=None,
+    help="The point it turns about, `x,y` in mm. Defaults to the middle of the extent.",
+)
+@click.option("--anchor", default=None, help="The new anchor: where zero is now.")
+@click.option(
+    "--note",
+    is_flag=True,
+    help="Keep the anchor and append a note of the turn to it, instead of --anchor.",
+)
+@click.option(
+    "--calibration",
+    "calibrations",
+    multiple=True,
+    help=(
+        "A calibration to turn, by id or tag; repeat for more. Defaults to "
+        "every calibration in the site's frame."
+    ),
+)
+@click.option(
+    "--yes", "-y", is_flag=True, help="Do not ask when the anchor is a floor mark."
+)
+@click.pass_context
+def turn(ctx, site, rotate, about, anchor, note, calibrations, yes):
+    """Turn a site on the floor, its frame and everything in it.
+
+    No number in site.toml changes, since the frame turns with the areas;
+    each calibration of the site is saved again, under a new id, for the
+    turned frame, and the anchor is rewritten. Sends nothing: push the new
+    calibrations once they look right.
+    """
+    import datetime
+
+    from dotbot import site_toml
+    from dotbot.calibration import site_turn
+    from dotbot.calibration.placement import site_tags
+    from dotbot.calibration.station_boxes import coverage_warnings, push_line
+    from dotbot.site import site_from_table
+    from dotbot.site_editor import _write_atomic
+    from dotbot.site_placement import _files
+
+    if (anchor is None) == (not note):
+        raise click.UsageError("give the new anchor with --anchor, or --note")
+    name, pack = _pack_of(ctx, site)
+    path = pack / PACK_FILE
+    text = path.read_text(encoding="utf-8")
+    try:
+        current = site_from_table(name, read_pack(pack), pack)
+    except ConfigError as exc:
+        raise click.ClickException(str(exc)) from exc
+    pivot = about or site_turn.default_pivot(current)
+    if note:
+        today = datetime.date.today().isoformat()
+        anchor = site_turn.noted_anchor(
+            current.anchor, site_turn.turn_note(rotate, pivot, today)
         )
-    _serve_editor(name, entry.pack, _editor_socket(port), headless)
+    files = _files(pack)
+    found = site_turn.in_frame(current, files)
+    if calibrations:
+        sources = []
+        for spec in calibrations:
+            hits = [
+                c
+                for c in found
+                if c.id.startswith(spec.lower()) or (c.tag and c.tag == spec)
+            ]
+            if len(hits) != 1:
+                raise click.ClickException(
+                    f"{spec!r} names {len(hits) or 'no'} calibration"
+                    f"{'s' if len(hits) > 1 else ''} in site {name}'s frame"
+                )
+            sources.append(hits[0])
+    else:
+        sources = found
+    try:
+        planned = site_turn.plan_turn(
+            sources,
+            current,
+            rotate,
+            pivot,
+            anchor,
+            taken_tags=site_tags(name, files),
+        )
+    except site_turn.TurnRefused as exc:
+        raise click.ClickException(str(exc)) from exc
+    marks = site_turn.anchor_marks(current, found)
+    for line in marks:
+        click.echo(f"warning: {line}", err=True)
+    if marks and not yes and not click.confirm("Turn it anyway?", default=False):
+        raise click.Abort()
+    try:
+        saved = site_turn.save_turn(
+            planned, text, anchor, lambda new: _write_atomic(path, new)
+        )
+    except site_toml.SiteTomlError as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(
+        f"Turned site {name} by {rotate:g} deg about ({pivot[0]:g}, {pivot[1]:g}) mm"
+    )
+    click.echo(f"Anchor in {path}: {anchor}")
+    for source, (cal, where) in zip(sources, saved):
+        click.echo(f"  {source.id8} -> {cal.id8}, saved to {where}")
+        for line in site_turn.outside_warnings(cal, current) + coverage_warnings(cal):
+            click.echo(f"warning: {line}", err=True)
+    click.echo("Robots keep the old frame until these are pushed:")
+    for cal, _ in saved:
+        click.echo(f"  {push_line(cal)}")
