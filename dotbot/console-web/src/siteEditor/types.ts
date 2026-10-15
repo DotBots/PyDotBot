@@ -144,3 +144,36 @@ export interface Backdrops {
   calibrations: CalibrationBackdrop[];
   cameras: CameraBackdrop[];
 }
+
+/** What GET /api/turn answers: the site's anchor and what a turn would rewrite. */
+export interface TurnInfo {
+  anchor: string;
+  /** The middle of the extent, frame mm. */
+  pivot: [number, number];
+  /** Why the turn moves zero off something measured on the floor; empty when nothing is. */
+  anchor_marks: string[];
+  /** The calibrations in the site's frame. */
+  calibrations: { id: string; id8: string; tag: string; created_at: string; stations: number[]; path: string }[];
+}
+
+/** What POST /api/turn answers: one new calibration per one turned. */
+export interface TurnSaved {
+  saved: PlacedCalibration[];
+  anchor_marks: string[];
+}
+
+/** One robot of the console's fleet: its LH2 fix and heading, frame mm. */
+export interface LiveRobot {
+  id: string;
+  x: number;
+  y: number;
+  heading_deg: number | null;
+  /** The site of the calibration it holds when not this one, "" otherwise. */
+  otherSite: string;
+}
+
+/** The console's fleet, and the calibration the controller serves. */
+export interface LiveFleet {
+  robots: LiveRobot[];
+  served: { id: string; site: string; anchor: string } | null;
+}

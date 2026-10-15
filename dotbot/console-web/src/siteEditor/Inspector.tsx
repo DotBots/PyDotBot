@@ -88,6 +88,8 @@ export interface InspectorProps {
   /** Keys `cal:<id8>` and `cam:<id8>` of the backdrops switched on. */
   shownBackdrops?: Set<string>;
   onToggleBackdrop?: (key: string) => void;
+  /** The console's robots, when the editor runs in it. */
+  live?: { count: number; shown: boolean; note: string | null; onToggle: () => void } | null;
 }
 
 const KIND_LABEL: Record<BarrierKind, string> = { walls: "wall", obstacles: "obstacle" };
@@ -522,6 +524,22 @@ export function Inspector(props: InspectorProps) {
               <span style={{ color: "var(--muted)", fontSize: 11 }}>{b.note}</span>
             </label>
           ))}
+        </div>
+      )}
+
+      {props.live && (
+        <div style={section} data-testid="live">
+          <div style={heading}>Live robots (read-only)</div>
+          <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12, marginTop: 6 }}>
+            <input type="checkbox" aria-label="live robots" checked={props.live.shown} onChange={props.live.onToggle} />
+            <span style={{ flex: 1 }}>the fleet's positions, from the console</span>
+            <span style={{ color: "var(--muted)", fontSize: 11 }}>{props.live.count}</span>
+          </label>
+          {props.live.note && (
+            <div data-testid="live-note" style={{ fontSize: 11, marginTop: 6, color: "var(--s-Programming)" }}>
+              {props.live.note}
+            </div>
+          )}
         </div>
       )}
 

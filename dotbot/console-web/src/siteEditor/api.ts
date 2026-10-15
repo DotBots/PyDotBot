@@ -6,6 +6,8 @@ import type {
   PlacedCalibration,
   SiteModel,
   SiteResponse,
+  TurnInfo,
+  TurnSaved,
 } from "./types";
 
 // The editor's server: relative to the page by default, or under `base`
@@ -146,4 +148,32 @@ export async function fetchBackdrops(base = ""): Promise<Backdrops> {
     ...body,
     cameras: body.cameras.map((c) => ({ ...c, still: c.still === null ? null : `${base}${c.still}` })),
   };
+}
+
+export async function fetchTurn(base = ""): Promise<TurnInfo> {
+  const res = await fetch(`${base}api/turn`);
+  if (!res.ok) throw new Error(await detail(res));
+  return res.json();
+}
+
+export interface TurnRequest {
+  theta_deg: number;
+  pivot: [number, number];
+  anchor: string;
+  calibrations: string[];
+  revision: string;
+  marks_confirmed: boolean;
+}
+
+/** Turn the site on the floor: new calibrations for the turned frame, and the anchor rewritten. */
+export async function turnSite(request: TurnRequest, base = ""): Promise<TurnSaved> {
+  const res = await fetch(`${base}api/turn`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (res.status === 409) throw new StaleSiteError(await detail(res));
+  if (res.status === 422) throw new RefusedSiteError(await detail(res));
+  if (!res.ok) throw new Error(await detail(res));
+  return res.json();
 }
