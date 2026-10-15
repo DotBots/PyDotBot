@@ -1413,6 +1413,8 @@ async def test_get_controller_site_carries_the_loaded_calibration_span():
         "id": calibration.id,
         "tag": "demo",
         "created_at": "2026-09-10T09:12:00Z",
+        "site": "c405-arena",
+        "anchor": "",
         "placements": [
             {
                 "points_mm": [[750, 750], [1250, 750], [750, 1250], [1250, 1250]],
