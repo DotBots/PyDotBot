@@ -253,8 +253,21 @@ def create_app(
             on_done()
         return {"ok": True}
 
+    def write_site(revision: str, text: str) -> None:
+        with saving:
+            data, _ = read()
+            if site_toml.revision(data) != revision:
+                raise HTTPException(
+                    409, f"{state.path} changed on disk since the page loaded it"
+                )
+            _write_atomic(state.path, text)
+            if on_saved is not None:
+                on_saved()
+
     app.include_router(
-        site_placement.create_router(state.name, state.pack, lambda: read()[1])
+        site_placement.create_router(
+            state.name, state.pack, lambda: read()[1], write_site
+        )
     )
     app.include_router(
         site_backdrops.create_router(
