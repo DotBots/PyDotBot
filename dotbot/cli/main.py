@@ -71,7 +71,8 @@ _SUBCOMMANDS = (
     (
         "site",
         "dotbot.cli.site_cmd",
-        "Sites: add a pack, switch with use, list / show, export one to share.",
+        "Sites: add a pack, switch with use, list / show, export one to share, "
+        "new / edit to draw one.",
     ),
 )
 

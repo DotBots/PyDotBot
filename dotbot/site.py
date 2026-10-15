@@ -36,6 +36,37 @@ SITE_MARGIN_MM = 1500
 STAGING_DEPTH_MM = 600
 
 
+Point = tuple[int, int]
+
+
+@dataclass(frozen=True)
+class Wall:
+    """A polyline robots cannot cross, in frame mm."""
+
+    points: tuple[Point, ...]
+    name: str = ""
+
+
+@dataclass(frozen=True)
+class Obstacle:
+    """A polygon robots cannot enter, in frame mm; the last point joins the first."""
+
+    points: tuple[Point, ...]
+    name: str = ""
+
+
+@dataclass(frozen=True)
+class SiteObject:
+    """A thing on the floor (a charger, a dock, a landmark, a camera) at a
+    pose in frame mm; `heading_deg` follows the robots' convention."""
+
+    name: str
+    kind: str
+    x: int
+    y: int
+    heading_deg: float = 0.0
+
+
 @dataclass
 class Site:
     """A site as the config declares it.
@@ -51,6 +82,11 @@ class Site:
     extent_mm: tuple[int, int] | None = None
     areas: dict[str, Area] = field(default_factory=dict)
     pack: Path | None = None
+    # A spin's photodiode radius measured on this floor, if one was
+    spin_radius_mm: float | None = None
+    walls: list[Wall] = field(default_factory=list)
+    obstacles: list[Obstacle] = field(default_factory=list)
+    objects: dict[str, SiteObject] = field(default_factory=dict)
 
     @property
     def extent(self) -> Area | None:
@@ -107,6 +143,10 @@ class Site:
                 return area
         return None
 
+    def objects_of(self, kind: str) -> list[SiteObject]:
+        """The objects of `kind`, in the order the file declares them."""
+        return [o for o in self.objects.values() if o.kind == kind]
+
     def registry(self) -> AreaRegistry:
         """The resolver `--points` runs against."""
         return AreaRegistry(named=dict(self.areas), site=self.name)
@@ -160,6 +200,7 @@ def site_from_table(name: str, table: Any, pack: Path | None = None) -> Site:
         pack=pack,
         anchor=getattr(table, "anchor", None) or "",
         extent_mm=(int(extent[0]), int(extent[1])) if extent else None,
+        spin_radius_mm=getattr(table, "spin_radius_mm", None),
         areas={
             area_name: Area(
                 x=area.x,
@@ -170,5 +211,17 @@ def site_from_table(name: str, table: Any, pack: Path | None = None) -> Site:
                 role=area_role(area_name, getattr(area, "role", None)),
             )
             for area_name, area in (getattr(table, "areas", None) or {}).items()
+        },
+        walls=[
+            Wall(tuple(tuple(p) for p in wall.points), wall.name or "")
+            for wall in getattr(table, "walls", None) or []
+        ],
+        obstacles=[
+            Obstacle(tuple(tuple(p) for p in obstacle.points), obstacle.name or "")
+            for obstacle in getattr(table, "obstacles", None) or []
+        ],
+        objects={
+            name: SiteObject(name, o.kind, o.x, o.y, o.heading_deg)
+            for name, o in (getattr(table, "objects", None) or {}).items()
         },
     )

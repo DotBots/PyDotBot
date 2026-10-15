@@ -964,6 +964,50 @@ async def root():
     return RedirectResponse(url="/console/")
 
 
+class SiteEditorMount:
+    """The site editor's JSON routes over the controller's site pack, for the
+    console's panel: built on first use, and only for a site read from a pack."""
+
+    def __init__(self):
+        self._app = None
+        self._key = None
+
+    async def __call__(self, scope, receive, send):
+        import asyncio
+        from pathlib import Path
+
+        from fastapi.responses import JSONResponse
+
+        from dotbot.calibration.lighthouse2 import calibration_root
+        from dotbot.site_editor import EditorState, create_app
+        from dotbot.site_packs import PACK_FILE
+
+        controller = getattr(api, "controller", None)
+        site = controller.site if controller is not None else None
+        pack = Path(site.pack) if site is not None and site.pack else None
+        if pack is None or not (pack / PACK_FILE).is_file():
+            response = JSONResponse(
+                {"detail": "the controller's site is not read from a site pack"},
+                status_code=404,
+            )
+            await response(scope, receive, send)
+            return
+        if self._app is None or self._key != (id(controller), pack):
+            state = EditorState(site.name, pack, [calibration_root() / site.name])
+            # A save runs on a worker thread; the reload belongs on the loop
+            loop = asyncio.get_running_loop()
+            self._app = create_app(
+                state,
+                page_dir=None,
+                on_saved=lambda: loop.call_soon_threadsafe(controller.reload_site),
+            )
+            self._key = (id(controller), pack)
+        await self._app(scope, receive, send)
+
+
+api.mount("/controller/site-editor", SiteEditorMount(), name="site-editor")
+
+
 # The console is the web UI. Mounted after all routes so they take precedence.
 CONSOLE_DIR = os.path.join(os.path.dirname(__file__), "console-web", "dist")
 
