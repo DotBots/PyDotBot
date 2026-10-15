@@ -232,11 +232,14 @@ class DotBotPlacementSpanModel(BaseModel):
 
 class DotBotCalibrationSpanModel(BaseModel):
     """The loaded LH2 calibration's placements, which span the part of the
-    site it was fitted over; positions outside them are extrapolated."""
+    site it was fitted over; positions outside them are extrapolated.
+    `site` and `anchor` are the frame it records."""
 
     id: str
     tag: str = ""
     created_at: str = ""
+    site: str = ""
+    anchor: str = ""
     placements: List[DotBotPlacementSpanModel] = []
 
     @classmethod
@@ -245,6 +248,8 @@ class DotBotCalibrationSpanModel(BaseModel):
             id=calibration.id,
             tag=calibration.tag,
             created_at=calibration.created_at,
+            site=calibration.site.name,
+            anchor=calibration.site.anchor,
             placements=[
                 DotBotPlacementSpanModel(
                     points_mm=[list(point) for point in placement.points_mm],
