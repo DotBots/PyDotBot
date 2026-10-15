@@ -146,6 +146,28 @@ async def test_a_pack_that_no_longer_reads_keeps_the_site(scenario):
 
 
 @pytest.mark.asyncio
+async def test_the_panel_reboxes_a_calibration_of_its_site(scenario, monkeypatch):
+    from dotbot.calibration import conics, lighthouse2
+    from dotbot.calibration.lighthouse2 import read_calibration_file
+    from dotbot.calibration.placement import Rigid2D, place_calibration, save_new
+    from dotbot.site import Site
+    from dotbot.tests.test_calibration_conics import CENTRES, track_samples
+
+    s, local, pack = scenario
+    monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", pack.parent / "home")
+    spun, _, _ = conics.solve_calibration(track_samples(CENTRES), Site(name="lab"))
+    placed, _ = save_new(place_calibration(spun, s.controller.site, Rigid2D(100, 200)))
+    response = await local.post(
+        f"/controller/site-editor/api/calibrations/{placed.id}/boxes",
+        json={"stations": {"0": [0, 0, 1000, 2000]}},
+    )
+    assert response.status_code == 200, response.text
+    boxed = read_calibration_file(response.json()["path"])
+    assert boxed.station(0).valid_mm == (0, 0, 1000, 2000)
+    assert boxed.edited_from == placed.id
+
+
+@pytest.mark.asyncio
 async def test_a_site_without_a_pack_has_no_panel(tmp_path):
     s = Scenario(tmp_path, [{"address": A, "pos_x": 500, "pos_y": 500}])
     async with httpx.AsyncClient(
