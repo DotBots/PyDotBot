@@ -1048,6 +1048,15 @@ def _file_metadata(path: Path) -> dict:
         return {}
 
 
+def calibration_site_of(spec: str) -> Optional[str]:
+    """The site of the one calibration file under any site that `spec`
+    names, None when none or several do."""
+    try:
+        return read_calibration_file(resolve_calibration_path(spec)).site.name
+    except (OSError, ValueError):
+        return None
+
+
 def load_calibration(
     spec: str,
     root: Optional[Path] = None,
