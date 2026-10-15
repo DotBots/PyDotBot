@@ -115,6 +115,29 @@ export async function placeCalibration(
   return res.json();
 }
 
+/**
+ * Save `id` with its stations' rectangles (`[x_min, y_min, x_max, y_max]` by
+ * station index) as a new calibration of this site, checked against the
+ * site.toml `revision` the page loaded.
+ */
+export async function reboxCalibration(
+  id: string,
+  stations: Record<number, number[]>,
+  tag: string | null,
+  revision: string,
+  base = "",
+): Promise<PlacedCalibration> {
+  const res = await fetch(`${base}api/calibrations/${encodeURIComponent(id)}/boxes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ stations, tag, revision }),
+  });
+  if (res.status === 409) throw new StaleSiteError(await detail(res));
+  if (res.status === 422) throw new RefusedSiteError(await detail(res));
+  if (!res.ok) throw new Error(await detail(res));
+  return res.json();
+}
+
 export async function fetchBackdrops(base = ""): Promise<Backdrops> {
   const res = await fetch(`${base}api/backdrops`);
   if (!res.ok) throw new Error(await detail(res));
