@@ -2,14 +2,15 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 """Changing where each station of a calibration is trusted, as a new
-calibration."""
+calibration, from Python and from `calibrate-lh2 rebox`."""
 
 import dataclasses
 
 import pytest
+from click.testing import CliRunner
 
 from dotbot.calibration import conics, lighthouse2
-from dotbot.calibration.lighthouse2 import read_calibration_file
+from dotbot.calibration.lighthouse2 import read_calibration_file, write_calibration
 from dotbot.calibration.placement import Rigid2D, place_calibration, save_new
 from dotbot.calibration.station_boxes import (
     BoxesRefused,
@@ -138,3 +139,61 @@ def test_a_rectangle_leaving_out_circles_is_warned_about(placed):
     assert line.startswith("station 0 (channel 1)'s rectangle [0, 0, 50, 50] leaves out")
     assert "spin circle(s)" in line
 
+
+def _lab(tmp_path):
+    lab = tmp_path / "lab"
+    (lab / "sites" / "arena").mkdir(parents=True)
+    (lab / "sites" / "arena" / "site.toml").write_text(
+        f'anchor = "{ARENA.anchor}"\nextent_mm = [3000, 4000]\n\n'
+        "[areas.field]\nx = 0\ny = 0\nw = 3000\nh = 2000\n"
+    )
+    (lab / "dotbot.toml").write_text('site = "arena"\n')
+    return lab
+
+
+def _rebox(tmp_path, *args):
+    from dotbot.cli import swarm_lh2
+    from dotbot.config import load_discovered
+
+    return CliRunner().invoke(
+        swarm_lh2.cmd,
+        ["rebox", *args],
+        obj={"config": load_discovered(environ={}, start_dir=_lab(tmp_path))},
+    )
+
+
+def test_rebox_writes_a_new_calibration_from_literals_and_areas(
+    placed, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path / "home")
+    source = write_calibration(placed)
+    before = source.read_bytes()
+    result = _rebox(
+        tmp_path, placed.id8, "--station", "0=0,0,1500,4000", "--station", "1=field"
+    )
+    assert result.exit_code == 0, result.output
+    assert source.read_bytes() == before
+    (written,) = set(source.parent.glob("*.toml")) - {source}
+    boxed = read_calibration_file(written)
+    assert boxed.station(0).valid_mm == (0, 0, 1500, 4000)
+    assert boxed.station(1).valid_mm == (0, 0, 3000, 2000)
+    assert boxed.edited_from == placed.id
+    assert f"dotbot swarm calibrate-lh2 push {boxed.id8} --site arena" in result.output
+    assert "0,0,1500,4000 (x,y,w,h; valid_mm [0, 0, 1500, 4000]" in result.output
+
+
+def test_rebox_refuses_a_rectangle_outside_the_site(placed, tmp_path, monkeypatch):
+    monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path / "home")
+    source = write_calibration(placed)
+    result = _rebox(tmp_path, placed.id8, "--station", "0=0,0,3500,4000")
+    assert result.exit_code != 0
+    assert "outside the site's extent" in result.output
+    assert list(source.parent.glob("*.toml")) == [source]
+
+
+def test_rebox_takes_n_equals_a_rectangle(placed, tmp_path, monkeypatch):
+    monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path / "home")
+    write_calibration(placed)
+    result = _rebox(tmp_path, placed.id8, "--station", "0,0,1500,4000")
+    assert result.exit_code == 2
+    assert "N=x,y,w,h" in result.output

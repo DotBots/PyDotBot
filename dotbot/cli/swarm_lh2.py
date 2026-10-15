@@ -19,6 +19,8 @@ subcommands:
               another id.
 - `reframe <path|id>` - re-express a saved calibration in another site's
               frame and re-solve it from its stored samples.
+- `rebox <path|id>` - save a new calibration with some stations'
+              rectangles changed, everything else as it was.
 
 The homography solve lives in PyDotBot (`dotbot.calibration.lighthouse2`);
 the transport lives in swarmit.
@@ -1080,3 +1082,131 @@ def _reframe(ctx, calibration, site_name, shift, rotate):
         )
     click.echo(f"\nCalibration saved to {path}")
     click.echo(f"Calibration id {reframed.id}, site {site.name}")
+
+
+def _parse_station_rect(_ctx, _param, values):
+    out = []
+    for value in values:
+        index, sep, rect = value.partition("=")
+        try:
+            index = int(index)
+        except ValueError:
+            index = -1
+        if not sep or not rect.strip() or not 0 <= index <= 15:
+            raise click.BadParameter(
+                f"{value!r}: takes `N=x,y,w,h` (mm) or `N=<area>`, N a station 0 to 15"
+            )
+        out.append((index, rect.strip()))
+    return out
+
+
+@cmd.command(
+    name="rebox",
+    help=(
+        "Change where stations of a saved calibration are trusted: save a "
+        "new file, with a new id, whose named stations have the given "
+        "rectangles and everything else, homographies included, as it was. "
+        "The calibration must be in the site's frame (placed, not free "
+        "mode). Sends nothing; push the new id when it looks right."
+    ),
+)
+@click.argument("calibration")
+@click.option(
+    "--station",
+    "stations",
+    multiple=True,
+    required=True,
+    callback=_parse_station_rect,
+    metavar="N=RECT",
+    help=(
+        "Station N's new rectangle: `x,y,w,h` in mm, or an area of the site "
+        "such as `field+staging`. Repeat for each station to change; the "
+        "others keep theirs."
+    ),
+)
+@click.option(
+    "--tag",
+    default=None,
+    help="Tag of the new calibration. Defaults to the source's, suffixed -boxes.",
+)
+@click.option(
+    "--site",
+    "site_name",
+    default=None,
+    help="The site to look the id up under. Defaults to `site` in the dotbot config.",
+)
+@click.pass_context
+def _rebox(ctx, calibration, stations, tag, site_name):
+    if _devices(ctx):
+        raise click.UsageError("rebox sends nothing, so it takes no `dotbot swarm -d`")
+    from dotbot.calibration.lighthouse2 import (
+        read_calibration_file,
+        resolve_calibration_path,
+        station_label,
+    )
+    from dotbot.calibration.placement import save_new, site_tags
+    from dotbot.calibration.station_boxes import (
+        coverage_warnings,
+        push_line,
+        reboxed,
+    )
+
+    site, _ = site_from_context(ctx, site_name)
+    rects = {}
+    for index, spec in stations:
+        if index in rects:
+            raise click.BadParameter(
+                f"station {index} is given twice", param_hint="--station"
+            )
+        try:
+            area = site.registry().resolve(spec)
+        except ValueError as exc:
+            raise click.BadParameter(str(exc), param_hint="--station") from exc
+        rects[index] = (area.x, area.y, area.x + area.w, area.y + area.h)
+    try:
+        path = resolve_calibration_path(calibration, site=site)
+        source = read_calibration_file(path)
+        boxed = reboxed(
+            source,
+            site,
+            rects,
+            tag=tag,
+            taken_tags=site_tags(site.name, _site_calibration_files(site)),
+        )
+        boxed, saved = save_new(boxed)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(f"Reboxed {source.id8} (site {source.site.name}):")
+    before = {s.index: s.valid_mm for s in source.stations}
+    for station in sorted(boxed.stations, key=lambda s: s.index):
+        x0, y0, x1, y1 = station.valid_mm
+        was = before[station.index]
+        change = "" if was != station.valid_mm else ", unchanged"
+        click.echo(
+            f"  {station_label(station.index)}: {x0},{y0},{x1 - x0},{y1 - y0} "
+            f"(x,y,w,h; valid_mm {list(station.valid_mm)}, was {list(was)}{change})"
+        )
+    for line in coverage_warnings(boxed):
+        click.echo(f"warning: {line}", err=True)
+    click.echo(f"\nCalibration saved to {saved}")
+    click.echo(
+        f"Calibration id {boxed.id}"
+        + (f", tag {boxed.tag!r}" if boxed.tag else "")
+        + f", site {boxed.site.name}"
+    )
+    click.echo(f"Send it with:\n  {push_line(boxed)}")
+
+
+def _site_calibration_files(site):
+    """The calibration files `resolve_calibration_path` searches for `site`."""
+    from dotbot.calibration.lighthouse2 import (
+        CALIBRATION_TOML_GLOB,
+        calibration_folders,
+        calibration_root,
+    )
+
+    return [
+        path
+        for folder, prefix in calibration_folders(site, calibration_root())
+        for path in sorted(folder.glob(prefix + CALIBRATION_TOML_GLOB))
+    ]
