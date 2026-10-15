@@ -137,10 +137,12 @@ class Scenario:
         return until is None
 
     def reported(self, address: str, status: str) -> bool:
-        """Whether the controller holds `status` for the last batch it sent."""
+        """Whether the controller holds `status` for the last batch it sent,
+        and no batch is held behind it."""
         dotbot = self.dotbot(address)
         return (
-            self.controller.advertised_batch_ids.get(address)
+            not dotbot.waypoints_awaiting_heading
+            and self.controller.advertised_batch_ids.get(address)
             == self.controller.batch_ids.get(address)
             and dotbot.waypoints_status is not None
             and dotbot.waypoints_status.name == status

@@ -259,6 +259,7 @@ class DotBotSiteModel(BaseModel):
     areas: List[DotBotAreaModel] = []
     field: Optional[str] = None
     calibration: Optional[DotBotCalibrationSpanModel] = None
+    spin_radius_mm: Optional[float] = None
 
     @classmethod
     def from_site(cls, site: Site, calibration: Any = None) -> "DotBotSiteModel":
@@ -269,6 +270,7 @@ class DotBotSiteModel(BaseModel):
             extent_mm=list(site.extent_mm) if site.extent_mm else None,
             areas=[DotBotAreaModel(**a.as_dict()) for a in site.areas.values()],
             field=field.name if field is not None else None,
+            spin_radius_mm=site.spin_radius_mm,
             calibration=(
                 DotBotCalibrationSpanModel.from_calibration(calibration)
                 if calibration is not None
@@ -286,6 +288,7 @@ class DotBotSiteModel(BaseModel):
             areas={
                 a.name: Area(a.x, a.y, a.w, a.h, a.name, a.role) for a in self.areas
             },
+            spin_radius_mm=self.spin_radius_mm,
         )
 
 
@@ -677,6 +680,9 @@ class DotBotModel(BaseModel):
     # The waypoint report, from apps that send one (the sandbox dotbot app)
     waypoints_status: Optional[WaypointsStatus] = None
     waypoints_reason: Optional[str] = None  # why FAILED or ABORTED
+    # The controller holds the batch until the robot has a heading; the
+    # waypoint report meanwhile is the probe move's
+    waypoints_awaiting_heading: bool = False
     waypoint_index: Optional[int] = (
         None  # the point being driven to; the count once arrived
     )
@@ -684,7 +690,7 @@ class DotBotModel(BaseModel):
     axle_position: Optional[DotBotLH2Position] = None  # the robot's own estimate
     # Where the robot has been, oldest first
     trail: List[Union[DotBotLH2Position, DotBotGPSPosition]] = []
-    calibrated: int = 0x00  # Bitmask: first lighthouse = 0x01, second lighthouse = 0x02
+    calibrated: int = 0x00  # bit i: the robot holds station i's homography
     battery: float = 3.0  # Voltage in Volts
 
 

@@ -38,9 +38,26 @@ export function firmwareTooOld(bot: UnifiedBot): boolean {
   return !!info && (info.info_version ?? 0) < DEVICE_INFO_VERSION_MIN;
 }
 
+/** The full LH2 calibration id the robot holds, "" for none or unknown. An
+ * empty station mask means no homography is held, whatever id the device
+ * info still carries. */
+export function heldCalibrationId(bot: UnifiedBot): string {
+  const info = bot.swarmit?.info;
+  if (!info || info.lh2_station_mask === 0) return "";
+  return info.lh2_calibration_id ?? "";
+}
+
 /** The LH2 calibration id the robot holds: its first 8 characters, "" for none or unknown. */
 export function calibrationLabel(bot: UnifiedBot): string {
-  return (bot.swarmit?.info?.lh2_calibration_id ?? "").slice(0, 8);
+  return heldCalibrationId(bot).slice(0, 8);
+}
+
+/** "288a810d · virmond": the held calibration's short id and its site, "" for none or unknown. */
+export function calibrationSiteLabel(bot: UnifiedBot): string {
+  const id = calibrationLabel(bot);
+  if (!id) return "";
+  const site = bot.swarmit?.info?.lh2_site_name ?? "";
+  return site ? `${id} · ${site}` : id;
 }
 
 /** Whether the robot reports a calibration other than the one the controller serves. */
@@ -48,7 +65,47 @@ export function calibrationDiffers(bot: UnifiedBot, calibrationId: string): bool
   if (!calibrationId || firmwareTooOld(bot)) return false;
   const info = bot.swarmit?.info;
   if (!info) return false;
-  return (info.lh2_calibration_id ?? "").toLowerCase() !== calibrationId.toLowerCase();
+  return heldCalibrationId(bot).toLowerCase() !== calibrationId.toLowerCase();
+}
+
+/** The site of the calibration the robot holds when it is not `site`, "" otherwise or when either is unknown. */
+export function calibrationOtherSite(bot: UnifiedBot, site: Site | null): string {
+  const info = bot.swarmit?.info;
+  if (!info || firmwareTooOld(bot) || !heldCalibrationId(bot)) return "";
+  const held = info.lh2_site_name ?? "";
+  const active = site?.name ?? "";
+  if (!held || !active || held.toLowerCase() === active.toLowerCase()) return "";
+  return held;
+}
+
+/** How the robot's calibration differs from what the controller serves: a
+ * calibration of another site puts its positions in another frame, which
+ * outranks a different id of the same site. */
+export type CalibrationMismatch = "none" | "other-site" | "other-id";
+
+export function calibrationMismatch(bot: UnifiedBot, ctx: Pick<FleetContext, "calibrationId" | "site">): CalibrationMismatch {
+  if (calibrationOtherSite(bot, ctx.site)) return "other-site";
+  if (calibrationDiffers(bot, ctx.calibrationId)) return "other-id";
+  return "none";
+}
+
+/** The stations whose homography the robot holds, from its station mask: [0, 1]. */
+export function calibrationStations(bot: UnifiedBot): number[] | null {
+  const mask = bot.swarmit?.info?.lh2_station_mask;
+  if (mask === undefined || mask === null) return null;
+  const out: number[] = [];
+  for (let i = 0; i < 32; i++) if (mask & (1 << i)) out.push(i);
+  return out;
+}
+
+/** "virmond · 288a810d1234abcd · stations 0, 1": the held calibration in full, "" for none or unknown. */
+export function calibrationDetail(bot: UnifiedBot): string {
+  const id = heldCalibrationId(bot);
+  if (!id) return "";
+  const parts = [bot.swarmit?.info?.lh2_site_name ?? "", id];
+  const stations = calibrationStations(bot);
+  if (stations) parts.push(stations.length ? `stations ${stations.join(", ")}` : "no stations");
+  return parts.filter(Boolean).join(" · ");
 }
 
 /** "1204, 877 mm", or "" with no fix. */
@@ -139,7 +196,9 @@ export function reportsDetail(bot: UnifiedBot, now: number): string {
 export function warnings(bot: UnifiedBot, ctx: FleetContext): string[] {
   const out: string[] = [];
   if (firmwareTooOld(bot)) out.push("bootloader too old for this controller: reflash swarmit-sandbox");
-  else if (calibrationDiffers(bot, ctx.calibrationId)) {
+  else if (calibrationOtherSite(bot, ctx.site)) {
+    out.push(`holds a calibration of site ${calibrationOtherSite(bot, ctx.site)}: its position is in another frame`);
+  } else if (calibrationDiffers(bot, ctx.calibrationId)) {
     const held = calibrationLabel(bot) || "none";
     out.push(`holds calibration ${held}, not ${ctx.calibrationId.slice(0, 8)}: push it`);
   }
