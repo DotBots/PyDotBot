@@ -198,7 +198,11 @@ class SessionDriver:
                     client.send_lh2_calibration, payload, check.send_to
                 )
                 stale = await asyncio.to_thread(
-                    push_worklist, client, session.saved, check.addresses
+                    push_worklist,
+                    client,
+                    session.saved,
+                    check.addresses,
+                    check.info_gens,
                 )
             finally:
                 await asyncio.to_thread(self._listen_for_buttons, "")

@@ -9,9 +9,17 @@ The simulator setup below is the default path for reproducibility.
 
 The example reads its layout from the controller's site, which needs a
 **field** and a **staging** area: robots queue on the border between the two,
-charge one at a time at a charger on staging's far edge, then park along the
-field's opposite edge. It refuses a site without a staging area. The site
-`dotbot config init` writes has both.
+charge one at a time at the site's first `charger` object (else at a point on
+staging's far edge), then park along the field's opposite edge. It refuses a
+site without a staging area. The site `dotbot config init` writes has both; a
+charger is added in `site.toml`, or with the Object tool of `dotbot site edit`:
+
+```toml
+[objects.pad-a]
+kind = "charger"
+x = 3200
+y = 3900
+```
 
 ### 1. Start the simulator
 

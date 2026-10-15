@@ -106,7 +106,10 @@ async def _wait_for_completion(address: str, host: str, port: int) -> None:
             bots = await client.fetch_dotbots(query=DotBotQueryModel(address=address))
             if bots:
                 bot = bots[0]
-                if not bot.waypoints or bot.mode == ControlModeType.MANUAL:
+                if not bot.waypoints or (
+                    bot.mode == ControlModeType.MANUAL
+                    and not bot.waypoints_awaiting_heading
+                ):
                     break
             await asyncio.sleep(0.5)
 

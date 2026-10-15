@@ -1,6 +1,7 @@
 """Queue robots on the border between the field and staging, charge them one
-at a time at a charger on staging's far edge, then park them along the field's
-opposite edge. Every position comes from the controller's site."""
+at a time at a charger, then park them along the field's opposite edge. Every
+position comes from the controller's site: the charger is the site's first
+`charger` object, else a point on staging's far edge."""
 
 import asyncio
 import math
@@ -62,7 +63,11 @@ class ChargingLayout:
 
 
 def layout_from_site(site: Site) -> ChargingLayout:
-    """The layout for a site with a field and a staging area above or below it."""
+    """The layout for a site with a field and a staging area above or below it.
+
+    A site with a `charger` object puts the charger there, and the queue's
+    head in line with it.
+    """
     field, staging = site.field, site.staging
     if field is None or staging is None:
         raise ValueError(
@@ -70,11 +75,17 @@ def layout_from_site(site: Site) -> ChargingLayout:
             "`dotbot config init` writes a site with both"
         )
     below = staging.centre[1] >= field.centre[1]
-    head_x = staging.x + min(QUEUE_HEAD_INSET, staging.w // 4)
+    chargers = site.objects_of("charger")
+    if chargers:
+        charger = chargers[0]
+        head_x = charger.x
+    else:
+        charger = None
+        head_x = staging.x + min(QUEUE_HEAD_INSET, staging.w // 4)
     if below:
         return ChargingLayout(
             charger_x=head_x,
-            charger_y=staging.y_max - CHARGER_INSET,
+            charger_y=charger.y if charger else staging.y_max - CHARGER_INSET,
             queue_head_x=head_x,
             queue_head_y=staging.y,
             park_x=field.x + PARK_INSET,
@@ -83,7 +94,7 @@ def layout_from_site(site: Site) -> ChargingLayout:
         )
     return ChargingLayout(
         charger_x=head_x,
-        charger_y=staging.y + CHARGER_INSET,
+        charger_y=charger.y if charger else staging.y + CHARGER_INSET,
         queue_head_x=head_x,
         queue_head_y=staging.y_max,
         park_x=field.x + PARK_INSET,

@@ -521,3 +521,30 @@ describe("the possible footprint", () => {
     expect(layer("a", "reach")!.getAttribute("fill")).not.toBe("none");
   });
 });
+
+describe("a robot calibrated for another site", () => {
+  const held = (site: string) =>
+    ({
+      device: "DotBotV3",
+      status: "Running",
+      battery: 2900,
+      pos_x: 0,
+      pos_y: 0,
+      info: { info_version: 4, lh2_calibration_id: "288a810d1234abcd", lh2_site_name: site },
+    }) as UnifiedBot["swarmit"];
+
+  it("is marked on the map, and a robot of this site or of no known site is not", () => {
+    render(
+      <Harness
+        bots={[
+          bot("away", { x: 500, y: 500 }, { swarmit: held("workshop") }),
+          bot("home", { x: 900, y: 900 }, { swarmit: held("c405-arena") }),
+          bot("none", { x: 1200, y: 900 }),
+        ]}
+      />,
+    );
+    expect(screen.getByTestId("other-site-away").getAttribute("title")).toContain("workshop");
+    expect(screen.queryByTestId("other-site-home")).toBeNull();
+    expect(screen.queryByTestId("other-site-none")).toBeNull();
+  });
+});
