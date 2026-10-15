@@ -454,6 +454,166 @@ describe("SiteEditor in the console", () => {
   });
 });
 
+describe("SiteEditor live robots", () => {
+  const fleet = (served: { id: string; site: string; anchor: string } | null = null) => ({
+    robots: [
+      { id: "AA01", x: 500, y: 500, heading_deg: 90, otherSite: "" },
+      { id: "AA02", x: 1500, y: 500, heading_deg: null, otherSite: "" },
+      { id: "AA03", x: 900, y: 900, heading_deg: null, otherSite: "lab" },
+    ],
+    served,
+  });
+
+  it("draws the console's robots, a heading when known, and hides them on request", async () => {
+    server(loaded(), { status: 200, body: {} });
+    render(<SiteEditor live={fleet({ id: "abcd1234abcd1234", site: "arena", anchor: "the door corner" })} />);
+    expect(await screen.findByTestId("live-robot-AA01")).toBeInTheDocument();
+    expect(screen.getByTestId("live-heading-AA01")).toBeInTheDocument();
+    expect(screen.queryByTestId("live-heading-AA02")).toBeNull();
+    // A robot holding another site's calibration is in another frame
+    expect(screen.queryByTestId("live-robot-AA03")).toBeNull();
+    expect(screen.getByTestId("live-note")).toHaveTextContent("of site lab");
+    fireEvent.click(screen.getByLabelText("live robots"));
+    expect(screen.queryByTestId("live-robot-AA01")).toBeNull();
+  });
+
+  it("draws no robot, and says why, when the served calibration is in another frame", async () => {
+    server(loaded(), { status: 200, body: {} });
+    render(<SiteEditor live={fleet({ id: "abcd1234abcd1234", site: "arena", anchor: "an older anchor" })} />);
+    expect(await screen.findByTestId("live-note")).toHaveTextContent("records another anchor");
+    expect(screen.queryByTestId("live-robot-AA01")).toBeNull();
+  });
+
+  it("shows no live layer outside the console", async () => {
+    server(loaded(), { status: 200, body: {} });
+    render(<SiteEditor />);
+    await screen.findByTestId("edit-area-field");
+    expect(screen.queryByTestId("live")).toBeNull();
+  });
+});
+
+describe("SiteEditor turn site", () => {
+  const turnInfo = (marks: string[] = []) => ({
+    anchor: "the door corner",
+    pivot: [1000, 2000],
+    anchor_marks: marks,
+    calibrations: [
+      { id: "abcd1234abcd1234", id8: "abcd1234", tag: "rooms", created_at: "", stations: [0, 1], path: "" },
+      { id: "eeee1111eeee1111", id8: "eeee1111", tag: "", created_at: "", stations: [0], path: "" },
+    ],
+  });
+
+  function turnServer(marks: string[] = []) {
+    const fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      const json = (status: number, body: unknown) =>
+        new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+      if (url === "api/site") return json(200, loaded());
+      if (url === "api/turn" && !init?.method) return json(200, turnInfo(marks));
+      if (url === "api/turn" && init?.method === "POST")
+        return json(200, {
+          saved: [{ id8: "9e9e9e9e", push: "dotbot swarm calibrate-lh2 push 9e9e9e9e --site arena", warnings: [] }],
+          anchor_marks: marks,
+        });
+      return json(404, { detail: "no" });
+    });
+    vi.stubGlobal("fetch", fetch);
+    return fetch;
+  }
+
+  async function openTurn(props = {}) {
+    render(<SiteEditor {...props} />);
+    await screen.findByTestId("edit-area-field");
+    fireEvent.click(screen.getByText("Turn site"));
+    await waitFor(() => expect(screen.getByLabelText("turn abcd1234")).toBeChecked());
+  }
+
+  const posts = (fetch: ReturnType<typeof vi.fn>) =>
+    fetch.mock.calls.filter(([url, init]) => url === "api/turn" && (init as RequestInit | undefined)?.method === "POST");
+
+  it("previews the site turned about its pivot while the floor and the robots stay", async () => {
+    turnServer();
+    await openTurn({
+      live: { robots: [{ id: "AA01", x: 500, y: 500, heading_deg: null, otherSite: "" }], served: null },
+    });
+    expect(screen.getByTestId("site-layers").getAttribute("transform")).toBeNull();
+    fireEvent.change(screen.getByLabelText("turn degrees"), { target: { value: "12.5" } });
+    const transform = screen.getByTestId("site-layers").getAttribute("transform")!;
+    expect(transform).toMatch(/^rotate\(12\.5 /);
+    expect(screen.getByTestId("site-extent").getAttribute("transform")).toBe(transform);
+    expect(screen.getByTestId("anchor").getAttribute("transform")).toBe(transform);
+    expect(screen.getByTestId("turn-ghost")).toBeInTheDocument();
+    expect(screen.getByTestId("live-robot-AA01").closest("[transform]")).toBeNull();
+    expect(screen.getByTestId("turn-panel")).toHaveTextContent("the robots, which stand on it");
+  });
+
+  it("turns by dragging the handle, in whole degrees", async () => {
+    turnServer();
+    await openTurn();
+    const canvas = screen.getByTestId("site-canvas");
+    const handle = screen.getByTestId("turn-handle");
+    const hx = Number(handle.getAttribute("cx"));
+    const hy = Number(handle.getAttribute("cy"));
+    const pivot = screen.getByTestId("turn-pivot");
+    const px = Number(pivot.getAttribute("cx"));
+    const py = Number(pivot.getAttribute("cy"));
+    // The handle starts straight above the pivot; level with it on the right
+    // is a quarter turn clockwise as drawn
+    expect(hx).toBeCloseTo(px);
+    fireEvent.pointerDown(handle, { button: 0, clientX: hx, clientY: hy, pointerId: 1 });
+    fireEvent.pointerMove(canvas, { clientX: px + 100, clientY: py + 1, pointerId: 1 });
+    fireEvent.pointerUp(canvas, { pointerId: 1 });
+    const deg = Number((screen.getByLabelText("turn degrees") as HTMLInputElement).value);
+    expect(Number.isInteger(deg)).toBe(true);
+    expect(deg).toBe(91);
+  });
+
+  it("will not save until the anchor says where zero is now, then sends the turn", async () => {
+    const fetch = turnServer();
+    await openTurn();
+    fireEvent.change(screen.getByLabelText("turn degrees"), { target: { value: "5" } });
+    expect(screen.getByText("Save turn")).toBeDisabled();
+    expect(screen.getByTestId("turn-why")).toHaveTextContent("say where it is now");
+    fireEvent.click(screen.getByText("Append a note of the turn"));
+    expect((screen.getByLabelText("turn anchor") as HTMLTextAreaElement).value).toMatch(
+      /^the door corner Turned 5 deg about \(1000, 2000\) mm on \d{4}-\d{2}-\d{2}/,
+    );
+    fireEvent.click(screen.getByLabelText("turn eeee1111"));
+    await act(async () => fireEvent.click(screen.getByText("Save turn")));
+    const [post] = posts(fetch);
+    const body = JSON.parse((post[1] as RequestInit).body as string);
+    expect(body).toMatchObject({
+      theta_deg: 5,
+      pivot: [1000, 2000],
+      calibrations: ["abcd1234abcd1234"],
+      revision: "r1",
+      marks_confirmed: false,
+    });
+    expect(body.anchor).toContain("Turned 5 deg");
+    expect(await screen.findByTestId("turn-saved")).toHaveTextContent("dotbot swarm calibrate-lh2 push 9e9e9e9e --site arena");
+  });
+
+  it("asks before turning a site whose zero is a mark on the floor", async () => {
+    const fetch = turnServer(["the anchor (the door corner) is not self-defined"]);
+    await openTurn();
+    expect(screen.getByTestId("turn-marks")).toHaveTextContent("not self-defined");
+    fireEvent.change(screen.getByLabelText("turn degrees"), { target: { value: "5" } });
+    fireEvent.change(screen.getByLabelText("turn anchor"), { target: { value: "40 mm right of the door corner" } });
+    fireEvent.click(screen.getByText("Save turn"));
+    expect(screen.getByTestId("marks-dialog")).toHaveTextContent("not self-defined");
+    expect(posts(fetch)).toHaveLength(0);
+    await act(async () => fireEvent.click(screen.getByText("Turn anyway")));
+    const [post] = posts(fetch);
+    expect(JSON.parse((post[1] as RequestInit).body as string).marks_confirmed).toBe(true);
+  });
+
+  it("blocks the turn while the site has unsaved edits", async () => {
+    turnServer();
+    await openTurn();
+    fireEvent.change(screen.getByLabelText("extent W (mm)"), { target: { value: "2500" } });
+    expect(screen.getByTestId("turn-why")).toHaveTextContent("Save or undo the site's edits first");
+  });
+});
+
 describe("SiteEditor station boxes", () => {
   const station = (index: number, rect: number[]) => ({
     index,
@@ -591,6 +751,33 @@ describe("SiteEditor station boxes", () => {
     fireEvent.click(screen.getByText("Redo"));
     expect(value("station 0 w")).toBe(1500);
     expect(screen.queryByText(/unsaved/)).toBeNull();
+  });
+
+  it("tints each live robot by whether it stands in the selected station's box", async () => {
+    boxesServer();
+    render(
+      <SiteEditor
+        live={{
+          robots: [
+            { id: "AA01", x: 500, y: 500, heading_deg: null, otherSite: "" },
+            { id: "AA02", x: 1500, y: 500, heading_deg: null, otherSite: "" },
+          ],
+          served: null,
+        }}
+      />,
+    );
+    await screen.findByTestId("edit-area-field");
+    expect(screen.getByTestId("live-robot-AA01").getAttribute("data-inside")).toBeNull();
+    fireEvent.click(screen.getByText("Station boxes"));
+    fireEvent.change(await screen.findByLabelText("boxes calibration id"), { target: { value: "abcd1234" } });
+    await act(async () => fireEvent.click(screen.getByText("Load")));
+    await screen.findByTestId("station-box-0");
+    fireEvent.change(screen.getByLabelText("station 0 w"), { target: { value: "1000" } });
+    fireEvent.click(within(screen.getByTestId("boxes-station-0")).getByText("station 0 (channel 1)"));
+    expect(screen.getByTestId("live-robot-AA01").getAttribute("data-inside")).toBe("true");
+    expect(screen.getByTestId("live-robot-AA02").getAttribute("data-inside")).toBe("false");
+    fireEvent.click(within(screen.getByTestId("boxes-station-1")).getByText("station 1 (channel 2)"));
+    expect(screen.getByTestId("live-robot-AA02").getAttribute("data-inside")).toBe("true");
   });
 
   it("says why a calibration outside the site's frame cannot be edited", async () => {

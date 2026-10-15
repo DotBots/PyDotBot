@@ -76,6 +76,8 @@ import {
   Waypoint,
 } from "./types";
 import type { FleetContext } from "./botFacts";
+import { calibrationOtherSite } from "./botFacts";
+import type { LiveFleet } from "./siteEditor/types";
 import { useCalibration, useCapturer } from "./useCalibration";
 import { useFleet } from "./useFleet";
 import { useMrta } from "./useMrta";
@@ -193,6 +195,25 @@ export const App: React.FC = () => {
     () => ({ calibrationId: session?.saved_id ?? "", site, now: Date.now() / 1000 }),
     [session?.saved_id, site, bots],
   );
+  // The fleet the site editor panel draws over the site, in the frame of the
+  // calibration the controller serves
+  const liveFleet = useMemo<LiveFleet | null>(() => {
+    if (!editingSite) return null;
+    return {
+      robots: bots
+        .filter((b) => b.position && b.link !== "lost")
+        .map((b) => ({
+          id: b.id,
+          x: b.position!.x,
+          y: b.position!.y,
+          heading_deg: b.pose && b.pose.heading_source !== "none" ? b.pose.heading_deg : null,
+          otherSite: calibrationOtherSite(b, site),
+        })),
+      served: site?.calibration
+        ? { id: site.calibration.id, site: site.calibration.site ?? "", anchor: site.calibration.anchor ?? "" }
+        : null,
+    };
+  }, [editingSite, bots, site]);
   // The robot chosen to capture: clicked on the map, typed in the card, or
   // the one whose button took the last point.
   const [capturer, setCapturer] = useCapturer(session);
@@ -1209,7 +1230,12 @@ export const App: React.FC = () => {
               style={{ position: "fixed", inset: 0, zIndex: 50, background: "var(--canvas)" }}
             >
               <Suspense fallback={null}>
-                <SiteEditor base={SITE_EDITOR_BASE} theme={theme} onClose={() => setEditingSite(false)} />
+                <SiteEditor
+                  base={SITE_EDITOR_BASE}
+                  theme={theme}
+                  live={liveFleet}
+                  onClose={() => setEditingSite(false)}
+                />
               </Suspense>
             </div>
           )}

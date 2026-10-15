@@ -486,6 +486,9 @@ export interface SiteCalibration {
   id: string;
   tag: string;
   created_at: string;
+  /** The frame it records: its site's name and anchor. */
+  site?: string;
+  anchor?: string;
   placements: { points_mm: [number, number][]; points_from: PointsFrom | null }[];
 }
 

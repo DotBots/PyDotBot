@@ -7,16 +7,18 @@ import {
   fetchBackdrops,
   fetchCalibrations,
   fetchSite,
+  fetchTurn,
   placeCalibration,
   previewSite,
   reboxCalibration,
   saveSite,
   stopEditor,
+  turnSite,
 } from "./api";
 import { boxIssues, boxesOf, cornersOf, sameBoxes } from "./boxes";
 import { CalibrationPanel } from "./CalibrationPanel";
 import { Canvas } from "./Canvas";
-import type { BarrierRef, Placement, Tool } from "./Canvas";
+import type { BarrierRef, Placement, SiteTurn, Tool } from "./Canvas";
 import {
   SNAP_DEFAULT_MM,
   SNAP_STEPS_MM,
@@ -30,7 +32,9 @@ import type { Rect } from "./edit";
 import { record, redo, seal, startHistory, undo } from "./history";
 import type { History } from "./history";
 import { Inspector } from "./Inspector";
+import { liveShown } from "./live";
 import { StationBoxesPanel } from "./StationBoxesPanel";
+import { TurnPanel } from "./TurnPanel";
 import { IDENTITY } from "./rigid";
 import type {
   Backdrops,
@@ -39,16 +43,19 @@ import type {
   CalibrationOverlay,
   EditArea,
   EditObject,
+  LiveFleet,
   PlacedCalibration,
   SiteModel,
   SiteResponse,
+  TurnInfo,
+  TurnSaved,
 } from "./types";
 
 // The site editor: one site pack's site.toml, drawn. It talks only to the
 // small server `dotbot site new|edit` starts, never to a controller.
 
 type Notice = { kind: "info" | "error" | "stale"; text: string } | null;
-type Dialog = { kind: "toml"; text: string } | { kind: "frame" } | null;
+type Dialog = { kind: "toml"; text: string } | { kind: "frame" } | { kind: "marks"; marks: string[] } | null;
 
 function useTheme(): "dark" | "light" {
   const preset = new URLSearchParams(window.location.search).get("theme");
@@ -80,6 +87,7 @@ const TOOLS: { key: Tool; label: string; hint: string }[] = [
   { key: "area", label: "Area", hint: "A: drag out a new area" },
   { key: "calibration", label: "Calibration", hint: "C: place a spin calibration on the site" },
   { key: "boxes", label: "Station boxes", hint: "S: change where each LH2 station of a calibration is trusted" },
+  { key: "turn", label: "Turn site", hint: "T: turn the whole site on the floor, its calibrations saved for the turned frame" },
   { key: "wall", label: "Wall", hint: "W: click the points of a wall, double-click to finish" },
   { key: "obstacle", label: "Obstacle", hint: "O: click the corners of an obstacle, double-click to finish" },
   { key: "object", label: "Object", hint: "B: click to place a charger, dock, landmark or camera" },
@@ -101,6 +109,8 @@ export interface SiteEditorProps {
   onClose?: () => void;
   /** The host page's theme, when it has its own. */
   theme?: "dark" | "light";
+  /** The console's fleet, drawn read-only over the site; none outside the console. */
+  live?: LiveFleet | null;
 }
 
 export function SiteEditor(props: SiteEditorProps = {}) {
@@ -165,6 +175,15 @@ export function SiteEditor(props: SiteEditorProps = {}) {
   const [boxTag, setBoxTag] = useState("");
   const [boxSaved, setBoxSaved] = useState<PlacedCalibration | null>(null);
   const boxes = boxHistory?.present ?? null;
+  // The Turn site tool: the turn previewed, the anchor it will write, and
+  // which calibrations it saves again
+  const [turnInfo, setTurnInfo] = useState<TurnInfo | null>(null);
+  const [siteTurn, setSiteTurn] = useState<SiteTurn>({ theta_deg: 0, pivot: [0, 0] });
+  const [turnAnchor, setTurnAnchor] = useState("");
+  const [turnChosen, setTurnChosen] = useState<Set<string>>(new Set());
+  const [turnSaved, setTurnSaved] = useState<TurnSaved | null>(null);
+  const turnDirty = siteTurn.theta_deg % 360 !== 0;
+  const [showLive, setShowLive] = useState(true);
   const boxesDirty = !!boxSource && !!boxes && !sameBoxes(boxes, boxesOf(boxSource));
   const setBox = (k: number, rect: Rect, key: string | null = null) =>
     setBoxHistory((h) => {
@@ -224,6 +243,59 @@ export function SiteEditor(props: SiteEditorProps = {}) {
       setSelected(null);
     }
     setHistory(next);
+  };
+
+  // A new revision is a new anchor, and other calibrations in the frame
+  useEffect(() => {
+    if (tool !== "turn" || revision === undefined) return;
+    fetchTurn(base)
+      .then((info) => {
+        setTurnInfo(info);
+        setSiteTurn({ theta_deg: 0, pivot: info.pivot });
+        setTurnAnchor(info.anchor);
+        setTurnChosen(new Set(info.calibrations.map((c) => c.id)));
+      })
+      .catch((err) => setNotice({ kind: "error", text: `could not read the site's calibrations: ${(err as Error).message}` }));
+  }, [tool, revision, base]);
+
+  const doTurn = async (confirmed: boolean) => {
+    if (!loaded || !turnInfo) return;
+    setDialog(null);
+    try {
+      const result = await turnSite(
+        {
+          theta_deg: siteTurn.theta_deg,
+          pivot: siteTurn.pivot,
+          anchor: turnAnchor,
+          calibrations: turnInfo.calibrations.map((c) => c.id).filter((id) => turnChosen.has(id)),
+          revision: loaded.revision,
+          marks_confirmed: confirmed,
+        },
+        base,
+      );
+      setTurnSaved(result);
+      setNotice({
+        kind: "info",
+        text: `turned the site: saved ${result.saved.map((c) => c.id8).join(", ")}; push with ${result.saved.map((c) => c.push).join("; ")}`,
+      });
+      // The anchor changed on disk, and with it what is in the site's frame
+      await load();
+    } catch (err) {
+      if (err instanceof StaleSiteError) {
+        setNotice({
+          kind: "stale",
+          text: "site.toml changed on disk since this page loaded it, so the turn was not saved. Reload takes the file as it is now.",
+        });
+      } else {
+        setNotice({ kind: "error", text: `turn not saved: ${(err as Error).message}` });
+      }
+    }
+  };
+
+  const onTurnSave = () => {
+    if (!turnInfo) return;
+    if (turnInfo.anchor_marks.length > 0) setDialog({ kind: "marks", marks: turnInfo.anchor_marks });
+    else void doTurn(false);
   };
 
   useEffect(() => {
@@ -423,6 +495,7 @@ export function SiteEditor(props: SiteEditorProps = {}) {
       else if (e.key === "a" || e.key === "A") setTool("area");
       else if (e.key === "c" || e.key === "C") setTool("calibration");
       else if (e.key === "s" || e.key === "S") setTool("boxes");
+      else if (e.key === "t" || e.key === "T") setTool("turn");
       else if (e.key === "w" || e.key === "W") setTool("wall");
       else if (e.key === "o" || e.key === "O") setTool("obstacle");
       else if (e.key === "b" || e.key === "B") setTool("object");
@@ -443,11 +516,11 @@ export function SiteEditor(props: SiteEditorProps = {}) {
 
   useEffect(() => {
     const onLeave = (e: BeforeUnloadEvent) => {
-      if ((dirty || boxesDirty) && !stopped) e.preventDefault();
+      if ((dirty || boxesDirty || turnDirty) && !stopped) e.preventDefault();
     };
     window.addEventListener("beforeunload", onLeave);
     return () => window.removeEventListener("beforeunload", onLeave);
-  }, [dirty, boxesDirty, stopped]);
+  }, [dirty, boxesDirty, turnDirty, stopped]);
 
   const doSave = async () => {
     if (!site || !loaded) return;
@@ -493,11 +566,11 @@ export function SiteEditor(props: SiteEditorProps = {}) {
 
   const onDone = async () => {
     if (embedded) {
-      if ((dirty || boxesDirty) && !window.confirm("Close the editor without saving your changes?")) return;
+      if ((dirty || boxesDirty || turnDirty) && !window.confirm("Close the editor without saving your changes?")) return;
       props.onClose?.();
       return;
     }
-    if ((dirty || boxesDirty) && !window.confirm("Stop the editor without saving your changes?")) return;
+    if ((dirty || boxesDirty || turnDirty) && !window.confirm("Stop the editor without saving your changes?")) return;
     try {
       await stopEditor(base);
     } catch {
@@ -505,6 +578,8 @@ export function SiteEditor(props: SiteEditorProps = {}) {
     }
     setStopped(true);
   };
+
+  const live = props.live && loaded ? liveShown(props.live, loaded.name, loaded.site.anchor) : null;
 
   const shell: React.CSSProperties = {
     height: embedded ? "100%" : "100vh",
@@ -704,6 +779,9 @@ export function SiteEditor(props: SiteEditorProps = {}) {
             selectedBox={selectedBox}
             onSelectBox={setSelectedBox}
             onBoxChange={(k, rect, key) => setBox(k, rect, key)}
+            turn={tool === "turn" && turnInfo ? siteTurn : null}
+            onTurn={setSiteTurn}
+            robots={live && showLive ? live.robots : null}
             placement={placement}
             onPlacement={(move) => setPlacement((p) => (p ? { ...p, move } : p))}
             backdrops={
@@ -758,8 +836,39 @@ export function SiteEditor(props: SiteEditorProps = {}) {
                 return next;
               })
             }
+            live={
+              live
+                ? { count: live.robots.length, shown: showLive, note: live.note, onToggle: () => setShowLive((v) => !v) }
+                : null
+            }
             extra={
-              tool === "boxes" || (boxSource && tool !== "calibration") ? (
+              tool === "turn" ? (
+                <TurnPanel
+                  info={turnInfo}
+                  turn={siteTurn}
+                  anchor={turnAnchor}
+                  chosen={turnChosen}
+                  saved={turnSaved}
+                  robots={!!live && showLive && live.robots.length > 0}
+                  blocked={dirty ? "Save or undo the site's edits first: the turn rewrites site.toml's anchor." : null}
+                  onTurn={setSiteTurn}
+                  onAnchor={setTurnAnchor}
+                  onNote={() => {
+                    const [x, y] = siteTurn.pivot;
+                    const note = `Turned ${siteTurn.theta_deg} deg about (${x}, ${y}) mm on ${new Date().toISOString().slice(0, 10)}: zero turned with the site.`;
+                    setTurnAnchor((a) => (a.trim() ? `${a.trimEnd()} ${note}` : note));
+                  }}
+                  onChoose={(id) =>
+                    setTurnChosen((chosen) => {
+                      const next = new Set(chosen);
+                      if (next.has(id)) next.delete(id);
+                      else next.add(id);
+                      return next;
+                    })
+                  }
+                  onSave={onTurnSave}
+                />
+              ) : tool === "boxes" || (boxSource && tool !== "calibration") ? (
                 <StationBoxesPanel
                   listing={listing.filter((c) => c.in_frame)}
                   source={boxSource}
@@ -871,6 +980,32 @@ export function SiteEditor(props: SiteEditorProps = {}) {
                 >
                   {dialog.text}
                 </pre>
+              </>
+            ) : dialog.kind === "marks" ? (
+              <>
+                <div style={{ fontWeight: 600, marginBottom: 8, color: "var(--s-Stopping)" }}>
+                  Turn a site whose zero is a mark on the floor?
+                </div>
+                <ul data-testid="marks-dialog" style={{ margin: "0 0 12px", paddingLeft: 18 }}>
+                  {dialog.marks.map((m) => (
+                    <li key={m}>{m}</li>
+                  ))}
+                </ul>
+                <p style={{ margin: "0 0 12px" }}>
+                  After the turn, zero is no longer on that mark: the anchor you wrote is the only record of where it went.
+                </p>
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                  <button type="button" style={button} onClick={() => setDialog(null)}>
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    style={{ ...button, background: "var(--s-Stopping)", color: "#fff" }}
+                    onClick={() => void doTurn(true)}
+                  >
+                    Turn anyway
+                  </button>
+                </div>
               </>
             ) : (
               <>
