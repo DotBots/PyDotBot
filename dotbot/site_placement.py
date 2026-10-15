@@ -19,7 +19,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from dotbot import site_toml
-from dotbot.calibration import lighthouse2
+from dotbot.calibration import lighthouse2, site_turn
 from dotbot.calibration.placement import (
     FREE_SOLVERS,
     PlacementRefused,
@@ -49,6 +49,19 @@ class PlaceRequest(BaseModel):
     theta_deg: float = 0.0
     # Move a corner-collected calibration anyway: the anchor itself moved
     reanchor: bool = False
+
+
+class TurnRequest(BaseModel):
+    theta_deg: float
+    pivot: tuple[float, float]
+    # The new anchor text; it must differ from the file's
+    anchor: str
+    # Ids of the calibrations to turn, each in the site's frame
+    calibrations: list[str]
+    # The site.toml revision the page loaded
+    revision: str
+    # The user has read why the anchor is tied to marks on the floor
+    marks_confirmed: bool = False
 
 
 class BoxesRequest(BaseModel):
@@ -96,8 +109,14 @@ def _metadata(path: Path) -> dict | None:
     }
 
 
-def create_router(name: str, pack: Path, site_text: Callable[[], str]) -> APIRouter:
-    """Routes for the site `name` in `pack`; `site_text` reads its site.toml."""
+def create_router(
+    name: str,
+    pack: Path,
+    site_text: Callable[[], str],
+    write_site: Callable[[str, str], None] | None = None,
+) -> APIRouter:
+    """Routes for the site `name` in `pack`; `site_text` reads its site.toml,
+    `write_site(revision, text)` writes it over that revision."""
     router = APIRouter()
 
     def resolve(spec: str) -> lighthouse2.Calibration:
@@ -214,6 +233,84 @@ def create_router(name: str, pack: Path, site_text: Callable[[], str]) -> APIRou
             "source": source.id8,
             "push": push_line(boxed),
             "warnings": coverage_warnings(boxed),
+        }
+
+    @router.get("/api/turn")
+    def turn_info():
+        site = current_site()
+        calibrations = site_turn.in_frame(site, _files(pack))
+        return {
+            "anchor": site.anchor,
+            "pivot": list(site_turn.default_pivot(site)),
+            "anchor_marks": site_turn.anchor_marks(site, calibrations),
+            "calibrations": [
+                {
+                    "id": cal.id,
+                    "id8": cal.id8,
+                    "tag": cal.tag,
+                    "created_at": cal.created_at,
+                    "stations": sorted(st.index for st in cal.stations),
+                    "path": str(cal.path),
+                }
+                for cal in calibrations
+            ],
+        }
+
+    @router.post("/api/turn")
+    def turn(request: TurnRequest):
+        if write_site is None:
+            raise HTTPException(405, "this editor cannot write site.toml")
+        text = site_text()
+        if site_toml.revision(text.encode("utf-8")) != request.revision:
+            raise HTTPException(409, "site.toml changed on disk since the page loaded it")
+        site = current_site()
+        files = _files(pack)
+        by_id = {cal.id: cal for cal in site_turn.in_frame(site, files)}
+        unknown = [spec for spec in request.calibrations if spec not in by_id]
+        if unknown:
+            raise HTTPException(
+                422,
+                f"not a calibration in site {site.name}'s frame: {', '.join(unknown)}",
+            )
+        sources = [by_id[spec] for spec in dict.fromkeys(request.calibrations)]
+        marks = site_turn.anchor_marks(site, by_id.values())
+        if marks and not request.marks_confirmed:
+            raise HTTPException(
+                422, "turning moves zero off the floor marks: " + "; ".join(marks)
+            )
+        try:
+            planned = site_turn.plan_turn(
+                sources,
+                site,
+                request.theta_deg,
+                request.pivot,
+                request.anchor,
+                taken_tags=site_tags(site.name, files),
+            )
+        except site_turn.TurnRefused as exc:
+            raise HTTPException(422, str(exc)) from exc
+        try:
+            saved = site_turn.save_turn(
+                planned,
+                text,
+                request.anchor,
+                lambda new: write_site(request.revision, new),
+            )
+        except site_toml.SiteTomlError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        return {
+            "saved": [
+                {
+                    **overlay(cal),
+                    "path": str(path),
+                    "source": source.id8,
+                    "push": push_line(cal),
+                    "warnings": site_turn.outside_warnings(cal, site)
+                    + coverage_warnings(cal),
+                }
+                for source, (cal, path) in zip(sources, saved)
+            ],
+            "anchor_marks": marks,
         }
 
     return router
