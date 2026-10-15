@@ -179,9 +179,15 @@ def overlay(calibration: Calibration) -> dict:
 def placed_tag(tag: str, site_name: str, taken: Iterable[str] = ()) -> str:
     """The moved calibration's tag: `tag` suffixed with the site, then a
     number if that tag is taken."""
+    return suffixed_tag(tag, site_name, taken)
+
+
+def suffixed_tag(tag: str, suffix: str, taken: Iterable[str] = ()) -> str:
+    """`tag` suffixed `-<suffix>` unless it already is, then a number if that
+    tag is taken; no tag stays none."""
     if not tag:
         return ""
-    base = tag if tag.endswith(f"-{site_name}") else f"{tag}-{site_name}"
+    base = tag if tag.endswith(f"-{suffix}") else f"{tag}-{suffix}"
     taken = {t.lower() for t in taken}
     candidate, n = base, 2
     while candidate.lower() in taken or candidate.lower() == tag.lower():
@@ -341,8 +347,16 @@ def save_placed(source: Calibration, placed: Calibration) -> tuple[Calibration, 
         raise PlacementRefused(
             f"the move leaves calibration {source.id8} where it is; nothing to write"
         )
-    for path in lighthouse2.site_dir(placed.site.name).glob(f"*-{placed.id8}.toml"):
+    return save_new(placed)
+
+
+def save_new(calibration: Calibration) -> tuple[Calibration, Path]:
+    """Write `calibration` beside its site's calibrations, or, when a file of
+    its id is there already, leave that file as it is; return what is on disk."""
+    for path in lighthouse2.site_dir(calibration.site.name).glob(
+        f"*-{calibration.id8}.toml"
+    ):
         existing = lighthouse2.read_calibration_file(path)
-        if existing.id == placed.id:
+        if existing.id == calibration.id:
             return existing, path
-    return placed, lighthouse2.write_calibration(placed)
+    return calibration, lighthouse2.write_calibration(calibration)
