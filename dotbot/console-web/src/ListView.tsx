@@ -4,7 +4,7 @@ import {
   appLabel,
   areaLabel,
   bootloaderLabel,
-  calibrationDiffers,
+  calibrationDetail,
   calibrationLabel,
   detailText,
   FleetContext,
@@ -19,8 +19,8 @@ import { rowOpacity } from "./link";
 import { store } from "./persisted";
 import { UnifiedBot } from "./types";
 import {
-  Badge,
   BatteryCell,
+  CalibrationBadge,
   FilterBar,
   HeadingGlyph,
   LedDot,
@@ -118,12 +118,10 @@ export const COLUMNS: Column[] = [
     shown: true,
     cell: (b, ctx) => (
       <span style={{ display: "inline-flex", gap: 6, alignItems: "center", whiteSpace: "nowrap" }}>
-        <span style={muted}>{calibrationLabel(b) || dash}</span>
-        {calibrationDiffers(b, ctx.calibrationId) && (
-          <Badge tone="warn" title={`The controller serves ${ctx.calibrationId.slice(0, 8)}`}>
-            differs
-          </Badge>
-        )}
+        <span title={calibrationDetail(b) || undefined} style={muted}>
+          {calibrationLabel(b) || dash}
+        </span>
+        <CalibrationBadge bot={b} ctx={ctx} />
       </span>
     ),
   },
