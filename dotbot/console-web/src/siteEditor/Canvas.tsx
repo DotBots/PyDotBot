@@ -20,6 +20,7 @@ import { FRAME_CAMERA, viewGeom } from "../zoom";
 import { BARRIER_MIN_POINTS, HANDLES, effectiveRole, finishPoints, movePoints, moveRect, rectFromDrag, resizeRect, snap } from "./edit";
 import type { Handle, Rect } from "./edit";
 import { STATION_COLOURS } from "./boxes";
+import { insideRect } from "./live";
 import { applyMove, movedBox, movedCorners, snapAngle, turnAbout } from "./rigid";
 import type { Point, Rigid2D } from "./rigid";
 import type {
@@ -30,6 +31,7 @@ import type {
   EditArea,
   EditBarrier,
   EditObject,
+  LiveRobot,
   SpinCircle,
 } from "./types";
 
@@ -37,7 +39,13 @@ import type {
 // every area in its role colour. Areas are moved, resized and drawn here; the
 // numbers themselves live in the inspector.
 
-export type Tool = "select" | "area" | "calibration" | "boxes" | "wall" | "obstacle" | "object";
+export type Tool = "select" | "area" | "calibration" | "boxes" | "turn" | "wall" | "obstacle" | "object";
+
+/** The whole site turned on the floor by `theta_deg` about `pivot`, frame mm. */
+export interface SiteTurn {
+  theta_deg: number;
+  pivot: Point;
+}
 
 /** A selected wall or obstacle. */
 export interface BarrierRef {
@@ -77,7 +85,9 @@ type Drag =
   | { kind: "object-move"; index: number; start: { x: number; y: number }; from: { x: number; y: number } }
   | { kind: "place-turn"; start: Rigid2D; pivot: Point; angle: number }
   | { kind: "box-move"; k: number; start: Rect; from: { x: number; y: number }; px: { x: number; y: number } }
-  | { kind: "box-resize"; k: number; start: Rect; handle: Handle };
+  | { kind: "box-resize"; k: number; start: Rect; handle: Handle }
+  | { kind: "turn-angle"; start: number; angle: number }
+  | { kind: "turn-pivot" };
 
 export interface CanvasProps {
   extent: [number, number] | null;
@@ -111,6 +121,11 @@ export interface CanvasProps {
   onSelectBox?: (k: number | null) => void;
   /** `key` names the gesture, so one drag undoes as one step. */
   onBoxChange?: (k: number, rect: Rect, key: string) => void;
+  /** The turn being previewed: the site drawn turned over the floor. */
+  turn?: SiteTurn | null;
+  onTurn?: (turn: SiteTurn) => void;
+  /** The console's robots, read-only; fixed on the floor, so a turn leaves them. */
+  robots?: LiveRobot[] | null;
   /** Read-only layers under the areas: only the ones switched on. */
   backdrops?: { calibrations: CalibrationBackdrop[]; cameras: CameraBackdrop[] };
 }
@@ -320,6 +335,31 @@ export function Canvas(props: CanvasProps) {
     begin(e, { kind: "place-turn", start: placement.move, pivot: placeCentre, angle: angleTo(placeCentre, toFrame(e)) });
   };
 
+  const turn = props.turn ?? null;
+  const turning = !!turn && turn.theta_deg !== 0;
+  // The site's own layers turn about the pivot; the floor (grid, backdrops, robots) stays
+  const siteTransform = turning ? `rotate(${turn.theta_deg} ${px("x", turn.pivot[0])} ${px("y", turn.pivot[1])})` : undefined;
+  const turnHandle: Point | null = (() => {
+    if (!turn || props.tool !== "turn") return null;
+    const top: Point = [extentArea.x + extentArea.w / 2, extentArea.y];
+    const [hx, hy] = applyMove(turnAbout({ dx_mm: 0, dy_mm: 0, theta_deg: 0 }, turn.pivot, turn.theta_deg), top);
+    const dx = hx - turn.pivot[0];
+    const dy = hy - turn.pivot[1];
+    const len = Math.hypot(dx, dy) || 1;
+    const reach = ROTATE_HANDLE_PX / scale;
+    return [hx + (dx / len) * reach, hy + (dy / len) * reach];
+  })();
+
+  const onTurnAngleDown = (e: React.PointerEvent) => {
+    if (e.button !== 0 || !turn) return;
+    begin(e, { kind: "turn-angle", start: turn.theta_deg, angle: angleTo(turn.pivot, toFrame(e)) });
+  };
+
+  const onPivotDown = (e: React.PointerEvent) => {
+    if (e.button !== 0 || !turn || props.tool !== "turn") return;
+    begin(e, { kind: "turn-pivot" });
+  };
+
   const onMove = (e: React.PointerEvent) => {
     setAltHeld(e.altKey);
     if (draft) {
@@ -330,7 +370,15 @@ export function Canvas(props: CanvasProps) {
     if (!drag) return;
     const p = toFrame(e);
     const s = snapNow(e);
-    if (drag.kind === "object-move") {
+    if (drag.kind === "turn-angle" && turn) {
+      // Whole degrees, Alt a tenth
+      const raw = drag.start + angleTo(turn.pivot, p) - drag.angle;
+      const stepped = e.altKey ? Math.round(raw * 10) / 10 : Math.round(raw);
+      const wrapped = ((((stepped + 180) % 360) + 360) % 360) - 180;
+      props.onTurn?.({ ...turn, theta_deg: wrapped === -180 ? 180 : wrapped });
+    } else if (drag.kind === "turn-pivot" && turn) {
+      props.onTurn?.({ ...turn, pivot: [snap(p.x, s), snap(p.y, s)] });
+    } else if (drag.kind === "object-move") {
       props.onObjectChange?.(
         drag.index,
         { x: snap(drag.start.x + p.x - drag.from.x, s), y: snap(drag.start.y + p.y - drag.from.y, s) },
@@ -368,7 +416,7 @@ export function Canvas(props: CanvasProps) {
       props.onChange(drag.index, moveRect(drag.start, p.x - drag.from.x, p.y - drag.from.y, s), `canvas-${gesture.current}`);
     } else if (drag.kind === "resize") {
       props.onChange(drag.index, resizeRect(drag.start, drag.handle, p, s), `canvas-${gesture.current}`);
-    } else {
+    } else if (drag.kind === "draw") {
       setDrag({ ...drag, to: p });
     }
   };
@@ -439,11 +487,22 @@ export function Canvas(props: CanvasProps) {
             <line key={`y${t.mm}`} y1={t.px} y2={t.px} x1={0} x2={size.w} />
           ))}
         </g>
+        {turning && (
+          <rect
+            {...extentPx}
+            fill="none"
+            stroke="var(--muted)"
+            strokeWidth={1}
+            strokeDasharray="4 4"
+            data-testid="turn-ghost"
+          />
+        )}
         <rect
           {...extentPx}
           fill="none"
-          stroke="var(--muted)"
+          stroke={turning ? "var(--accent)" : "var(--muted)"}
           strokeWidth={1.5}
+          transform={siteTransform}
           data-testid="site-extent"
         />
         <g fontFamily="var(--font-mono)" fontSize={10} fill="var(--muted)">
@@ -499,6 +558,7 @@ export function Canvas(props: CanvasProps) {
             </g>
           );
         })}
+        <g data-testid="site-layers" transform={siteTransform}>
         {order.map((i) => {
           const a = props.areas[i];
           const colour = areaColor(colourAreas[i], colourAreas);
@@ -628,6 +688,38 @@ export function Canvas(props: CanvasProps) {
             </g>
           );
         })}
+        </g>
+        {(props.robots ?? []).map((r) => {
+          const box = props.tool === "boxes" && selBox ? selBox : null;
+          const k = props.selectedBox ?? 0;
+          const inside = box ? insideRect(box.rect, r.x, r.y) : null;
+          const colour =
+            inside === null ? "var(--text)" : inside ? STATION_COLOURS[k % STATION_COLOURS.length] : "var(--muted)";
+          const [cx, cy] = [px("x", r.x), px("y", r.y)];
+          const [fx, fy] = r.heading_deg === null ? [0, 0] : facing(r.heading_deg);
+          return (
+            <g
+              key={r.id}
+              data-testid={`live-robot-${r.id}`}
+              data-inside={inside === null ? undefined : String(inside)}
+              style={{ pointerEvents: "none" }}
+            >
+              <circle cx={cx} cy={cy} r={4} fill={colour} fillOpacity={inside === false ? 0.45 : 0.9} />
+              {r.heading_deg !== null && (
+                <line
+                  data-testid={`live-heading-${r.id}`}
+                  x1={cx}
+                  y1={cy}
+                  x2={cx + fx * 12}
+                  y2={cy + fy * 12}
+                  stroke={colour}
+                  strokeWidth={1.5}
+                />
+              )}
+              <title>{`${r.id} at (${Math.round(r.x)}, ${Math.round(r.y)})`}</title>
+            </g>
+          );
+        })}
         {draft && (
           <g data-testid="barrier-draft" style={{ pointerEvents: "none" }}>
             <polyline
@@ -645,7 +737,7 @@ export function Canvas(props: CanvasProps) {
           </g>
         )}
         {boxes && (
-          <g data-testid="station-boxes">
+          <g data-testid="station-boxes" transform={siteTransform}>
             {boxOrder.map((k) => {
               const box = boxes[k];
               const colour = STATION_COLOURS[k % STATION_COLOURS.length];
@@ -884,7 +976,47 @@ export function Canvas(props: CanvasProps) {
             strokeDasharray="4 3"
           />
         )}
-        <g data-testid="anchor">
+        {turn && props.tool === "turn" && turnHandle && (
+          <g data-testid="turn">
+            <line
+              x1={px("x", turn.pivot[0])}
+              y1={px("y", turn.pivot[1])}
+              x2={px("x", turnHandle[0])}
+              y2={px("y", turnHandle[1])}
+              stroke="var(--accent)"
+              strokeWidth={1}
+              strokeDasharray="3 3"
+            />
+            <circle
+              data-testid="turn-pivot"
+              cx={px("x", turn.pivot[0])}
+              cy={px("y", turn.pivot[1])}
+              r={6}
+              fill="var(--accent)"
+              fillOpacity={0.3}
+              stroke="var(--accent)"
+              strokeWidth={1.5}
+              style={{ cursor: "move" }}
+              onPointerDown={onPivotDown}
+            >
+              <title>the point the site turns about: drag it</title>
+            </circle>
+            <circle
+              data-testid="turn-handle"
+              cx={px("x", turnHandle[0])}
+              cy={px("y", turnHandle[1])}
+              r={7}
+              fill="var(--surface)"
+              stroke="var(--accent)"
+              strokeWidth={1.5}
+              style={{ cursor: "grab" }}
+              onPointerDown={onTurnAngleDown}
+            >
+              <title>turn: whole degrees, Alt for a tenth</title>
+            </circle>
+          </g>
+        )}
+        <g data-testid="anchor" transform={siteTransform}>
           <circle cx={px("x", 0)} cy={px("y", 0)} r={5} fill="var(--accent)" />
           <text
             x={px("x", 0) - 10}
@@ -915,7 +1047,9 @@ export function Canvas(props: CanvasProps) {
           ? "free placement (Alt)"
           : props.tool === "calibration"
             ? `snap ${props.snapMm} mm and 90 deg, Alt for free; scale is locked`
-            : props.tool === "boxes"
+            : props.tool === "turn"
+              ? "drag the handle to turn the site on the floor, the dot to move its pivot; whole degrees, Alt for a tenth"
+              : props.tool === "boxes"
               ? `drag a station's box or its handles; snap ${props.snapMm} mm, Alt for free`
               : `snap ${props.snapMm} mm, Alt for free`}
       </div>
