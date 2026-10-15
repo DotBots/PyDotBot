@@ -690,6 +690,8 @@ def field_angle(centres: np.ndarray) -> float:
 
 # What a free-mode calibration records as its site's anchor: no mark in the
 # room is its origin.
+# A site made by `site init` records the calibration it came from in its anchor
+SELF_DEFINED_ANCHOR = "self-defined from spin calibration "
 FREE_FRAME_ANCHOR = (
     "free mode: zero at the top-left of the rectangle around the spinning "
     "robots, grown by a robot's footprint; axes along that rectangle"
@@ -822,7 +824,7 @@ def self_defined_site(
     extent, field_area, staging = starter_layout((field_w, field_h), size_mm)
     dx, dy = field_area.x, field_area.y
     shift = np.array([[1, 0, dx], [0, 1, dy], [0, 0, 1.0]])
-    anchor = f"self-defined from spin calibration {calibration.id8}"
+    anchor = f"{SELF_DEFINED_ANCHOR}{calibration.id8}"
     stations = []
     for st in calibration.stations:
         H = shift @ st.matrix
@@ -853,5 +855,6 @@ def self_defined_site(
         created_at=calibration.created_at,
         tag=f"{calibration.tag}-{name}" if calibration.tag else "",
         robot=calibration.robot,
+        placed_from=calibration.id,
     )
     return site, placed
