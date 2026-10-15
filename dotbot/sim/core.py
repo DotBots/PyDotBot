@@ -21,7 +21,7 @@ from pathlib import Path
 
 import numpy as np
 
-ABI_VERSION = 2
+ABI_VERSION = 3
 WASM_PATH = Path(__file__).with_name("dotbot_control.wasm")
 MANIFEST_PATH = Path(__file__).with_name("dotbot_control.json")
 
@@ -81,7 +81,7 @@ REPORT = np.dtype(
         ("max_speed_10mm", "u1"),
     ]
 )
-ADVERTISEMENT_BYTES = 42
+ADVERTISEMENT_BYTES = 43
 # fleet_geometry_t: drv/geometry.h as the core was built, mm and degrees
 GEOMETRY = np.dtype(
     [

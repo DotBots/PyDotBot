@@ -997,7 +997,6 @@ async def test_reverse_proxy_middleware_connect_error(monkeypatch):
 
     import dotbot.server as server_module
 
-    monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setattr(server_module.httpx, "AsyncClient", mock_async_client)
 
     client = TestClient(api)
@@ -1383,6 +1382,10 @@ async def test_get_controller_site():
         ],
         "field": "field",
         "calibration": None,
+        "spin_radius_mm": None,
+        "walls": [],
+        "obstacles": [],
+        "objects": [],
     }
 
 
@@ -1410,6 +1413,8 @@ async def test_get_controller_site_carries_the_loaded_calibration_span():
         "id": calibration.id,
         "tag": "demo",
         "created_at": "2026-09-10T09:12:00Z",
+        "site": "c405-arena",
+        "anchor": "",
         "placements": [
             {
                 "points_mm": [[750, 750], [1250, 750], [750, 1250], [1250, 1250]],
@@ -1426,6 +1431,7 @@ def test_the_site_payload_reads_back_as_the_same_site():
         name="hall",
         anchor="north-west corner",
         extent_mm=(5000, 4000),
+        spin_radius_mm=53.0,
         areas={
             "pen": Area(0, 0, 10, 10, "pen", "corner"),
             "main": Area(5, 5, 10, 10, "main", "field"),
@@ -1457,6 +1463,10 @@ async def test_get_controller_site_with_nothing_measured():
         "areas": [],
         "field": None,
         "calibration": None,
+        "spin_radius_mm": None,
+        "walls": [],
+        "obstacles": [],
+        "objects": [],
     }
 
 

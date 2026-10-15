@@ -37,8 +37,12 @@ from dotbot.area import Area
 from dotbot.logger import LOGGER
 from dotbot.protocol import DIRECTION_NONE
 from dotbot.sim import core as control
+from dotbot.sim.barriers import Barriers
 from dotbot.sim.plant import (
+    CHARGE_FULL_S,
+    CHARGER_REACH_MM,
     INITIAL_BATTERY_VOLTAGE,
+    MAX_BATTERY_DURATION_S,
     FleetPlant,
     battery_discharge_model,
 )
@@ -61,8 +65,8 @@ MARI_SLOTFRAME_SIZE = (
 # How far apart `--robots N` puts a generated fleet
 FLEET_PITCH_MM = 200
 # The stations a simulated robot holds when neither its world file nor the
-# controller's calibration says: all eight
-CALIBRATED_ALL = 0xFF
+# controller's calibration says: all sixteen
+CALIBRATED_ALL = 0xFFFF
 # The heading of every robot of a generated fleet: up (-y), 0 facing +y
 FLEET_FACING = 180
 
@@ -113,7 +117,7 @@ class SimulatedDotBotSettings(BaseModel):
     estimator starts out tracking; without one the robot faces +y and starts
     with no heading, as a real robot does from boot. `calibrated` is the
     bitmask of stations the robot holds a homography for; without one it
-    holds the stations of the controller's calibration, all eight when none
+    holds the stations of the controller's calibration, all sixteen when none
     is loaded.
     """
 
@@ -506,8 +510,14 @@ class DotBotSimulatorCommunicationInterface:
             noise_mm=[s.lh2_noise_mm for s in settings],
             rng=np.random.default_rng(random.getrandbits(64)),
             collisions=collisions,
+            barriers=Barriers.from_site(site),
         )
         self.visible = np.ones(count, dtype=bool)
+        chargers = site.objects_of("charger") if site is not None else []
+        # The site's chargers, (n, 2) mm; None for a site without one
+        self._chargers = (
+            np.array([[c.x, c.y] for c in chargers], dtype=float) if chargers else None
+        )
         self.battery = np.full(count, float(INITIAL_BATTERY_VOLTAGE))
         self._inputs = np.zeros(count, dtype=control.INPUT)
         self._inputs["elapsed_ticks"] = 1
@@ -522,7 +532,7 @@ class DotBotSimulatorCommunicationInterface:
         ]
         calibrated = CALIBRATED_ALL if calibrated is None else calibrated
         self._calibrated = [
-            (calibrated if s.calibrated is None else s.calibrated) & 0xFF
+            (calibrated if s.calibrated is None else s.calibrated) & 0xFFFF
             for s in settings
         ]
         self._dotbot_modes = [s.network_mode for s in settings]
@@ -660,14 +670,19 @@ class DotBotSimulatorCommunicationInterface:
             reports = self.reports()
             for index, model in self._gru.items():
                 self._gru_residual(index, model, reports[index])
-        linear = battery_discharge_model(self.time_elapsed_s)
+        if self._chargers is None:
+            linear = battery_discharge_model(self.time_elapsed_s)
+        else:
+            linear = self._charged()
         if not self._battery_models:
             self.battery[:] = linear
             return
-        self.battery[~self._battery_modelled] = linear
+        unmodelled = ~self._battery_modelled
+        self.battery[unmodelled] = linear if np.isscalar(linear) else linear[unmodelled]
         import torch
 
         reports = self.reports()
+        charging = self.on_charger()
         for index, model in self._battery_models.items():
             features = torch.tensor(
                 [
@@ -687,9 +702,42 @@ class DotBotSimulatorCommunicationInterface:
             except Exception as exc:  # noqa: BLE001
                 self.logger.warning("Battery model inference failed", error=str(exc))
                 continue
-            self.battery[index] = max(
-                0.0, self.battery[index] + rate * SIMULATOR_STEP_DELTA_T
+            if charging[index]:
+                rate = INITIAL_BATTERY_VOLTAGE / CHARGE_FULL_S
+            self.battery[index] = min(
+                INITIAL_BATTERY_VOLTAGE,
+                max(0.0, self.battery[index] + rate * SIMULATOR_STEP_DELTA_T),
             )
+
+    def use_site(self, site: Optional[Site]) -> None:
+        """Take a changed site's walls, obstacles and chargers, robots where they are."""
+        barriers = Barriers.from_site(site)
+        chargers = site.objects_of("charger") if site is not None else []
+        positions = (
+            np.array([[c.x, c.y] for c in chargers], dtype=float) if chargers else None
+        )
+        # Each a single assignment: the tick thread reads either the old or the new
+        self.plant.barriers = barriers
+        self._chargers = positions
+
+    def on_charger(self) -> np.ndarray:
+        """Whether each robot's axle midpoint is on one of the site's chargers."""
+        chargers = self._chargers
+        if chargers is None:
+            return np.zeros(self.plant.count, dtype=bool)
+        dx = self.plant.x[:, None] - chargers[None, :, 0]
+        dy = self.plant.y[:, None] - chargers[None, :, 1]
+        return (dx * dx + dy * dy < CHARGER_REACH_MM**2).any(axis=1)
+
+    def _charged(self) -> np.ndarray:
+        """Each robot's battery one tick on: draining at the rate of
+        `battery_discharge_model`, charging while on a charger."""
+        drain = INITIAL_BATTERY_VOLTAGE / MAX_BATTERY_DURATION_S
+        charge = INITIAL_BATTERY_VOLTAGE / CHARGE_FULL_S
+        rate = np.where(self.on_charger(), charge, -drain)
+        return np.clip(
+            self.battery + rate * SIMULATOR_STEP_DELTA_T, 0, INITIAL_BATTERY_VOLTAGE
+        )
 
     def _gru_residual(self, index: int, model, report):
         """Add the GRU's predicted (dx, dy, d_enc_left, d_enc_right) to the truth."""
@@ -725,7 +773,7 @@ class DotBotSimulatorCommunicationInterface:
     def _advertise(self, index: int, packet: bytearray):
         """Send robot `index`'s advertisement, as its firmware encoded it."""
         # The calibration bitmask is the node's, not the control core's
-        packet[1] = self._calibrated[index]
+        packet[1:3] = self._calibrated[index].to_bytes(2, "little")
         self._counts[:, index] = 0
         frame = Frame(header=self._headers[index], packet=Packet.from_bytes(packet))
         if self._dotbot_modes[index] == SimulatedNetworkMode.MARI:

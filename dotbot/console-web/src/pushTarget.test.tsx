@@ -76,7 +76,7 @@ const bot = (id: string, calibrationId: string): UnifiedBot =>
   ({
     id,
     swarmit: {
-      info: { info_version: 3, lh2_calibration_id: calibrationId },
+      info: { info_version: 4, lh2_calibration_id: calibrationId },
     } as unknown as SwarmitNode,
   }) as UnifiedBot;
 
@@ -87,12 +87,13 @@ const renderPanel = (
   selection: Set<string>,
   onPush = vi.fn(),
   busy = false,
+  session: CalibrationSession = saved,
 ) => {
   render(
     <LocalizationPanel
       site={null}
       bots={bots}
-      session={saved}
+      session={session}
       busy={busy}
       error=""
       onCalibrate={() => {}}
@@ -146,5 +147,18 @@ describe("the Localization tab's push row", () => {
     const onPush = renderPanel(fleet, new Set(), vi.fn(), true);
     fireEvent.click(screen.getByTestId("localization-push"));
     expect(onPush).not.toHaveBeenCalled();
+  });
+});
+
+describe("the Localization tab's calibration on the fleet", () => {
+  it("names the served calibration's id and its site beside its coverage", () => {
+    renderPanel([bot("AA", SAVED), bot("BB", "")], new Set(), vi.fn(), false, { ...saved, site: "virmond" });
+    expect(screen.getByText("3f9a1c07 (virmond)")).toBeTruthy();
+    expect(screen.getByText("on 1 of 2 bots")).toBeTruthy();
+  });
+
+  it("names only the id when the session carries no site", () => {
+    renderPanel([bot("AA", SAVED)], new Set());
+    expect(screen.getByText("3f9a1c07")).toBeTruthy();
   });
 });

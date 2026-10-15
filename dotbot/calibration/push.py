@@ -10,11 +10,13 @@ than the file's unless the operator says the site really changed, and when a
 named robot is in its app, since the net core takes a calibration only in the
 bootloader; a push to the whole fleet leaves such robots out instead, unless
 that leaves none. After the push, the robots whose reported calibration id is
-not the file's are the worklist.
+not the file's, with its stations, from a boot after the push, are the
+worklist.
 
 Everything here takes the `status()` mapping of a swarmit client, duck-typed:
 address to an object with `status`, `info_gen` and `info`, `info` carrying
-`info_version`, `lh2_site_name` and `lh2_calibration_id`, or None.
+`info_version`, `info_gen`, `lh2_site_name`, `lh2_calibration_id` and
+`lh2_station_mask`, or None.
 """
 
 from __future__ import annotations
@@ -23,9 +25,9 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Mapping
 
-from dotbot.calibration.lighthouse2 import Calibration, pushed_id
+from dotbot.calibration.lighthouse2 import Calibration, pushed_id, station_mask
 
-DEVICE_INFO_VERSION_MIN = 3
+DEVICE_INFO_VERSION_MIN = 4
 # Seconds a pushed robot gets to reset, rejoin and report the pushed id.
 PUSH_REJOIN_TIMEOUT = 30.0
 PUSH_POLL_INTERVAL = 1.0
@@ -74,6 +76,7 @@ class PushCheck:
     other_site: dict[str, str] = field(default_factory=dict)
     running: list[str] = field(default_factory=list)
     stale: list[str] = field(default_factory=list)
+    info_gens: dict[str, int] = field(default_factory=dict)
     fleet: bool = False
 
     @property
@@ -140,6 +143,7 @@ def check_push(status: Mapping[str, Any], calibration: Calibration) -> PushCheck
             else:
                 check.unanswered.append(addr)
             continue
+        check.info_gens[addr] = getattr(info, "info_gen", None)
         if int(getattr(info, "info_version", 0)) < DEVICE_INFO_VERSION_MIN:
             check.old_firmware.append(addr)
             continue
@@ -188,23 +192,37 @@ def gate_push(
 
 
 def push_worklist(
-    client: Any, calibration: Calibration, addresses: list[str]
+    client: Any,
+    calibration: Calibration,
+    addresses: list[str],
+    info_gens: Mapping[str, int] | None = None,
 ) -> list[str]:
-    """The pushed robots that do not report the file's id after the push.
+    """The pushed robots that do not report the file's id and stations after
+    the push.
 
-    A push resets every robot that takes it, so each gets PUSH_REJOIN_TIMEOUT
-    to rejoin and report; one not heard by then is listed too. Nothing is
-    requested here: a rejoin moves the robot's device-info generation, and
-    swarmit then refreshes its device info by one broadcast.
+    A robot that takes a push commits it and resets, so its device info must
+    come from a later generation than `info_gens`, the one read before the
+    push; one already on the file's id would otherwise pass without having
+    stored anything. Each robot gets PUSH_REJOIN_TIMEOUT to rejoin and
+    report; one not heard by then is listed too. Nothing is requested here: a
+    rejoin moves the robot's device-info generation, and swarmit then
+    refreshes its device info by one broadcast.
     """
     wanted_id = pushed_id(calibration)
+    wanted_mask = station_mask(calibration)
+    before = {addr.upper(): gen for addr, gen in (info_gens or {}).items()}
     pending = {addr.upper() for addr in addresses}
     deadline = time.monotonic() + PUSH_REJOIN_TIMEOUT
     while pending:
         status = client.status()
         for addr in list(pending):
             info = getattr(status.get(addr), "info", None)
-            if info is not None and _reported_id(info) == wanted_id:
+            if (
+                info is not None
+                and _reported_id(info) == wanted_id
+                and getattr(info, "lh2_station_mask", 0) == wanted_mask
+                and (addr not in before or getattr(info, "info_gen", None) != before[addr])
+            ):
                 pending.discard(addr)
         if not pending or time.monotonic() >= deadline:
             break

@@ -69,6 +69,7 @@ from dotbot.models import (
     DotBotLH2Position,
     DotBotModel,
     DotBotQueryModel,
+    DotBotSiteModel,
     DotBotStatus,
 )
 from dotbot.poses import device_pose, robot_body, robot_models, robot_pose
@@ -84,8 +85,10 @@ from dotbot.protocol import (
     PayloadControlMode,
     PayloadDotBotAdvertisement,
     PayloadLh2CalibrationHomography,
+    PayloadLH2Location,
     PayloadLH2Waypoints,
     PayloadType,
+    PayloadWaypointHeading,
     WaypointsAbortReason,
     WaypointsFailReason,
     WaypointsStatus,
@@ -118,6 +121,12 @@ DIRECT_COMMANDS = (
     PayloadControlMode,
 )
 GPS_POSITION_DISTANCE_THRESHOLD = 5  # meters
+# A robot with no heading is first sent this far toward its first waypoint,
+# from its fix, and gets its batch once it has a heading and that move is done
+PROBE_MM = 40
+PROBE_THRESHOLD_MM = 20
+# How long a held batch waits for its robot's heading before it is dropped
+HOLD_TIMEOUT_S = 30.0
 IGNORED_PAYLOAD_TYPES = (
     PayloadType.CMD_MOVE_RAW,
     PayloadType.CMD_RGB_LED,
@@ -169,6 +178,15 @@ class PendingCommand:
     superseded: Callable[[PayloadDotBotAdvertisement], bool] = lambda _: False
     # Batch ids the robot may still show before this command reaches it
     batch_ids: frozenset = frozenset()
+
+
+@dataclass
+class HeldBatch:
+    """A batch waiting for its robot's heading, and the probe move sent first."""
+
+    payload: PayloadLH2Waypoints
+    probe_batch_id: int
+    since: float
 
 
 @dataclass
@@ -383,6 +401,7 @@ class Controller:
         self.pending_commands: Dict[tuple[str, str], PendingCommand] = {}
         self.batch_ids: Dict[str, int] = {}
         self.advertised_batch_ids: Dict[str, int] = {}
+        self.held_batches: Dict[str, HeldBatch] = {}
         self.site = settings.site or Site()
         self.calibration = None
         self.lh2_calibration = []
@@ -783,6 +802,7 @@ class Controller:
         self._dotbot_twin_timestamps.pop(address, None)
         self._unsolved_held.pop(address, None)
         self.advertised_batch_ids.pop(address, None)
+        self.held_batches.pop(address, None)
 
     def _record(self, address: str) -> RobotRecord:
         """The record kept beside `address`'s model, created on first use."""
@@ -947,6 +967,7 @@ class Controller:
 
             self._set(dotbot, record, "battery", payload.battery / 1000.0, seq)  # mV
             self._set(dotbot, record, "mode", ControlModeType(payload.mode), seq)
+            self._release_held(dotbot, record, payload, seq)
             if debug:
                 self.logger.debug(
                     "Advertisement Data",
@@ -1100,6 +1121,52 @@ class Controller:
         point = session.outstanding if session else None
         return None if point is None else point.mm
 
+    def reload_site(self) -> None:
+        """Read the site's pack again: the map (a `site` event), the
+        calibration session and a running simulator take the change at once.
+        A pack that no longer reads leaves the site as it was."""
+        from dotbot.calibration.lighthouse2 import check_calibration_site
+        from dotbot.site import site_from_table
+        from dotbot.site_packs import read_pack
+
+        if self.site.pack is None:
+            return
+        try:
+            site = site_from_table(
+                self.site.name, read_pack(self.site.pack), self.site.pack
+            )
+            model = DotBotSiteModel.from_site(site, self.calibration)
+        except Exception as exc:  # noqa: BLE001
+            self.logger.warning(
+                "Site pack no longer reads; keeping the site as it was",
+                pack=str(self.site.pack),
+                error=str(exc),
+            )
+            return
+        if self.calibration is not None:
+            try:
+                check_calibration_site(
+                    self.calibration.site, site, self.calibration.path
+                )
+            except ValueError as exc:
+                self.logger.warning(
+                    "Site reloaded against its calibration", error=str(exc)
+                )
+            if site.valid_mm != self.site.valid_mm:
+                self.logger.warning(
+                    "Site extent changed; robots keep the fence of the calibration "
+                    "they hold until a new one is pushed",
+                    site=site.name,
+                )
+        self.site = site
+        self.settings.site = site
+        self.calibration_session.site = site
+        simulator = getattr(self.adapter, "simulator", None)
+        if hasattr(simulator, "use_site"):
+            simulator.use_site(site)
+        self.set_event("site", "site", model.model_dump(mode="json"))
+        self.logger.info("Site reloaded from its pack", site=site.name)
+
     async def _notify_calibration_session(self, state):
         """A `calibration_session` event per session state change.
 
@@ -1132,6 +1199,109 @@ class Controller:
         return self.send_payload(int(address, 16), payload)
 
     def send_waypoints(self, address: str, payload: PayloadLH2Waypoints) -> bool:
+        """Send a waypoint batch, or hold it while the robot has no heading.
+
+        A held batch goes out once the robot has a heading and has finished a
+        probe move of `PROBE_MM` toward the first point, sent in its place.
+        Any batch replaces a held one. False when nothing was sent, and a
+        batch held before is then kept.
+        """
+        replaced = self.held_batches.pop(address, None)
+        probe = self._probe(address, payload)
+        if not self._send_batch(address, probe or payload):
+            if replaced is not None:
+                self.held_batches[address] = replaced
+            return False
+        if probe is not None:
+            self.held_batches[address] = HeldBatch(
+                payload, probe.batch_id, time.monotonic()
+            )
+            self.logger.info(
+                "Waypoints held until the robot has a heading",
+                address=address,
+                probe=(probe.waypoints[0].pos_x, probe.waypoints[0].pos_y),
+            )
+        if (probe is not None) != (replaced is not None):
+            self.update_dotbot(address, waypoints_awaiting_heading=probe is not None)
+        return True
+
+    def _probe(
+        self, address: str, payload: PayloadLH2Waypoints
+    ) -> Optional[PayloadLH2Waypoints]:
+        """The probe move to send instead of `payload`, or None when the robot
+        has a heading, has no fix, or its first point is within `PROBE_MM`."""
+        dotbot = self.dotbots[address]
+        fix = dotbot.lh2_position
+        if payload.count == 0 or dotbot.direction is not None or fix is None:
+            return None
+        first = payload.waypoints[0]
+        dx, dy = first.pos_x - fix.x, first.pos_y - fix.y
+        distance = math.hypot(dx, dy)
+        if distance <= PROBE_MM:
+            return None
+        scale = PROBE_MM / distance
+        return PayloadLH2Waypoints(
+            threshold=PROBE_THRESHOLD_MM,
+            count=1,
+            waypoints=[
+                PayloadLH2Location(
+                    pos_x=round(fix.x + dx * scale), pos_y=round(fix.y + dy * scale)
+                )
+            ],
+            headings=[PayloadWaypointHeading()],
+        )
+
+    def _release_held(
+        self,
+        dotbot: DotBotModel,
+        record: RobotRecord,
+        advert: PayloadDotBotAdvertisement,
+        seq: int,
+    ) -> None:
+        """Send a held batch once the robot has a heading and its probe move is
+        done, or the probe never reached it; drop it, clearing the robot's
+        waypoints, when it has no heading by then or after `HOLD_TIMEOUT_S`."""
+        address = dotbot.address
+        held = self.held_batches.get(address)
+        if held is None:
+            return
+        # Gave up on, or superseded by another controller's batch
+        lost = (
+            advert.has_report
+            and advert.batch_id != held.probe_batch_id
+            and (address, PayloadLH2Waypoints.__name__) not in self.pending_commands
+        )
+        probing = (
+            advert.has_report
+            and not lost
+            and (
+                advert.batch_id != held.probe_batch_id
+                or advert.waypoints_status == WaypointsStatus.IN_PROGRESS
+            )
+        )
+        timed_out = time.monotonic() - held.since > HOLD_TIMEOUT_S
+        if probing and not timed_out:
+            return
+        if dotbot.direction is None and not (advert.has_report or timed_out):
+            return
+        del self.held_batches[address]
+        self._set(dotbot, record, "waypoints_awaiting_heading", False, seq)
+        if dotbot.direction is not None and not timed_out:
+            self.logger.info("Heading acquired, sending the held waypoints", address=address)
+            if self._send_batch(address, held.payload):
+                return
+        self._set(dotbot, record, "waypoints", [], seq)
+        self.logger.warning(
+            "Held waypoints dropped",
+            address=address,
+            heading=dotbot.direction is not None,
+            probe_lost=lost,
+            timed_out=timed_out,
+            probe_status=dotbot.waypoints_status,
+            probe_reason=dotbot.waypoints_reason,
+        )
+
+    def _send_batch(self, address: str, payload: PayloadLH2Waypoints) -> bool:
         """Send a waypoint batch under a new batch id, resent until the
         robot advertises that id or another controller's newer batch. False
         when it was not sent."""
@@ -1251,6 +1421,8 @@ class Controller:
         if isinstance(payload, DIRECT_COMMANDS):
             # The robot drops its batch on these, so a resend would restart it
             self.pending_commands.pop((dest_str, PayloadLH2Waypoints.__name__), None)
+            if self.held_batches.pop(dest_str, None) is not None:
+                self.update_dotbot(dest_str, waypoints_awaiting_heading=False)
         try:
             self.adapter.send_payload(destination, payload=payload)
         except Exception:  # pylint: disable=broad-exception-caught

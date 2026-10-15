@@ -336,7 +336,9 @@ const ControlDock: React.FC<{
     ? isGroup
       ? "⚠  Not drivable - no DBP in selection"
       : `⚠  Not drivable - ${notDrivableReason(single)}`
-    : anyAuto
+    : single?.mission?.code === "AWAITING_HEADING"
+      ? "▶  Waiting for a heading · a short probe move first"
+      : anyAuto
       ? single?.mission?.state === "in_progress" && single.mission.index !== null
         ? `▶  Navigating · waypoint ${Math.min(single.mission.index + 1, activeCount)} of ${activeCount}`
         : `▶  Navigating · ${activeCount} waypoint${activeCount === 1 ? "" : "s"} left`

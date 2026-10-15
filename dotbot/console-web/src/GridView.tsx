@@ -4,8 +4,9 @@ import {
   appLabel,
   areaLabel,
   bootloaderLabel,
-  calibrationDiffers,
-  calibrationLabel,
+  calibrationDetail,
+  calibrationMismatch,
+  calibrationSiteLabel,
   detailText,
   FleetContext,
   firmwareTooOld,
@@ -20,6 +21,7 @@ import { UnifiedBot } from "./types";
 import {
   Badge,
   BatteryCell,
+  CalibrationBadge,
   FilterBar,
   HeadingGlyph,
   LedDot,
@@ -95,7 +97,7 @@ const WhereLine: React.FC<{ bot: UnifiedBot; ctx: FleetContext; degrees: boolean
  * or silent reports and the two firmware warnings. */
 const Chips: React.FC<{ bot: UnifiedBot; ctx: FleetContext }> = ({ bot, ctx }) => {
   const slipping = bot.link === "stale" || bot.link === "lost";
-  const differs = calibrationDiffers(bot, ctx.calibrationId);
+  const differs = calibrationMismatch(bot, ctx) !== "none";
   const old = firmwareTooOld(bot);
   const bootloader = bootloaderLabel(bot);
   if (!bootloader && !slipping && !differs && !old) return null;
@@ -104,11 +106,7 @@ const Chips: React.FC<{ bot: UnifiedBot; ctx: FleetContext }> = ({ bot, ctx }) =
       {bootloader && <Badge title="Bootloader version, and the net core's when it differs">bl {bootloader}</Badge>}
       {slipping && <Badge title={reportsDetail(bot, ctx.now)}>{reportsLabel(bot, ctx.now)}</Badge>}
       {old && <TooOld />}
-      {differs && (
-        <Badge tone="warn" title={`The controller serves ${ctx.calibrationId.slice(0, 8)}`}>
-          cal differs
-        </Badge>
-      )}
+      {differs && <CalibrationBadge bot={bot} ctx={ctx} differs="cal differs" />}
     </div>
   );
 };
@@ -266,15 +264,10 @@ export const GridView: React.FC<GridViewProps> = ({ bots, selection, onSelect, c
                     </Fact>
                     <Fact
                       k="LH2 cal"
-                      extra={
-                        calibrationDiffers(b, ctx.calibrationId) && (
-                          <Badge tone="warn" title={`The controller serves ${ctx.calibrationId.slice(0, 8)}`}>
-                            differs
-                          </Badge>
-                        )
-                      }
+                      title={calibrationDetail(b) || undefined}
+                      extra={<CalibrationBadge bot={b} ctx={ctx} />}
                     >
-                      {calibrationLabel(b) || dash}
+                      {calibrationSiteLabel(b) || dash}
                     </Fact>
                     <Fact k="Device">{b.deviceType}</Fact>
                     {b.severity !== "normal" && <Fact k="Last reset">{b.resetCause ?? b.severity}</Fact>}

@@ -174,17 +174,19 @@ def device_info(addr: str) -> dict:
     seed = _seed(addr)
     name, digest, size = IMAGES[seed % len(IMAGES)]
     # A minority are uncalibrated, which is the state an operator acts on.
-    homographies = 0 if seed % 9 == 0 else (2 if seed % 5 == 0 else 1)
-    flags = LH2_FLAG_VALID | LH2_FLAG_FROM_FLASH if homographies else 0
-    noun = "basestation" if homographies == 1 else "basestations"
+    mask = 0 if seed % 9 == 0 else (0b101 if seed % 5 == 0 else 0b1)
+    flags = LH2_FLAG_VALID | LH2_FLAG_FROM_FLASH if mask else 0
+    stations = [i for i in range(16) if mask >> i & 1]
     summary = (
         "uncalibrated"
-        if not homographies
-        else f"{homographies} {noun} (valid, from flash)"
+        if not mask
+        else f"station{'s' if len(stations) > 1 else ''} "
+        f"{', '.join(map(str, stations))} (channel{'s' if len(stations) > 1 else ''} "
+        f"{', '.join(str(i + 1) for i in stations)}; valid, from flash)"
     )
     return {
         # A few run sandbox firmware too old for this host's calibrations.
-        "info_version": 2 if seed % 7 == 0 else 3,
+        "info_version": 3 if seed % 7 == 0 else 4,
         "info_gen": 4,
         "boot_count": 2 + seed % 30,
         "uptime_s": 60 + seed % 9000,
@@ -198,10 +200,10 @@ def device_info(addr: str) -> dict:
         "image_digest": digest,
         "image_name": name,
         "image_version": "",
-        "lh2_homography_count": homographies,
+        "lh2_station_mask": mask,
         "lh2_flags": flags,
-        "lh2_site_name": FAKE_SITE if homographies else "",
-        "lh2_calibration_id": FAKE_CALIBRATION_ID if homographies else "",
+        "lh2_site_name": FAKE_SITE if mask else "",
+        "lh2_calibration_id": FAKE_CALIBRATION_ID if mask else "",
         "lh2_summary": summary,
         "raw": "8f0104" + f"{seed:08x}" * 4,
     }
