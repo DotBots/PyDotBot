@@ -114,6 +114,9 @@ export interface PyDotBot {
   // one: 0 NONE, 1 IN_PROGRESS, 2 ARRIVED, 3 FAILED, 4 ABORTED.
   waypoints_status?: number | null;
   waypoints_reason?: string | null;
+  // The controller holds the batch until the robot has a heading, and the
+  // report meanwhile is a short probe move's.
+  waypoints_awaiting_heading?: boolean;
   waypoint_index?: number | null;
   rgb_led?: RgbLed;
   battery?: number; // volts
@@ -266,7 +269,8 @@ export interface SwarmitDeviceInfo {
   image_name: string;
   image_version: string;
   image_digest: string;
-  lh2_homography_count?: number;
+  // Bit i set: the bot holds station i's homography (channel i + 1).
+  lh2_station_mask?: number;
   lh2_flags?: number;
   // Device info v2: the site and calibration id the bot holds, "" for none.
   lh2_site_name?: string;
@@ -361,6 +365,7 @@ const MISSION_REASONS: Record<string, string> = {
   STOP: "stopped",
   DIRECT: "driven by hand",
   CONTROL_MODE: "mode changed",
+  AWAITING_HEADING: "waiting for a heading",
 };
 
 const MISSION_STATES: Record<number, MissionState> = {
@@ -372,6 +377,9 @@ const MISSION_STATES: Record<number, MissionState> = {
 
 /** The robot's report on its batch, or null when it sends none. */
 export function missionReport(py: Partial<PyDotBot> | undefined): MissionReport | null {
+  if (py?.waypoints_awaiting_heading) {
+    return { state: "in_progress", index: 0, reason: MISSION_REASONS.AWAITING_HEADING, code: "AWAITING_HEADING" };
+  }
   const state = MISSION_STATES[py?.waypoints_status ?? 0];
   if (!state) return null;
   const code = py?.waypoints_reason ?? null;
@@ -440,6 +448,15 @@ export interface Site {
   areas: Area[];
   field?: string | null;
   calibration?: SiteCalibration | null;
+  walls?: Barrier[];
+  obstacles?: Barrier[];
+}
+
+// Where robots cannot go, in frame mm: a wall is a polyline, an obstacle a
+// polygon whose last point joins its first.
+export interface Barrier {
+  name: string;
+  points: [number, number][];
 }
 
 // The LH2 calibration the controller loaded: each placement's points in

@@ -35,6 +35,12 @@ describe("heldWaypoints", () => {
     expect(rows.map((r) => r.status)).toEqual(["under way", "done"]);
   });
 
+  it("reads a batch held for a heading as under way, even between moves", () => {
+    const waiting = { state: "in_progress" as const, index: 0, reason: "waiting for a heading", code: "AWAITING_HEADING" };
+    const rows = heldWaypoints([bot("A", [start, start], { mission: waiting })]);
+    expect(rows[0]).toMatchObject({ status: "waiting for a heading", tone: "run" });
+  });
+
   it("picks the rows of a selection", () => {
     expect(heldAmong(heldWaypoints(bots), new Set(["D", "A"])).map((r) => r.id)).toEqual(["D"]);
   });

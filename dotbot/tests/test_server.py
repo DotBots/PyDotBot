@@ -1383,6 +1383,9 @@ async def test_get_controller_site():
         ],
         "field": "field",
         "calibration": None,
+        "spin_radius_mm": None,
+        "walls": [],
+        "obstacles": [],
     }
 
 
@@ -1426,6 +1429,7 @@ def test_the_site_payload_reads_back_as_the_same_site():
         name="hall",
         anchor="north-west corner",
         extent_mm=(5000, 4000),
+        spin_radius_mm=53.0,
         areas={
             "pen": Area(0, 0, 10, 10, "pen", "corner"),
             "main": Area(5, 5, 10, 10, "main", "field"),
@@ -1457,6 +1461,9 @@ async def test_get_controller_site_with_nothing_measured():
         "areas": [],
         "field": None,
         "calibration": None,
+        "spin_radius_mm": None,
+        "walls": [],
+        "obstacles": [],
     }
 
 

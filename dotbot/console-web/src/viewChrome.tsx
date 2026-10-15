@@ -1,6 +1,15 @@
 import React, { useMemo, useState } from "react";
 
-import { appLabel, areaLabel, bootloaderLabel, calibrationLabel, FleetContext, headingLabel } from "./botFacts";
+import {
+  appLabel,
+  areaLabel,
+  bootloaderLabel,
+  calibrationLabel,
+  calibrationMismatch,
+  calibrationOtherSite,
+  FleetContext,
+  headingLabel,
+} from "./botFacts";
 import { TRAVEL_BODY_OPACITY } from "./BotGlyph";
 import { headingToGlyphRotation } from "./frame";
 import { BotState, STATE_ORDER, UnifiedBot } from "./types";
@@ -322,14 +331,15 @@ export function useQueriedBots(bots: UnifiedBot[], q: ViewQuery, ctx: FleetConte
   return useMemo(() => applyQuery(bots, q, ctx), [bots, q, ctx]);
 }
 
-/** A small pill: a fact, or a warning when `tone` is "warn". */
-export const Badge: React.FC<{ children: React.ReactNode; title?: string; tone?: "warn" | "plain" }> = ({
+/** A small pill: a fact, a warning when `tone` is "warn", a filled one when "alert". */
+export const Badge: React.FC<{ children: React.ReactNode; title?: string; tone?: "warn" | "alert" | "plain" }> = ({
   children,
   title,
   tone = "plain",
 }) => (
   <span
     title={title}
+    data-tone={tone}
     style={{
       fontFamily: "var(--font-mono)",
       fontSize: 10,
@@ -337,13 +347,39 @@ export const Badge: React.FC<{ children: React.ReactNode; title?: string; tone?:
       padding: "0 6px",
       borderRadius: 8,
       whiteSpace: "nowrap",
-      color: tone === "warn" ? "var(--s-Stopping)" : "var(--muted)",
-      border: `1px solid ${tone === "warn" ? "var(--s-Stopping)" : "var(--hairline)"}`,
+      color: tone === "alert" ? "#fff" : tone === "warn" ? "var(--s-Stopping)" : "var(--muted)",
+      background: tone === "alert" ? "var(--s-Stopping)" : undefined,
+      border: `1px solid ${tone === "plain" ? "var(--hairline)" : "var(--s-Stopping)"}`,
     }}
   >
     {children}
   </span>
 );
+
+/** The badge on a robot whose calibration is not the one served: "other site: workshop"
+ * when it is another site's, `differs` when it is another id of this site, nothing otherwise. */
+export const CalibrationBadge: React.FC<{ bot: UnifiedBot; ctx: FleetContext; differs?: string }> = ({
+  bot,
+  ctx,
+  differs = "differs",
+}) => {
+  const mismatch = calibrationMismatch(bot, ctx);
+  if (mismatch === "other-site") {
+    return (
+      <Badge tone="alert" title={`Calibrated for another site: its position is not in ${ctx.site?.name}'s frame`}>
+        other site: {calibrationOtherSite(bot, ctx.site)}
+      </Badge>
+    );
+  }
+  if (mismatch === "other-id") {
+    return (
+      <Badge tone="warn" title={`The controller serves ${ctx.calibrationId.slice(0, 8)}`}>
+        {differs}
+      </Badge>
+    );
+  }
+  return null;
+};
 
 /**
  * The robot's heading as the map draws it: a circle with a radius toward the

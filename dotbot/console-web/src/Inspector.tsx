@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 
-import { reportsWire } from "./botFacts";
+import { heldCalibrationId, reportsWire } from "./botFacts";
 import { stateLabel } from "./viewChrome";
 
 import { CameraDetection, CameraRobot, REPORTS_LABEL, UnifiedBot } from "./types";
@@ -28,6 +28,24 @@ export function formatUptime(seconds: number): string {
 // landed. The server words both; absence here means the former.
 export function formatLh2(bot: UnifiedBot): string {
   return bot.swarmit?.info?.lh2_summary ?? "unknown (no device info)";
+}
+
+/** Matches swarmit's LH2_FLAG_SENSOR_FAILED: the bot's LH2 receiver did not initialise this boot. */
+const LH2_FLAG_SENSOR_FAILED = 1 << 2;
+
+/** "1204, 877", or why there is no position. */
+export function formatPosition(bot: UnifiedBot): string {
+  if (bot.position) return `${Math.round(bot.position.x)}, ${Math.round(bot.position.y)}`;
+  if ((bot.swarmit?.info?.lh2_flags ?? 0) & LH2_FLAG_SENSOR_FAILED) return "LH2 sensor failed";
+  return "no fix";
+}
+
+/** The site the held calibration was made for and its short id; null without device info. */
+export function formatLh2Site(bot: UnifiedBot): string | null {
+  const info = bot.swarmit?.info;
+  if (!info) return null;
+  const id = heldCalibrationId(bot).slice(0, 8);
+  return id ? `${info.lh2_site_name || "none"}  (id ${id})` : "none";
 }
 
 /**
@@ -81,7 +99,7 @@ export function infoText(bot: UnifiedBot): string {
   out.push(`Reports           ${REPORTS_LABEL[bot.link]} (${reportsWire(bot)})`);
   out.push(`Battery           ${bot.battery.toFixed(2)}V`);
   out.push(
-    `Position          ${bot.position ? `${Math.round(bot.position.x)}, ${Math.round(bot.position.y)}` : "no fix"}`,
+    `Position          ${formatPosition(bot)}`,
   );
   out.push(`Heading           ${formatHeading(bot)}`);
   if (info) {
@@ -99,6 +117,8 @@ export function infoText(bot: UnifiedBot): string {
   }
   out.push("");
   out.push(`LH2 calibration   ${formatLh2(bot)}`);
+  const lh2Site = formatLh2Site(bot);
+  if (lh2Site !== null) out.push(`  site            ${lh2Site}`);
   if (sw?.reset_reason !== undefined) {
     out.push("");
     out.push(`Last reset        ${bot.resetCause}`);
@@ -188,10 +208,7 @@ const Card: React.FC<{ bot: UnifiedBot; camera: CameraRobot | null; cameras: boo
       <Row k="Sandbox" v={stateLabel(bot.state)} />
       <Row k="Reports" v={`${REPORTS_LABEL[bot.link]} (${reportsWire(bot)})`} />
       <Row k="Battery" v={`${bot.battery.toFixed(2)}V`} />
-      <Row
-        k="Position"
-        v={bot.position ? `${Math.round(bot.position.x)}, ${Math.round(bot.position.y)}` : "no fix"}
-      />
+      <Row k="Position" v={formatPosition(bot)} />
       <Row k="Heading" v={formatHeading(bot)} />
       {cameras && <Row k="Camera" v={formatCameraHeading(camera)} />}
 
@@ -215,6 +232,7 @@ const Card: React.FC<{ bot: UnifiedBot; camera: CameraRobot | null; cameras: boo
 
       <div style={{ height: 8 }} />
       <Row k="LH2 calib" v={formatLh2(bot)} />
+      {formatLh2Site(bot) !== null && <Row k="site" v={formatLh2Site(bot)!} indent />}
 
       {sw?.reset_reason !== undefined && (
         <>
