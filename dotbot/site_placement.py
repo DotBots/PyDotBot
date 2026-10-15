@@ -2,10 +2,11 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 """The site editor's calibration routes: list the LH2 calibrations, draw one
-over the site, and save it moved onto the site as a new calibration.
+over the site, and save it moved onto the site, or with its stations'
+rectangles changed, as a new calibration.
 
-The file a calibration is loaded from is never written; a placement is saved
-under a new id, beside it in the site's calibration folder.
+The file a calibration is loaded from is never written; a new one is saved
+under a new id in the site's calibration folder.
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from dotbot import site_toml
 from dotbot.calibration import lighthouse2
 from dotbot.calibration.placement import (
     FREE_SOLVERS,
@@ -27,7 +29,15 @@ from dotbot.calibration.placement import (
     place_calibration,
     save_placed,
     site_tags,
+    save_new,
     spin_centres,
+)
+from dotbot.calibration.station_boxes import (
+    BoxesRefused,
+    coverage_warnings,
+    frame_refusal,
+    push_line,
+    reboxed,
 )
 from dotbot.config import SiteSection
 from dotbot.site import PACK_CALIBRATIONS, Site, site_from_table
@@ -39,6 +49,15 @@ class PlaceRequest(BaseModel):
     theta_deg: float = 0.0
     # Move a corner-collected calibration anyway: the anchor itself moved
     reanchor: bool = False
+
+
+class BoxesRequest(BaseModel):
+    # Station index to its new `[x_min, y_min, x_max, y_max]`, frame mm
+    stations: dict[int, tuple[int, int, int, int]]
+    # None takes the source's tag suffixed `-boxes`; "" saves it untagged
+    tag: str | None = None
+    # The site.toml revision the page checked the rectangles against
+    revision: str | None = None
 
 
 def _folders(pack: Path) -> list[tuple[Path, str]]:
@@ -72,6 +91,7 @@ def _metadata(path: Path) -> dict | None:
         "stations": sorted(int(st.get("index", 0)) for st in stations),
         "tag": meta.get("tag", ""),
         "site": data.get("site", {}).get("name", ""),
+        "anchor": data.get("site", {}).get("anchor", ""),
         "path": str(path),
     }
 
@@ -103,12 +123,24 @@ def create_router(name: str, pack: Path, site_text: Callable[[], str]) -> APIRou
 
     @router.get("/api/calibrations")
     def calibrations():
-        return [m for m in map(_metadata, _files(pack)) if m and m["id"]]
+        try:
+            site = current_site()
+        except HTTPException:
+            site = None
+        listed = [m for m in map(_metadata, _files(pack)) if m and m["id"]]
+        for m in listed:
+            file_site = Site(name=m["site"], anchor=m.pop("anchor"))
+            m["in_frame"] = site is not None and frame_refusal(file_site, site) is None
+        return listed
 
     @router.get("/api/calibrations/{spec}")
     def calibration(spec: str):
         cal = resolve(spec)
-        return {**overlay(cal), "path": str(cal.path)}
+        try:
+            refusal = frame_refusal(cal.site, current_site())
+        except HTTPException as exc:
+            refusal = exc.detail
+        return {**overlay(cal), "path": str(cal.path), "frame_refusal": refusal}
 
     @router.post("/api/calibrations/{spec}/place")
     def place(spec: str, request: PlaceRequest):
@@ -153,6 +185,35 @@ def create_router(name: str, pack: Path, site_text: Callable[[], str]) -> APIRou
                 f"{changed}"
             ),
             "warnings": warnings,
+        }
+
+    @router.post("/api/calibrations/{spec}/boxes")
+    def boxes(spec: str, request: BoxesRequest):
+        source = resolve(spec)
+        text = site_text()
+        if (
+            request.revision is not None
+            and site_toml.revision(text.encode("utf-8")) != request.revision
+        ):
+            raise HTTPException(409, "site.toml changed on disk since the page loaded it")
+        site = current_site()
+        try:
+            boxed = reboxed(
+                source,
+                site,
+                request.stations,
+                tag=request.tag,
+                taken_tags=site_tags(site.name, _files(pack)),
+            )
+            boxed, path = save_new(boxed)
+        except BoxesRefused as exc:
+            raise HTTPException(422, str(exc)) from exc
+        return {
+            **overlay(boxed),
+            "path": str(path),
+            "source": source.id8,
+            "push": push_line(boxed),
+            "warnings": coverage_warnings(boxed),
         }
 
     return router

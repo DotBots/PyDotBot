@@ -140,3 +140,88 @@ def test_a_placement_outside_the_extent_is_saved_with_a_warning(client, spun):
         f"/api/calibrations/{spun.id8}/place", json={"dx_mm": 1500}
     ).json()
     assert any("outside the site's extent" in w for w in body["warnings"])
+
+
+@pytest.fixture
+def placed(client, spun, home):
+    body = client.post(
+        f"/api/calibrations/{spun.id8}/place",
+        json={"dx_mm": 100, "dy_mm": 200, "theta_deg": 0},
+    ).json()
+    return read_calibration_file(body["path"])
+
+
+def test_the_listing_says_which_calibrations_are_in_the_site_s_frame(
+    client, spun, placed
+):
+    listed = {c["id"]: c["in_frame"] for c in client.get("/api/calibrations").json()}
+    assert listed == {spun.id: False, placed.id: True}
+    assert client.get(f"/api/calibrations/{placed.id8}").json()["frame_refusal"] is None
+    refusal = client.get(f"/api/calibrations/{spun.id8}").json()["frame_refusal"]
+    assert "free-mode spin calibration" in refusal
+
+
+def test_boxes_write_a_new_calibration_with_only_the_rectangles_changed(
+    client, placed
+):
+    source = placed.path.read_bytes()
+    revision = client.get("/api/site").json()["revision"]
+    response = client.post(
+        f"/api/calibrations/{placed.id}/boxes",
+        json={"revision": revision, "stations": {"0": [0, 0, 1000, 2000]}},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert placed.path.read_bytes() == source
+    boxed = read_calibration_file(body["path"])
+    assert boxed.id == body["id"] != placed.id
+    assert boxed.station(0).valid_mm == (0, 0, 1000, 2000)
+    assert boxed.valid_mm == (0, 0, 1000, 2000)
+    assert boxed.station(0).homography == placed.station(0).homography
+    assert boxed.edited_from == placed.id
+    assert boxed.tag == f"{placed.tag}-boxes"
+    assert body["stations"][0]["rect"] == [0, 0, 1000, 2000]
+    assert body["source"] == placed.id8
+    assert body["push"] == f"dotbot swarm calibrate-lh2 push {boxed.id8} --site arena"
+
+
+def test_boxes_leaving_out_circles_are_saved_with_a_warning(client, placed):
+    body = client.post(
+        f"/api/calibrations/{placed.id}/boxes",
+        json={"stations": {"0": [1500, 3000, 2000, 4000]}},
+    ).json()
+    (warning,) = body["warnings"]
+    assert "leaves out" in warning and "spin circle(s)" in warning
+
+
+@pytest.mark.parametrize(
+    "rect, why",
+    [
+        ([0, 0, 2500, 4000], "outside the site's extent"),
+        ([0, 0, 0, 4000], "is empty"),
+    ],
+)
+def test_boxes_a_robot_cannot_take_are_refused(client, placed, home, rect, why):
+    response = client.post(
+        f"/api/calibrations/{placed.id}/boxes", json={"stations": {"0": rect}}
+    )
+    assert response.status_code == 422
+    assert why in response.json()["detail"]
+    assert len(list((home / "arena").glob("*.toml"))) == 1
+
+
+def test_boxes_of_a_free_mode_calibration_are_refused(client, spun):
+    response = client.post(
+        f"/api/calibrations/{spun.id}/boxes", json={"stations": {"0": [0, 0, 10, 10]}}
+    )
+    assert response.status_code == 422
+    assert "free-mode spin calibration" in response.json()["detail"]
+
+
+def test_boxes_checked_against_an_older_site_toml_are_a_409(client, placed, home):
+    response = client.post(
+        f"/api/calibrations/{placed.id}/boxes",
+        json={"revision": "stale", "stations": {"0": [0, 0, 1000, 2000]}},
+    )
+    assert response.status_code == 409
+    assert len(list((home / "arena").glob("*.toml"))) == 1
