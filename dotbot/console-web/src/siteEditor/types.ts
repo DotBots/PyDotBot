@@ -74,6 +74,8 @@ export interface CalibrationListing {
   tag: string;
   site: string;
   path: string;
+  /** In this site's frame, so its station boxes may be edited. */
+  in_frame: boolean;
 }
 
 /** One spin circle, its centre in the calibration's frame. */
@@ -104,9 +106,11 @@ export interface CalibrationOverlay {
   created_at: string;
   site: string;
   anchor: string;
+  /** Why it is not in this site's frame; null when it is. */
+  frame_refusal?: string | null;
 }
 
-/** What POST /api/calibrations/{id}/place answers: the new calibration. */
+/** What POST /api/calibrations/{id}/place and /boxes answer: the new calibration. */
 export interface PlacedCalibration extends CalibrationOverlay {
   path: string;
   source: string;

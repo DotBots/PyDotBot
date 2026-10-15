@@ -453,3 +453,151 @@ describe("SiteEditor in the console", () => {
     expect(image?.getAttribute("href")).toBe("/controller/site-editor/api/backdrops/camera/abcd1234.png?v=1");
   });
 });
+
+describe("SiteEditor station boxes", () => {
+  const station = (index: number, rect: number[]) => ({
+    index,
+    channel: index + 1,
+    rect,
+    centres: [[500, 500]],
+    circles: [{ name: `robot${index}`, x: 500, y: 500, radius_mm: 51.4 }],
+    solved_from: "conics-joint",
+  });
+  const overlay = (refusal: string | null = null) => ({
+    id: "abcd1234abcd1234",
+    id8: "abcd1234",
+    free: true,
+    fence: [0, 0, 2000, 4000],
+    stations: [station(0, [0, 0, 2000, 4000]), station(1, [0, 0, 2000, 4000])],
+    links: [{ a: 0, b: 1, shared: 3, weak: false }],
+    tag: "rooms",
+    created_at: "2026-10-14T22:25:16Z",
+    site: "arena",
+    anchor: "the door corner",
+    path: "/home/cal/arena/calibration-abcd1234.toml",
+    frame_refusal: refusal,
+  });
+
+  function boxesServer(refusal: string | null = null) {
+    const fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      const json = (status: number, body: unknown) =>
+        new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+      if (url === "api/site") return json(200, loaded());
+      if (url === "api/calibrations")
+        return json(200, [
+          { id: "abcd1234abcd1234", id8: "abcd1234", created_at: "", free: true, stations: [0, 1], tag: "rooms", site: "arena", path: "", in_frame: true },
+          { id: "ffff0000ffff0000", id8: "ffff0000", created_at: "", free: true, stations: [0], tag: "spin", site: "lab", path: "", in_frame: false },
+        ]);
+      if (url === "api/calibrations/abcd1234") return json(200, overlay(refusal));
+      if (url === "api/calibrations/abcd1234abcd1234/boxes" && init?.method === "POST") {
+        const sent = JSON.parse(init.body as string);
+        return json(200, {
+          ...overlay(),
+          id: "9e9e9e9e9e9e9e9e",
+          id8: "9e9e9e9e",
+          tag: "rooms-boxes",
+          stations: [station(0, sent.stations[0]), station(1, sent.stations[1])],
+          path: "/home/cal/arena/calibration-9e9e9e9e.toml",
+          source: "abcd1234",
+          push: "dotbot swarm calibrate-lh2 push 9e9e9e9e --site arena",
+          warnings: [],
+        });
+      }
+      return json(404, { detail: "no" });
+    });
+    vi.stubGlobal("fetch", fetch);
+    return fetch;
+  }
+
+  async function loadBoxes() {
+    render(<SiteEditor />);
+    await screen.findByTestId("edit-area-field");
+    fireEvent.click(screen.getByText("Station boxes"));
+    fireEvent.change(await screen.findByLabelText("boxes calibration id"), { target: { value: "abcd1234" } });
+    await act(async () => fireEvent.click(screen.getByText("Load")));
+    await screen.findByTestId("station-box-0");
+  }
+
+  const value = (label: string) => Number((screen.getByLabelText(label) as HTMLInputElement).value);
+
+  it("offers only the calibrations in the site's frame", async () => {
+    boxesServer();
+    render(<SiteEditor />);
+    await screen.findByTestId("edit-area-field");
+    fireEvent.click(screen.getByText("Station boxes"));
+    await waitFor(() =>
+      expect(document.querySelectorAll("#site-editor-box-calibrations option")).toHaveLength(1),
+    );
+    expect(document.querySelector("#site-editor-box-calibrations option")!.getAttribute("value")).toBe("abcd1234");
+  });
+
+  it("resizes a station's box by a handle on the snap grid and saves it as a new calibration", async () => {
+    const fetch = boxesServer();
+    await loadBoxes();
+    expect(screen.getByText("Save boxes")).toBeDisabled();
+    fireEvent.click(within(screen.getByTestId("boxes-station-0")).getByText("station 0 (channel 1)"));
+    const canvas = screen.getByTestId("site-canvas");
+    fireEvent.pointerDown(screen.getByTestId("box-handle-e"), { button: 0, clientX: 500, clientY: 300, pointerId: 1 });
+    fireEvent.pointerMove(canvas, { clientX: 300, clientY: 300, pointerId: 1 });
+    fireEvent.pointerUp(canvas, { clientX: 300, clientY: 300, pointerId: 1 });
+    const w = value("station 0 w");
+    expect(w % 50).toBe(0);
+    expect(w).toBeGreaterThan(0);
+    expect(w).toBeLessThan(2000);
+    expect(value("station 0 x")).toBe(0);
+    expect(value("station 1 w")).toBe(2000);
+    await act(async () => fireEvent.click(screen.getByText("Save boxes")));
+    const post = fetch.mock.calls.find(([url]) => url === "api/calibrations/abcd1234abcd1234/boxes")!;
+    expect(JSON.parse(post[1]!.body as string)).toEqual({
+      stations: { 0: [0, 0, w, 4000], 1: [0, 0, 2000, 4000] },
+      tag: null,
+      revision: "r1",
+    });
+    expect(await screen.findByTestId("boxes-saved")).toHaveTextContent(
+      "dotbot swarm calibrate-lh2 push 9e9e9e9e --site arena",
+    );
+    // The new file is what is loaded now, so nothing is left to save
+    expect(screen.getByText("Save boxes")).toBeDisabled();
+    expect(value("station 0 w")).toBe(w);
+  });
+
+  it("moves a box by dragging it, and refuses one dragged outside the extent", async () => {
+    boxesServer();
+    await loadBoxes();
+    fireEvent.click(within(screen.getByTestId("boxes-station-1")).getByText("station 1 (channel 2)"));
+    const canvas = screen.getByTestId("site-canvas");
+    fireEvent.pointerDown(screen.getByTestId("station-box-body-1"), { button: 0, clientX: 300, clientY: 300, pointerId: 1 });
+    fireEvent.pointerMove(canvas, { clientX: 323, clientY: 300, pointerId: 1 });
+    fireEvent.pointerUp(canvas, { clientX: 323, clientY: 300, pointerId: 1 });
+    expect(value("station 1 x")).toBe(200);
+    expect(value("station 0 x")).toBe(0);
+    expect(screen.getByTestId("boxes-issues")).toHaveTextContent("station 1 (channel 2)'s rectangle reaches outside the site's extent");
+    expect(screen.getByText("Save boxes")).toBeDisabled();
+  });
+
+  it("undoes and redoes box edits apart from the site's", async () => {
+    boxesServer();
+    await loadBoxes();
+    fireEvent.change(screen.getByLabelText("station 0 w"), { target: { value: "15" } });
+    fireEvent.change(screen.getByLabelText("station 0 w"), { target: { value: "1500" } });
+    fireEvent.change(screen.getByLabelText("station 1 h"), { target: { value: "400" } });
+    expect(screen.getByTestId("boxes-issues")).toHaveTextContent("leaves out");
+    fireEvent.click(screen.getByText("Undo"));
+    expect(value("station 1 h")).toBe(4000);
+    expect(value("station 0 w")).toBe(1500);
+    fireEvent.keyDown(window, { key: "z", ctrlKey: true });
+    expect(value("station 0 w")).toBe(2000);
+    expect(screen.getByText("Undo")).toBeDisabled();
+    fireEvent.click(screen.getByText("Redo"));
+    expect(value("station 0 w")).toBe(1500);
+    expect(screen.queryByText(/unsaved/)).toBeNull();
+  });
+
+  it("says why a calibration outside the site's frame cannot be edited", async () => {
+    boxesServer("it is a free-mode spin calibration, in its own frame: place it on the site first");
+    await loadBoxes();
+    expect(screen.getByTestId("boxes-refused")).toHaveTextContent("place it on the site first");
+    fireEvent.change(screen.getByLabelText("station 0 w"), { target: { value: "1500" } });
+    expect(screen.getByText("Save boxes")).toBeDisabled();
+  });
+});

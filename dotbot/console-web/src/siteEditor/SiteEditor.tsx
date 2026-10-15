@@ -9,9 +9,11 @@ import {
   fetchSite,
   placeCalibration,
   previewSite,
+  reboxCalibration,
   saveSite,
   stopEditor,
 } from "./api";
+import { boxIssues, boxesOf, cornersOf, sameBoxes } from "./boxes";
 import { CalibrationPanel } from "./CalibrationPanel";
 import { Canvas } from "./Canvas";
 import type { BarrierRef, Placement, Tool } from "./Canvas";
@@ -28,11 +30,13 @@ import type { Rect } from "./edit";
 import { record, redo, seal, startHistory, undo } from "./history";
 import type { History } from "./history";
 import { Inspector } from "./Inspector";
+import { StationBoxesPanel } from "./StationBoxesPanel";
 import { IDENTITY } from "./rigid";
 import type {
   Backdrops,
   BarrierKind,
   CalibrationListing,
+  CalibrationOverlay,
   EditArea,
   EditObject,
   PlacedCalibration,
@@ -75,6 +79,7 @@ const TOOLS: { key: Tool; label: string; hint: string }[] = [
   { key: "select", label: "Select", hint: "V: select, move and resize" },
   { key: "area", label: "Area", hint: "A: drag out a new area" },
   { key: "calibration", label: "Calibration", hint: "C: place a spin calibration on the site" },
+  { key: "boxes", label: "Station boxes", hint: "S: change where each LH2 station of a calibration is trusted" },
   { key: "wall", label: "Wall", hint: "W: click the points of a wall, double-click to finish" },
   { key: "obstacle", label: "Obstacle", hint: "O: click the corners of an obstacle, double-click to finish" },
   { key: "object", label: "Object", hint: "B: click to place a charger, dock, landmark or camera" },
@@ -152,6 +157,21 @@ export function SiteEditor(props: SiteEditorProps = {}) {
   const [placed, setPlaced] = useState<PlacedCalibration | null>(null);
   const [backdrops, setBackdrops] = useState<Backdrops | null>(null);
   const [shownBackdrops, setShownBackdrops] = useState<Set<string>>(new Set());
+  // The Station boxes tool: a calibration of this site and its stations'
+  // rectangles, with an undo history of their own
+  const [boxSource, setBoxSource] = useState<CalibrationOverlay | null>(null);
+  const [boxHistory, setBoxHistory] = useState<History<Rect[]> | null>(null);
+  const [selectedBox, setSelectedBox] = useState<number | null>(null);
+  const [boxTag, setBoxTag] = useState("");
+  const [boxSaved, setBoxSaved] = useState<PlacedCalibration | null>(null);
+  const boxes = boxHistory?.present ?? null;
+  const boxesDirty = !!boxSource && !!boxes && !sameBoxes(boxes, boxesOf(boxSource));
+  const setBox = (k: number, rect: Rect, key: string | null = null) =>
+    setBoxHistory((h) => {
+      if (!h) return h;
+      const value = h.present.map((r, i) => (i === k ? rect : r));
+      return sameBoxes(value, h.present) ? h : record(h, value, key);
+    });
 
   const load = useCallback(async () => {
     try {
@@ -183,9 +203,21 @@ export function SiteEditor(props: SiteEditorProps = {}) {
   useEffect(() => {
     setHistory((h) => (h ? seal(h) : h));
   }, [selected]);
+  useEffect(() => {
+    setBoxHistory((h) => (h ? seal(h) : h));
+  }, [selectedBox]);
+
+  // With the boxes tool out, undo and redo act on the boxes
+  const boxTravel = tool === "boxes" && !!boxHistory;
+  const canUndo = boxTravel ? boxHistory!.past.length > 0 : !!history && history.past.length > 0;
+  const canRedo = boxTravel ? boxHistory!.future.length > 0 : !!history && history.future.length > 0;
 
   /** Undo or redo, dropping a selection whose index now names another area. */
-  const travel = (move: (h: History<SiteModel>) => History<SiteModel>) => {
+  const travel = (move: <T>(h: History<T>) => History<T>) => {
+    if (boxTravel) {
+      setBoxHistory((h) => (h ? move(h) : h));
+      return;
+    }
     if (!history) return;
     const next = move(history);
     if (selected !== null && next.present.areas[selected]?.name !== history.present.areas[selected]?.name) {
@@ -195,7 +227,7 @@ export function SiteEditor(props: SiteEditorProps = {}) {
   };
 
   useEffect(() => {
-    if (tool !== "calibration") return;
+    if (tool !== "calibration" && tool !== "boxes") return;
     fetchCalibrations(base)
       .then(setListing)
       .catch((err) => setNotice({ kind: "error", text: `could not list calibrations: ${(err as Error).message}` }));
@@ -225,6 +257,55 @@ export function SiteEditor(props: SiteEditorProps = {}) {
       setNotice({ kind: "error", text: `calibration not saved: ${(err as Error).message}` });
     }
   };
+
+  const startBoxes = (overlay: CalibrationOverlay) => {
+    setBoxSource(overlay);
+    setBoxHistory(startHistory(boxesOf(overlay)));
+    setSelectedBox(null);
+  };
+
+  const loadBoxes = async (spec: string) => {
+    try {
+      startBoxes(await fetchCalibration(spec, base));
+      setBoxSaved(null);
+      setBoxTag("");
+    } catch (err) {
+      setNotice({ kind: "error", text: (err as Error).message });
+    }
+  };
+
+  const saveBoxes = async () => {
+    if (!boxSource || !boxes || !loaded) return;
+    const stations: Record<number, number[]> = {};
+    boxSource.stations.forEach((st, k) => {
+      stations[st.index] = cornersOf(boxes[k]);
+    });
+    try {
+      const result = await reboxCalibration(boxSource.id, stations, boxTag.trim() || null, loaded.revision, base);
+      setBoxSaved(result);
+      // What is drawn is the new file now, so further edits start from it
+      startBoxes({ ...result, frame_refusal: null });
+      setBoxTag("");
+      fetchCalibrations(base)
+        .then(setListing)
+        .catch(() => undefined);
+      setNotice({ kind: "info", text: `saved calibration ${result.id8}; push it with: ${result.push}` });
+    } catch (err) {
+      if (err instanceof StaleSiteError) {
+        setNotice({
+          kind: "stale",
+          text: "site.toml changed on disk since this page loaded it, so the boxes were not saved. Reload takes the file as it is now.",
+        });
+      } else {
+        setNotice({ kind: "error", text: `boxes not saved: ${(err as Error).message}` });
+      }
+    }
+  };
+
+  const boxProblems = useMemo(
+    () => (boxSource && boxes ? boxIssues(boxSource, boxes, site?.extent_mm ?? null) : []),
+    [boxSource, boxes, site?.extent_mm],
+  );
 
   const issues = useMemo(() => (site ? siteIssues(site) : []), [site]);
   const errors = issues.filter((i) => i.level === "error");
@@ -291,7 +372,12 @@ export function SiteEditor(props: SiteEditorProps = {}) {
   };
 
   const nudge = (dx: number, dy: number) => {
-    if (tool === "calibration" && placement) {
+    if (tool === "boxes") {
+      if (selectedBox !== null && boxes?.[selectedBox]) {
+        const r = boxes[selectedBox];
+        setBox(selectedBox, { ...r, x: r.x + dx, y: r.y + dy }, `nudge-box-${selectedBox}`);
+      }
+    } else if (tool === "calibration" && placement) {
       setPlacement({ ...placement, move: { ...placement.move, dx_mm: placement.move.dx_mm + dx, dy_mm: placement.move.dy_mm + dy } });
     } else if (selected !== null && site?.areas[selected]) {
       const a = site.areas[selected];
@@ -336,10 +422,12 @@ export function SiteEditor(props: SiteEditorProps = {}) {
       if (e.key === "v" || e.key === "V") setTool("select");
       else if (e.key === "a" || e.key === "A") setTool("area");
       else if (e.key === "c" || e.key === "C") setTool("calibration");
+      else if (e.key === "s" || e.key === "S") setTool("boxes");
       else if (e.key === "w" || e.key === "W") setTool("wall");
       else if (e.key === "o" || e.key === "O") setTool("obstacle");
       else if (e.key === "b" || e.key === "B") setTool("object");
       else if (e.key === "Escape") {
+        setSelectedBox(null);
         setSelected(null);
         setSelectedBarrier(null);
         setSelectedObject(null);
@@ -355,11 +443,11 @@ export function SiteEditor(props: SiteEditorProps = {}) {
 
   useEffect(() => {
     const onLeave = (e: BeforeUnloadEvent) => {
-      if (dirty && !stopped) e.preventDefault();
+      if ((dirty || boxesDirty) && !stopped) e.preventDefault();
     };
     window.addEventListener("beforeunload", onLeave);
     return () => window.removeEventListener("beforeunload", onLeave);
-  }, [dirty, stopped]);
+  }, [dirty, boxesDirty, stopped]);
 
   const doSave = async () => {
     if (!site || !loaded) return;
@@ -405,11 +493,11 @@ export function SiteEditor(props: SiteEditorProps = {}) {
 
   const onDone = async () => {
     if (embedded) {
-      if (dirty && !window.confirm("Close the editor without saving your changes?")) return;
+      if ((dirty || boxesDirty) && !window.confirm("Close the editor without saving your changes?")) return;
       props.onClose?.();
       return;
     }
-    if (dirty && !window.confirm("Stop the editor without saving your changes?")) return;
+    if ((dirty || boxesDirty) && !window.confirm("Stop the editor without saving your changes?")) return;
     try {
       await stopEditor(base);
     } catch {
@@ -479,7 +567,7 @@ export function SiteEditor(props: SiteEditorProps = {}) {
           type="button"
           style={button}
           title="undo (Ctrl+Z)"
-          disabled={!history || history.past.length === 0}
+          disabled={!canUndo}
           onClick={() => travel(undo)}
         >
           Undo
@@ -488,7 +576,7 @@ export function SiteEditor(props: SiteEditorProps = {}) {
           type="button"
           style={button}
           title="redo (Ctrl+Shift+Z)"
-          disabled={!history || history.future.length === 0}
+          disabled={!canRedo}
           onClick={() => travel(redo)}
         >
           Redo
@@ -603,6 +691,19 @@ export function SiteEditor(props: SiteEditorProps = {}) {
             onSelectObject={selectObject}
             onObjectChange={(i, at, key) => updateObject(i, at, key)}
             onObjectPlace={addObject}
+            stationBoxes={
+              boxSource && boxes
+                ? boxSource.stations.map((st, k) => ({
+                    index: st.index,
+                    channel: st.channel,
+                    rect: boxes[k],
+                    circles: st.circles,
+                  }))
+                : null
+            }
+            selectedBox={selectedBox}
+            onSelectBox={setSelectedBox}
+            onBoxChange={(k, rect, key) => setBox(k, rect, key)}
             placement={placement}
             onPlacement={(move) => setPlacement((p) => (p ? { ...p, move } : p))}
             backdrops={
@@ -658,7 +759,37 @@ export function SiteEditor(props: SiteEditorProps = {}) {
               })
             }
             extra={
-              tool === "calibration" || placement || placed ? (
+              tool === "boxes" || (boxSource && tool !== "calibration") ? (
+                <StationBoxesPanel
+                  listing={listing.filter((c) => c.in_frame)}
+                  source={boxSource}
+                  boxes={boxes ?? []}
+                  selected={selectedBox}
+                  issues={boxProblems}
+                  tag={boxTag}
+                  dirty={boxesDirty}
+                  saved={boxSaved}
+                  blocked={
+                    frameChanged(site, loaded.site)
+                      ? "Save site.toml first: the boxes are checked against the extent in the file."
+                      : null
+                  }
+                  onLoad={(spec) => void loadBoxes(spec)}
+                  onSelect={(k) => {
+                    setSelectedBox(k);
+                    setTool("boxes");
+                  }}
+                  onBox={(k, rect, key) => setBox(k, rect, key)}
+                  onTag={setBoxTag}
+                  onSave={() => void saveBoxes()}
+                  onClear={() => {
+                    setBoxSource(null);
+                    setBoxHistory(null);
+                    setSelectedBox(null);
+                    setBoxSaved(null);
+                  }}
+                />
+              ) : tool === "calibration" || placement || placed ? (
                 <CalibrationPanel
                   listing={listing}
                   placement={placement}
