@@ -135,6 +135,15 @@ describe("missionReport", () => {
     expect(missionReport(undefined)).toBeNull();
   });
 
+  it("reports a batch the controller holds for a heading as under way", () => {
+    expect(missionReport({ waypoints_status: 2, waypoints_awaiting_heading: true })).toEqual({
+      state: "in_progress",
+      index: 0,
+      reason: "waiting for a heading",
+      code: "AWAITING_HEADING",
+    });
+  });
+
   it("names every reason the controller reports in words", () => {
     const reasons = ["NO_HEADING", "TURN", "PROGRESS", "HEADING_LOST", "HOLD", "SETTLE", "STOP", "DIRECT", "CONTROL_MODE"];
     for (const code of reasons) {
