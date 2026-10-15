@@ -259,6 +259,8 @@ class Calibration:
     robot: str = ROBOT_DEFAULT
     # The id of the free-frame spin calibration this one was moved from
     placed_from: str = ""
+    # The id of the calibration this one is an edit of, its rectangles changed
+    edited_from: str = ""
     path: Optional[Path] = None
     # The id the file on disk declares, when this came from one. A mismatch
     # with `id` means the file was hand-edited into a different calibration.
@@ -690,6 +692,8 @@ def render_calibration(calibration: Calibration) -> str:
         out.append(f'tag = "{toml_escape(calibration.tag)}"')
     if calibration.placed_from:
         out.append(f'placed_from = "{calibration.placed_from}"')
+    if calibration.edited_from:
+        out.append(f'edited_from = "{calibration.edited_from}"')
     out += [
         "",
         "[site]",
@@ -872,6 +876,7 @@ def read_calibration_file(path: Path) -> Calibration:
         tag=metadata.get("tag", ""),
         robot=metadata.get("robot", ROBOT_DEFAULT),
         placed_from=str(metadata.get("placed_from", "")),
+        edited_from=str(metadata.get("edited_from", "")),
         path=path,
     )
     calibration.stored_id = str(metadata.get("id", ""))
