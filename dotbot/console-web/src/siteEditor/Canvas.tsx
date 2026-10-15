@@ -19,6 +19,7 @@ import type { Area } from "../types";
 import { FRAME_CAMERA, viewGeom } from "../zoom";
 import { BARRIER_MIN_POINTS, HANDLES, effectiveRole, finishPoints, movePoints, moveRect, rectFromDrag, resizeRect, snap } from "./edit";
 import type { Handle, Rect } from "./edit";
+import { STATION_COLOURS } from "./boxes";
 import { applyMove, movedBox, movedCorners, snapAngle, turnAbout } from "./rigid";
 import type { Point, Rigid2D } from "./rigid";
 import type {
@@ -29,13 +30,14 @@ import type {
   EditArea,
   EditBarrier,
   EditObject,
+  SpinCircle,
 } from "./types";
 
 // The site drawn to scale: the extent, the metric grid and its rulers, and
 // every area in its role colour. Areas are moved, resized and drawn here; the
 // numbers themselves live in the inspector.
 
-export type Tool = "select" | "area" | "calibration" | "wall" | "obstacle" | "object";
+export type Tool = "select" | "area" | "calibration" | "boxes" | "wall" | "obstacle" | "object";
 
 /** A selected wall or obstacle. */
 export interface BarrierRef {
@@ -51,8 +53,13 @@ export interface Placement {
   move: Rigid2D;
 }
 
-// One colour per station, in station order
-const STATION_COLOURS = ["var(--accent)", "var(--s-Running)", "var(--s-Programming)", "var(--s-Bootloader)"];
+/** One station's rectangle being edited, frame mm, and the circles it saw. */
+export interface StationBox {
+  index: number;
+  channel: number;
+  rect: Rect;
+  circles: SpinCircle[];
+}
 const ROTATE_HANDLE_PX = 28;
 
 const HANDLE_PX = 9;
@@ -68,7 +75,9 @@ type Drag =
   | { kind: "barrier-move"; ref: BarrierRef; start: [number, number][]; from: { x: number; y: number } }
   | { kind: "barrier-vertex"; ref: BarrierRef; vertex: number }
   | { kind: "object-move"; index: number; start: { x: number; y: number }; from: { x: number; y: number } }
-  | { kind: "place-turn"; start: Rigid2D; pivot: Point; angle: number };
+  | { kind: "place-turn"; start: Rigid2D; pivot: Point; angle: number }
+  | { kind: "box-move"; k: number; start: Rect; from: { x: number; y: number }; px: { x: number; y: number } }
+  | { kind: "box-resize"; k: number; start: Rect; handle: Handle };
 
 export interface CanvasProps {
   extent: [number, number] | null;
@@ -95,6 +104,13 @@ export interface CanvasProps {
   onSelectObject?: (index: number | null) => void;
   onObjectChange?: (index: number, at: { x: number; y: number }, key: string) => void;
   onObjectPlace?: (at: { x: number; y: number }) => void;
+  /** A calibration's station rectangles, edited with the boxes tool. */
+  stationBoxes?: StationBox[] | null;
+  /** The box being edited, by its position in `stationBoxes`. */
+  selectedBox?: number | null;
+  onSelectBox?: (k: number | null) => void;
+  /** `key` names the gesture, so one drag undoes as one step. */
+  onBoxChange?: (k: number, rect: Rect, key: string) => void;
   /** Read-only layers under the areas: only the ones switched on. */
   backdrops?: { calibrations: CalibrationBackdrop[]; cameras: CameraBackdrop[] };
 }
@@ -223,11 +239,26 @@ export function Canvas(props: CanvasProps) {
     if (props.tool === "area") {
       const p = toFrame(e);
       begin(e, { kind: "draw", from: p, to: p });
+    } else if (props.tool === "boxes") {
+      props.onSelectBox?.(null);
     } else {
       props.onSelect(null);
       props.onSelectBarrier?.(null);
       props.onSelectObject?.(null);
     }
+  };
+
+  const onBoxDown = (e: React.PointerEvent, k: number) => {
+    const box = props.stationBoxes?.[k];
+    if (e.button !== 0 || props.tool !== "boxes" || !box) return;
+    props.onSelectBox?.(k);
+    begin(e, { kind: "box-move", k, start: box.rect, from: toFrame(e), px: { x: e.clientX, y: e.clientY } });
+  };
+
+  const onBoxHandleDown = (e: React.PointerEvent, k: number, handle: Handle) => {
+    const box = props.stationBoxes?.[k];
+    if (e.button !== 0 || !box) return;
+    begin(e, { kind: "box-resize", k, start: box.rect, handle });
   };
 
   const onObjectDown = (e: React.PointerEvent, index: number) => {
@@ -326,6 +357,11 @@ export function Canvas(props: CanvasProps) {
         dx_mm: s > 1 ? snap(turned.dx_mm, s) : Math.round(turned.dx_mm * 10) / 10,
         dy_mm: s > 1 ? snap(turned.dy_mm, s) : Math.round(turned.dy_mm * 10) / 10,
       });
+    } else if (drag.kind === "box-move") {
+      if (Math.hypot(e.clientX - drag.px.x, e.clientY - drag.px.y) < DRAG_THRESHOLD_PX) return;
+      props.onBoxChange?.(drag.k, moveRect(drag.start, p.x - drag.from.x, p.y - drag.from.y, s), `canvas-${gesture.current}`);
+    } else if (drag.kind === "box-resize") {
+      props.onBoxChange?.(drag.k, resizeRect(drag.start, drag.handle, p, s), `canvas-${gesture.current}`);
     } else if (drag.kind === "move") {
       // A click that selects is not a move, however the pointer jitters
       if (Math.hypot(e.clientX - drag.px.x, e.clientY - drag.px.y) < DRAG_THRESHOLD_PX) return;
@@ -353,6 +389,16 @@ export function Canvas(props: CanvasProps) {
   const sel = props.selected !== null ? props.areas[props.selected] : null;
   const preview = drag?.kind === "draw" ? rectFromDrag(drag.from, drag.to, props.snapMm) : null;
   const extentPx = rectPx(extentArea);
+  const boxes = props.stationBoxes ?? null;
+  // Largest first and the one being edited last, so each can be grabbed
+  const boxOrder = (boxes ?? [])
+    .map((_, k) => k)
+    .sort((i, j) => {
+      if (i === props.selectedBox) return 1;
+      if (j === props.selectedBox) return -1;
+      return boxes![j].rect.w * boxes![j].rect.h - boxes![i].rect.w * boxes![i].rect.h;
+    });
+  const selBox = boxes && props.selectedBox !== null && props.selectedBox !== undefined ? boxes[props.selectedBox] ?? null : null;
 
   return (
     <div
@@ -598,6 +644,87 @@ export function Canvas(props: CanvasProps) {
             ))}
           </g>
         )}
+        {boxes && (
+          <g data-testid="station-boxes">
+            {boxOrder.map((k) => {
+              const box = boxes[k];
+              const colour = STATION_COLOURS[k % STATION_COLOURS.length];
+              const r = rectPx(box.rect);
+              const editing = props.tool === "boxes";
+              const chosen = editing && props.selectedBox === k;
+              return (
+                <g key={box.index} data-testid={`station-box-${box.index}`}>
+                  <rect
+                    data-testid={`station-box-body-${box.index}`}
+                    {...r}
+                    fill={colour}
+                    fillOpacity={editing ? 0.08 : 0}
+                    stroke={colour}
+                    strokeWidth={chosen ? 2.5 : 1.5}
+                    strokeDasharray={chosen ? undefined : "6 4"}
+                    style={{ cursor: editing ? "move" : "default", pointerEvents: editing ? "all" : "none" }}
+                    onPointerDown={(e) => onBoxDown(e, k)}
+                  >
+                    <title>{`station ${box.index} (channel ${box.channel})`}</title>
+                  </rect>
+                  <text
+                    x={r.x + 4}
+                    y={r.y + 14 + 12 * k}
+                    fontSize={10}
+                    fontFamily="var(--font-mono)"
+                    fill={colour}
+                    style={{ pointerEvents: "none" }}
+                  >
+                    {`station ${box.index} (channel ${box.channel})`}
+                  </text>
+                  {box.circles.map((c) => (
+                    <circle
+                      key={c.name}
+                      cx={px("x", c.x)}
+                      cy={px("y", c.y)}
+                      r={2.5}
+                      fill={colour}
+                      style={{ pointerEvents: "none" }}
+                    />
+                  ))}
+                </g>
+              );
+            })}
+            {selBox && props.tool === "boxes" && props.selectedBox !== null && props.selectedBox !== undefined && (
+              <g data-testid="box-selection">
+                <text
+                  x={rectPx(selBox.rect).x + rectPx(selBox.rect).width / 2}
+                  y={rectPx(selBox.rect).y + rectPx(selBox.rect).height + 16}
+                  textAnchor="middle"
+                  fontSize={11}
+                  fontFamily="var(--font-mono)"
+                  fill="var(--text)"
+                  style={{ pointerEvents: "none" }}
+                >
+                  {`${selBox.rect.w} x ${selBox.rect.h} mm at (${selBox.rect.x}, ${selBox.rect.y})`}
+                </text>
+                {HANDLES.map((h) => {
+                  const p = handlePoint(selBox.rect, h);
+                  return (
+                    <rect
+                      key={h}
+                      data-testid={`box-handle-${h}`}
+                      x={px("x", p.x) - HANDLE_PX / 2}
+                      y={px("y", p.y) - HANDLE_PX / 2}
+                      width={HANDLE_PX}
+                      height={HANDLE_PX}
+                      fill="var(--surface)"
+                      stroke={STATION_COLOURS[props.selectedBox! % STATION_COLOURS.length]}
+                      strokeWidth={1.2}
+                      style={{ cursor: CURSOR[h] }}
+                      onPointerDown={(e) => onBoxHandleDown(e, props.selectedBox!, h)}
+                    />
+                  );
+                })}
+              </g>
+            )}
+          </g>
+        )}
         {placement && fence && placedBox && placeCentre && (
           <g data-testid="placement">
             {placement.overlay.stations.map((st, k) => {
@@ -788,7 +915,9 @@ export function Canvas(props: CanvasProps) {
           ? "free placement (Alt)"
           : props.tool === "calibration"
             ? `snap ${props.snapMm} mm and 90 deg, Alt for free; scale is locked`
-            : `snap ${props.snapMm} mm, Alt for free`}
+            : props.tool === "boxes"
+              ? `drag a station's box or its handles; snap ${props.snapMm} mm, Alt for free`
+              : `snap ${props.snapMm} mm, Alt for free`}
       </div>
     </div>
   );
