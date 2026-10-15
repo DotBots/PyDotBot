@@ -462,6 +462,15 @@ def parse(text: str) -> TOMLDocument:
         raise SiteTomlError(f"not valid TOML: {exc}") from exc
 
 
+def anchored_text(text: str, anchor: str) -> str:
+    """`text` with its `anchor` set to `anchor` and nothing else changed."""
+    doc = parse(text)
+    _set(doc, "anchor", anchor if anchor else None)
+    result = tomlkit.dumps(doc)
+    validate(result)
+    return result
+
+
 def patched_text(text: str, model: dict[str, Any]) -> str:
     """`text` with `model` written into it, validated, and read back as
     `model`; SiteTomlError when the patch cannot be made faithfully."""
