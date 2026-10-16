@@ -481,23 +481,63 @@ def _collect(
 def _spin_ready(ctx, client, status, devices):
     """Sort the robots for a spin, flashing calibrate-spin onto those that
     run another app first. Returns the sorted robots and the sets their
-    images came from before any flash."""
+    images came from before any flash. Refuses before flashing anything
+    when a robot is unanswered or busy."""
+    from dataclasses import replace
+
     from dotbot.calibration.push import stop_robots
-    from dotbot.calibration.spin import check_spin_robots
-    from dotbot.cli._spin_flash import await_flashed, flash_spin_app, robots_sets
+    from dotbot.calibration.spin import SPIN_IMAGE, check_spin_robots
+    from dotbot.cli._artifacts import artifacts_dir
+    from dotbot.cli._spin_flash import (
+        SpinFlashError,
+        await_flashed,
+        flash_spin_app,
+        image_sets,
+        robots_sets,
+    )
 
     robots = check_spin_robots(status)
-    before = robots_sets(status, sorted(status))
-    if robots.wrong_image:
-        flashed = sorted(robots.wrong_image)
-        flash_spin_app(
-            client, status, flashed, ctx.params.get("fw_version"), stop=stop_robots
+    index = image_sets(artifacts_dir())
+    before = robots_sets(status, sorted(status), index)
+    if not robots.wrong_image:
+        return robots, before
+    flashed = sorted(robots.wrong_image)
+    if robots.busy or robots.unanswered:
+        raise click.ClickException(
+            "spin refused, nothing flashed:\n"
+            + replace(robots, wrong_image={}).refusal()
+            + f"\nA retry first flashes {SPIN_IMAGE} onto the robots on another "
+            "app: " + ", ".join(flashed) + "."
         )
-        click.echo("Reading device info...")
-        fresh = await_flashed(client, flashed, devices)
-        status = {addr: fresh.get(addr, node) for addr, node in status.items()}
-        robots = check_spin_robots(status)
-    return robots, before
+    try:
+        flash_spin_app(
+            client,
+            status,
+            flashed,
+            ctx.params.get("fw_version"),
+            stop=stop_robots,
+            index=index,
+        )
+    except SpinFlashError as exc:
+        if exc.flashed:
+            click.echo(
+                f"{SPIN_IMAGE} may now be on {', '.join(exc.flashed)}; to put "
+                "back their app:\n" + _restore_hint(",".join(exc.flashed), before)
+            )
+        raise
+    click.echo("Reading device info...")
+    fresh, pending = await_flashed(client, flashed, devices)
+    if pending:
+        click.echo(
+            f"To put back the app of the robots flashed with {SPIN_IMAGE}:\n"
+            + _restore_hint(",".join(flashed), before)
+        )
+        raise click.ClickException(
+            f"flashed {SPIN_IMAGE}, but {', '.join(pending)} did not report it "
+            "in time; check `dotbot swarm status`, then retry."
+        )
+    status = {addr: fresh.get(addr, node) for addr, node in status.items()}
+    return check_spin_robots(status), before
 
 
 def _restore_hint(spun: str, sets: list) -> str:

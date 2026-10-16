@@ -12,6 +12,7 @@ from typing import Any, Callable
 
 import click
 
+from dotbot.calibration.spin import SPIN_IMAGE
 from dotbot.cli._artifacts import artifacts_dir
 from dotbot.cli._swarm_flash import APP_CATALOG, _filename
 
@@ -39,11 +40,12 @@ def sets_of_digest(digest: str, index: dict[str, list[Path]]) -> list[Path]:
     return next((f for d, f in index.items() if d.startswith(digest)), [])
 
 
-def robots_sets(status: dict[str, Any], addresses: list[str]) -> list[Path]:
+def robots_sets(
+    status: dict[str, Any], addresses: list[str], index: dict[str, list[Path]]
+) -> list[Path]:
     """The sets every robot's current image is in: one when that settles it,
     several when byte-identical images sit in several sets, none when the
-    images are unknown or come from different sets."""
-    index = image_sets(artifacts_dir())
+    images are unknown or come from different sets. `index` is `image_sets()`."""
     common: list[Path] | None = None
     for addr in addresses:
         info = getattr(status[addr], "info", None)
@@ -60,13 +62,15 @@ def set_label(folder: Path, artifacts: Path) -> str:
 
 
 def spin_images(
-    status: dict[str, Any], addresses: list[str], fw_version: str | None
+    status: dict[str, Any],
+    addresses: list[str],
+    fw_version: str | None,
+    index: dict[str, list[Path]],
 ) -> dict[Path, list[str]]:
     """The calibrate-spin image each robot is flashed with, grouped by image."""
     from dotbot.firmware.fetch import resolve_fw_dir
 
     artifacts = artifacts_dir()
-    index = image_sets(artifacts) if fw_version is None else {}
     groups: dict[Path, list[str]] = {}
     fallback: Path | None = None
     for addr in sorted(addresses):
@@ -109,44 +113,67 @@ def flash_over_air(client: Any, image: Path, devices: list[str]) -> list[str]:
     return sorted(d for d in devices if not done.get(d))
 
 
+class SpinFlashError(click.ClickException):
+    """A calibrate-spin flash that did not reach every robot; `flashed` are
+    the robots that may hold calibrate-spin anyway."""
+
+    def __init__(self, message: str, flashed: list[str]):
+        super().__init__(message)
+        self.flashed = flashed
+
+
 def flash_spin_app(
     client: Any,
     status: dict[str, Any],
     addresses: list[str],
     fw_version: str | None,
     stop: Callable[[Any, list[str]], list[str]],
-) -> dict[str, Path]:
-    """Flash calibrate-spin onto `addresses`; return each robot's image.
+    index: dict[str, list[Path]],
+) -> None:
+    """Flash calibrate-spin onto `addresses`.
 
     `stop` stops the robots that are in their app and returns those still
-    there. Raises ClickException naming the robots it could not flash.
+    there. Raises SpinFlashError naming the robots it could not flash.
     """
     from dotbot.calibration.push import in_app
 
-    groups = spin_images(status, addresses, fw_version)
+    groups = spin_images(status, addresses, fw_version, index)
     running = [a for a in addresses if in_app(status[a])]
     if running:
         busy = stop(client, running)
         if busy:
-            raise click.ClickException(
-                "still in their app after a stop, so not flashed: " + ", ".join(busy)
+            raise SpinFlashError(
+                "still in their app after a stop, so not flashed: " + ", ".join(busy),
+                [],
             )
     failed: list[str] = []
+    flashed: list[str] = []
     for image, addrs in groups.items():
         click.echo(
             f"Flashing {image.name} from {image.parent} onto {len(addrs)} "
             f"robot(s): {', '.join(addrs)}"
         )
         try:
-            failed += flash_over_air(client, image, addrs)
+            missed = flash_over_air(client, image, addrs)
         except RuntimeError as exc:
-            raise click.ClickException(f"flashing calibrate-spin failed: {exc}")
+            raise SpinFlashError(
+                f"flashing calibrate-spin failed: {exc}", sorted(flashed + addrs)
+            ) from exc
+        failed += missed
+        flashed += [a for a in addrs if a not in missed]
     if failed:
-        raise click.ClickException(
+        raise SpinFlashError(
             "calibrate-spin did not reach " + ", ".join(failed) + "; leave them "
-            "out with `dotbot swarm -d <addresses> ...`, or retry."
+            "out with `dotbot swarm -d <addresses> ...`, or retry.",
+            sorted(flashed),
         )
-    return {addr: image for image, addrs in groups.items() for addr in addrs}
+
+
+def _confirmed(node: Any) -> bool:
+    """Whether `node` reports the calibrate-spin image and is done flashing."""
+    name = getattr(getattr(node, "info", None), "image_name", "") or ""
+    state = getattr(getattr(node, "status", None), "name", "")
+    return name.startswith(SPIN_IMAGE) and state not in ("Resetting", "Programming")
 
 
 def await_flashed(
@@ -156,21 +183,19 @@ def await_flashed(
     timeout: float = 15.0,
     clock: Callable[[], float] | None = None,
     sleep: Callable[[float], None] | None = None,
-) -> dict[str, Any]:
-    """Re-read device info until no robot in `flashed` is still resetting or
-    programming, or `timeout` seconds pass; return the last `status()`."""
+) -> tuple[dict[str, Any], list[str]]:
+    """Re-read device info until every robot in `flashed` reports the
+    calibrate-spin image, done flashing, or `timeout` seconds pass.
+
+    Returns the last `status()` and the robots that did not confirm.
+    """
     clock = clock or time.monotonic
     sleep = sleep or time.sleep
     deadline = clock() + timeout
     while True:
         client.refresh_device_info(devices)
         fresh = client.status()
-        busy = [
-            a
-            for a in flashed
-            if getattr(getattr(fresh.get(a), "status", None), "name", "")
-            in ("Resetting", "Programming")
-        ]
-        if not busy or clock() >= deadline:
-            return fresh
+        pending = [a for a in flashed if not _confirmed(fresh.get(a))]
+        if not pending or clock() >= deadline:
+            return fresh, pending
         sleep(1.0)

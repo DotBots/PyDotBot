@@ -183,12 +183,11 @@ def check_spin_robots(status: Mapping[str, Any]) -> SpinRobots:
             out.unanswered.append(addr)
             continue
         name = getattr(info, "image_name", "") or ""
-        if not name.startswith(SPIN_IMAGE):
-            out.wrong_image[addr] = name or "unnamed image"
-            continue
         state = getattr(getattr(node, "status", None), "name", "")
         if state in ("Resetting", "Programming"):
             out.busy[addr] = state
+        elif not name.startswith(SPIN_IMAGE):
+            out.wrong_image[addr] = name or "unnamed image"
         elif in_app(node):
             out.running.append(addr)
         else:
