@@ -272,10 +272,10 @@ def test_the_tracks_are_part_of_the_identity():
 
 
 def test_a_self_defined_site_centres_the_field():
-    calibration, _, _ = conics.solve_calibration(
+    calibration, joint, _ = conics.solve_calibration(
         track_samples(CENTRES), Site(name="lab")
     )
-    field_w, field_h = calibration.valid_mm[2:]
+    field_w, field_h = joint.field_mm
     site, placed = conics.self_defined_site(calibration, "spun", size_mm=(3000, 4000))
     assert site.extent_mm == (3000, 4000)
     field = site.areas["field"]
@@ -284,7 +284,14 @@ def test_a_self_defined_site_centres_the_field():
     staging = site.areas["staging"]
     assert (staging.x, staging.y, staging.w) == (field.x, field.y_max, field.w)
     assert staging.y_max <= 4000
-    assert placed.valid_mm == (0, 0, 3000, 4000)
+    x0, y0, x1, y1 = calibration.stations[0].valid_mm
+    assert placed.stations[0].valid_mm == (
+        x0 + field.x,
+        y0 + field.y,
+        x1 + field.x,
+        y1 + field.y,
+    )
+    assert placed.valid_mm == placed.stations[0].valid_mm
     assert (
         placed.site.anchor
         == site.anchor
@@ -306,22 +313,23 @@ def test_a_self_defined_site_must_hold_the_field():
 
 
 def test_a_self_defined_site_is_the_starter_site_around_the_field():
-    calibration, _, _ = conics.solve_calibration(
+    calibration, joint, _ = conics.solve_calibration(
         track_samples(CENTRES), Site(name="lab")
     )
-    field_w, field_h = calibration.valid_mm[2:]
+    field_w, field_h = joint.field_mm
     site, placed = conics.self_defined_site(calibration, "spun")
     assert site.extent_mm == (field_w + 3000, field_h + 3000)
     assert (site.field.x, site.field.y) == (1500, 1500)
     assert site.staging.y == site.field.y_max
-    assert placed.valid_mm == (0, 0, *site.extent_mm)
+    x0, y0, x1, y1 = placed.valid_mm
+    assert (0, 0) < (x0, y0) and x1 <= site.extent_mm[0] and y1 <= site.extent_mm[1]
 
 
 def test_a_self_defined_site_must_hold_the_staging_strip_too():
-    calibration, _, _ = conics.solve_calibration(
+    calibration, joint, _ = conics.solve_calibration(
         track_samples(CENTRES), Site(name="lab")
     )
-    field_w, field_h = calibration.valid_mm[2:]
+    field_w, field_h = joint.field_mm
     with pytest.raises(ValueError, match="staging strip"):
         conics.self_defined_site(calibration, "spun", size_mm=(field_w, field_h + 600))
 
@@ -393,10 +401,9 @@ def test_a_second_station_lands_in_the_first_ones_frame():
     samples = circle_samples(STATION, CENTRES, 0) + circle_samples(
         STATION_B, CENTRES[1:], 1, start=1
     )
-    calibration, solutions, unsolved = conics.solve_calibration(
-        samples, Site(name="lab")
-    )
-    assert not unsolved and sorted(solutions) == [0, 1]
+    calibration, joint, unsolved = conics.solve_calibration(samples, Site(name="lab"))
+    assert not unsolved and sorted(joint.homographies) == [0, 1]
+    assert {s.solved_from for s in calibration.stations} == {"conics-joint"}
     P = grid(300, 300, 1700, 2600, n=8)
     a = apply(calibration.station(0).matrix, apply(FLOOR_TO_CAM, P))
     b = apply(calibration.station(1).matrix, apply(np.linalg.inv(STATION_B), P))
@@ -407,8 +414,6 @@ def test_a_station_with_too_few_circles_is_reported_not_fatal():
     samples = circle_samples(STATION, CENTRES, 0) + circle_samples(
         STATION_B, CENTRES[:2], 1
     )
-    calibration, solutions, unsolved = conics.solve_calibration(
-        samples, Site(name="lab")
-    )
-    assert sorted(solutions) == [0] and "at least 3 circles" in unsolved[1]
+    calibration, joint, unsolved = conics.solve_calibration(samples, Site(name="lab"))
+    assert sorted(joint.homographies) == [0] and "at least 3 circles" in unsolved[1]
     assert [s.index for s in calibration.stations] == [0]

@@ -18,7 +18,11 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from dotbot.calibration.conics import TRACKS_ADVISED, ConicSolution
-from dotbot.calibration.lighthouse2 import LH2CalibrationSample, TrackSample
+from dotbot.calibration.lighthouse2 import (
+    LH2CalibrationSample,
+    TrackSample,
+    station_label,
+)
 from dotbot.calibration.ota import _is_impossible, _parse_records
 from dotbot.calibration.push import in_app, stop_robots
 
@@ -288,12 +292,13 @@ def spin_report(
                 "solved from what did"
             )
     for station, solution in sorted(solutions.items()):
-        lines.append(f"station {station}:")
+        lines.append(f"{station_label(station)}:")
         fits = sorted(solution.tracks + solution.dropped, key=lambda t: t.name)
         for t in fits:
             verdict = f"dropped: {t.why}" if t.why else "kept"
+            name = t.name if not t.round else f"{t.name}#{t.round}"
             lines.append(
-                f"  {t.name:<18} {t.points:4d} reads  centre "
+                f"  {name:<18} {t.points:4d} reads  centre "
                 f"({t.centre_mm[0]:6.0f}, {t.centre_mm[1]:6.0f}) mm  "
                 f"r {t.radius_mm:5.1f} mm  ratio {t.axis_ratio:.3f}  "
                 f"rms {t.rms_mm:4.1f} mm  {verdict}"
@@ -308,5 +313,5 @@ def spin_report(
                 "more, spread over the area, hold the frame better"
             )
     for station, why in sorted(unsolved.items()):
-        lines.append(f"station {station}: not solved, {why}")
+        lines.append(f"{station_label(station)}: not solved, {why}")
     return lines
