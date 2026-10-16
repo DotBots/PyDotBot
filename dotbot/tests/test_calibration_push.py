@@ -47,9 +47,13 @@ def _lab(tmp_path):
     LAB = load_discovered(environ={}, start_dir=lab)
 
 
-def _info(version=4, site="", calibration_id="", gen=1):
+def _info(version=4, site="", calibration_id="", gen=1, mask=0):
     info = SimpleNamespace(
-        info_version=version, lh2_site_name=site, lh2_calibration_id=calibration_id
+        info_version=version,
+        info_gen=gen,
+        lh2_site_name=site,
+        lh2_calibration_id=calibration_id,
+        lh2_station_mask=mask,
     )
     return SimpleNamespace(info_gen=gen, info=info)
 
@@ -57,8 +61,9 @@ def _info(version=4, site="", calibration_id="", gen=1):
 class _Fleet:
     """A swarmit client whose robots commit whatever they are sent."""
 
-    def __init__(self, nodes):
+    def __init__(self, nodes, mask=None):
         self.nodes = nodes
+        self.mask = mask
         self.pushed: list[bytes] = []
         self.pushed_to: list[list[str] | None] = []
         self.refreshed: list[list[str] | None] = []
@@ -86,6 +91,12 @@ class _Fleet:
             node.info.lh2_site_name, node.info.lh2_calibration_id = message_site(
                 payload[:LH2_CALIBRATION_MESSAGE_BYTES]
             )
+            node.info.lh2_station_mask = (
+                int.from_bytes(payload[:4], "little")
+                if self.mask is None
+                else self.mask
+            )
+            node.info.info_gen += 1
 
 
 @pytest.fixture
@@ -177,6 +188,36 @@ def test_a_robot_not_heard_after_the_push_is_listed(calibration_file):
     )
     del fleet.nodes["GONE"]
     assert push.push_worklist(fleet, calibration, check.addresses) == ["GONE"]
+
+
+def test_a_robot_already_on_the_id_that_does_not_reboot_is_listed(calibration_file):
+    """A dropped push leaves the old device info, id included, in place."""
+    calibration = read_calibration_file(calibration_file)
+    mask = lighthouse2.station_mask(calibration)
+    held = lighthouse2.pushed_id(calibration)
+    fleet = _Fleet({"SAME": _info(calibration_id=held, gen=7, mask=mask)})
+    check = gate_push(fleet, calibration)
+    assert push.push_worklist(fleet, calibration, check.addresses, check.info_gens) == [
+        "SAME"
+    ]
+    fleet.send_lh2_calibration(
+        lighthouse2.calibration_payload(calibration), check.send_to
+    )
+    assert (
+        push.push_worklist(fleet, calibration, check.addresses, check.info_gens) == []
+    )
+
+
+def test_a_robot_reporting_other_stations_is_listed(calibration_file):
+    calibration = read_calibration_file(calibration_file)
+    fleet = _Fleet({"A": _info()}, mask=0)
+    check = gate_push(fleet, calibration)
+    fleet.send_lh2_calibration(
+        lighthouse2.calibration_payload(calibration), check.send_to
+    )
+    assert push.push_worklist(fleet, calibration, check.addresses, check.info_gens) == [
+        "A"
+    ]
 
 
 def test_push_to_another_site_is_refused_without_site_changed(

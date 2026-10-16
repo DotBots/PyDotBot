@@ -287,6 +287,17 @@ def test_spins_end_to_end_into_a_self_defined_site(monkeypatch, lab):
     )
 
 
+def test_the_site_spin_radius_is_used_unless_the_flag_overrides_it(monkeypatch, lab):
+    toml = lab.project_dir / "sites" / "c405" / "site.toml"
+    toml.write_text(toml.read_text() + "spin_radius_mm = 53.0\n")
+    _, fleet = _fleet()
+    result = _collect(monkeypatch, lab, fleet)
+    assert "spin radius 53 mm (from site c405)" in result.output
+    _, fleet = _fleet()
+    result = _collect(monkeypatch, lab, fleet, "--spin-radius", "50")
+    assert "spin radius 50 mm (from --spin-radius)" in result.output
+
+
 def test_site_init_refuses_an_existing_name(monkeypatch, lab):
     _, fleet = _fleet()
     result = _collect(monkeypatch, lab, fleet)
@@ -815,3 +826,29 @@ def test_an_anchor_that_would_not_spin_is_refused_before_the_spin(monkeypatch, l
     assert "B0B0B0B0B0B0B0B0 would not spin" in result.output
     assert addrs[0] not in result.output.split("would not spin")[0]
     assert "start" not in [c for c, _ in fleet.calls]
+
+
+def test_show_next_round_says_where_to_spin(monkeypatch, lab):
+    a, b = _two_stations()
+    _, fleet = _two_station_fleet([a, b], _floor_grid([a, b])[:40])
+    result = _collect(monkeypatch, lab, fleet, "--tag", "two")
+    assert result.exit_code == 0, result.output
+    shown = CliRunner().invoke(
+        swarm_lh2.cmd, ["show", "two", "--next-round", "3"], obj={"config": lab}
+    )
+    assert shown.exit_code == 0, shown.output
+    assert "next round, 3 spin(s), in this calibration's frame:" in shown.output
+    assert shown.output.count("mm, seen by station ") == 3
+
+
+def test_show_next_round_refuses_a_calibration_a_round_cannot_join(lab, tmp_path):
+    from dotbot.tests.lh2_wire_fixture import FIXTURE_TOML
+
+    path = tmp_path / "corner.toml"
+    path.write_text(FIXTURE_TOML, encoding="utf-8")
+    shown = CliRunner().invoke(
+        swarm_lh2.cmd, ["show", str(path), "--next-round", "2"], obj={"config": lab}
+    )
+    assert shown.exit_code != 0
+    assert "--next-round plans a round for collect --spin --append" in shown.output
+    assert "not a free-mode spin calibration" in shown.output

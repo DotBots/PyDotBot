@@ -51,6 +51,8 @@ class Site:
     extent_mm: tuple[int, int] | None = None
     areas: dict[str, Area] = field(default_factory=dict)
     pack: Path | None = None
+    # A spin's photodiode radius measured on this floor, if one was
+    spin_radius_mm: float | None = None
 
     @property
     def extent(self) -> Area | None:
@@ -160,6 +162,7 @@ def site_from_table(name: str, table: Any, pack: Path | None = None) -> Site:
         pack=pack,
         anchor=getattr(table, "anchor", None) or "",
         extent_mm=(int(extent[0]), int(extent[1])) if extent else None,
+        spin_radius_mm=getattr(table, "spin_radius_mm", None),
         areas={
             area_name: Area(
                 x=area.x,

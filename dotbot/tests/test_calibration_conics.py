@@ -284,13 +284,7 @@ def test_a_self_defined_site_centres_the_field():
     staging = site.areas["staging"]
     assert (staging.x, staging.y, staging.w) == (field.x, field.y_max, field.w)
     assert staging.y_max <= 4000
-    x0, y0, x1, y1 = calibration.stations[0].valid_mm
-    assert placed.stations[0].valid_mm == (
-        x0 + field.x,
-        y0 + field.y,
-        x1 + field.x,
-        y1 + field.y,
-    )
+    assert placed.stations[0].valid_mm == (0, 0, 3000, 4000)
     assert placed.valid_mm == placed.stations[0].valid_mm
     assert (
         placed.site.anchor
@@ -321,8 +315,7 @@ def test_a_self_defined_site_is_the_starter_site_around_the_field():
     assert site.extent_mm == (field_w + 3000, field_h + 3000)
     assert (site.field.x, site.field.y) == (1500, 1500)
     assert site.staging.y == site.field.y_max
-    x0, y0, x1, y1 = placed.valid_mm
-    assert (0, 0) < (x0, y0) and x1 <= site.extent_mm[0] and y1 <= site.extent_mm[1]
+    assert placed.valid_mm == (0, 0, *site.extent_mm)
 
 
 def test_a_self_defined_site_must_hold_the_staging_strip_too():

@@ -4,6 +4,8 @@ import {
   cameraRobotFor,
   formatCameraHeading,
   formatLh2,
+  formatLh2Site,
+  formatPosition,
   formatUptime,
   infoText,
 } from "./Inspector";
@@ -65,6 +67,23 @@ describe("formatLh2", () => {
     expect(formatLh2(withInfo({ lh2_summary: "2 basestations (valid, from flash)" }))).toBe(
       "2 basestations (valid, from flash)",
     );
+  });
+});
+
+describe("formatLh2Site", () => {
+  const info = { bl_version: "", net_version: "", boot_count: 0, uptime_s: 0, image_name: "", image_version: "", image_digest: "" };
+  const withInfo = (over: object) => bot({ swarmit: node({ info: { ...info, ...over } }) });
+
+  it("names the site and the short calibration id the robot holds", () => {
+    expect(formatLh2Site(withInfo({ lh2_site_name: "virmond", lh2_calibration_id: "288a810d1234abcd" }))).toBe(
+      "virmond  (id 288a810d)",
+    );
+  });
+
+  it("says none for a robot holding no calibration, and nothing without device info", () => {
+    expect(formatLh2Site(withInfo({}))).toBe("none");
+    expect(formatLh2Site(withInfo({ lh2_station_mask: 0, lh2_site_name: "virmond", lh2_calibration_id: "288a810d1234abcd" }))).toBe("none");
+    expect(formatLh2Site(bot({ swarmit: null }))).toBeNull();
   });
 });
 
@@ -144,5 +163,15 @@ describe("the camera's heading for the selected robot", () => {
     const robot = cameraRobotFor(bot(), { "dev-corner": detection(null, "found") });
     expect(robot).toBeNull();
     expect(formatCameraHeading(robot)).toBe("not seen");
+  });
+});
+
+describe("formatPosition", () => {
+  const info = { bl_version: "", net_version: "", boot_count: 0, uptime_s: 0, image_name: "", image_version: "", image_digest: "" };
+  it("names a failed LH2 sensor instead of no fix", () => {
+    const failed = bot({ position: null, swarmit: node({ info: { ...info, lh2_station_mask: 3, lh2_flags: 0b111 } }) });
+    expect(formatPosition(failed)).toBe("LH2 sensor failed");
+    expect(formatPosition(bot({ position: null, swarmit: node({ info: { ...info, lh2_flags: 0b011 } }) }))).toBe("no fix");
+    expect(formatPosition(bot())).toBe("1552, 267");
   });
 });

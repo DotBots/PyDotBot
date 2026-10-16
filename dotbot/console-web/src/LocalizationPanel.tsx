@@ -6,6 +6,7 @@ import {
   cameraStatusRows,
   coverageLabel,
   extentLabel,
+  servedCalibrationLabel,
   stationRows,
   stationsSummary,
 } from "./localization";
@@ -186,7 +187,7 @@ export const LocalizationPanel: React.FC<LocalizationPanelProps> = ({
 
         <Section title="Calibration on the fleet">
           <div style={{ ...mono, fontSize: 14, fontWeight: 600 }}>
-            {coverage.unknown ? "not compared" : coverage.id.slice(0, 8)}
+            {coverage.unknown ? "not compared" : servedCalibrationLabel(coverage, session?.site || site?.name || "")}
           </div>
           <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 3 }}>
             {coverage.unknown

@@ -301,10 +301,10 @@ def _await_point(session, stream, arrivals: queue.Queue):
     metavar="MM",
     help=(
         "With --spin: radius of the photodiode's circle in a spin, in mm, "
-        "which sets the scale of every distance. Default: the robot model's "
-        "measured value (51.4 mm on a DotBot v3, under the 53.5 mm from "
-        "photodiode to axle because the caster drags the turning point "
-        "forward). Re-measure it on a different floor."
+        "which sets the scale of every distance. Default: the site's "
+        "spin_radius_mm, else the robot model's measured value (51.4 mm on "
+        "a DotBot v3, under the 53.5 mm from photodiode to axle because the "
+        "caster drags the turning point forward). It changes with the floor."
     ),
 )
 @click.option(
@@ -652,7 +652,10 @@ def _collect_spin(
             f"{round_} earlier round(s))."
         )
     radius_from = "--spin-radius"
-    if spin_radius is None:
+    if spin_radius is None and site.spin_radius_mm is not None:
+        spin_radius = site.spin_radius_mm
+        radius_from = f"site {site.name}"
+    elif spin_radius is None:
         spin_radius = robot_geometry(ROBOT_DEFAULT).spin_radius_mm
         radius_from = f"{ROBOT_DEFAULT}'s measured value"
     devices = _devices(ctx)
@@ -920,7 +923,7 @@ def _gated_push(client, calibration, site_changed=False, devices=None, stop=Fals
         )
     client.send_lh2_calibration(payload, check.send_to)
     click.echo("Sent. Waiting for the robots to report the new id...")
-    stale = push_worklist(client, calibration, check.targets)
+    stale = push_worklist(client, calibration, check.targets, check.info_gens)
     if stale:
         click.echo(
             f"Still not on {calibration.id8} ({len(stale)}), push again: "
@@ -946,15 +949,33 @@ def _gated_push(client, calibration, site_changed=False, devices=None, stop=Fals
     default=None,
     help="The site to look the id up under. Defaults to `site` in the dotbot config.",
 )
+@click.option(
+    "--next-round",
+    "next_robots",
+    type=click.IntRange(min=1, max=64),
+    default=None,
+    metavar="N",
+    help=(
+        "Also say where N robots should spin in another round (collect "
+        "--spin --append) to strengthen the weakest ties and the worst "
+        "predicted error; points in this calibration's frame."
+    ),
+)
 @click.pass_context
-def _show(ctx, calibration, site_name):
+def _show(ctx, calibration, site_name, next_robots):
     if _devices(ctx):
         raise click.UsageError("show reads a file, so it takes no `dotbot swarm -d`")
     from dotbot.calibration.lighthouse2 import (
         read_calibration_file,
         resolve_calibration_path,
     )
-    from dotbot.calibration.multi_station import multi_station_report
+    from dotbot.calibration.multi_station import (
+        appendable_rounds,
+        error_map_from_calibration,
+        multi_station_report,
+        next_round,
+        next_round_lines,
+    )
 
     site, _ = site_from_context(ctx, site_name)
     try:
@@ -976,6 +997,27 @@ def _show(ctx, calibration, site_name):
     )
     for line in multi_station_report(loaded):
         click.echo(line)
+    if next_robots:
+        try:
+            appendable_rounds(loaded)
+        except ValueError as exc:
+            raise click.ClickException(
+                f"--next-round plans a round for collect --spin --append: {exc}"
+            ) from exc
+        error_map = error_map_from_calibration(loaded)
+        if error_map is None:
+            raise click.ClickException(
+                f"{loaded.id8} is not a spin calibration, so it has no error map "
+                "to plan a round from"
+            )
+        targets = next_round(
+            error_map,
+            {s.index: s.valid_mm for s in loaded.stations},
+            loaded.links,
+            robots=next_robots,
+        )
+        for line in next_round_lines(targets):
+            click.echo(line)
 
 
 def _parse_shift(_ctx, _param, value):

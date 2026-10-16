@@ -81,7 +81,11 @@ def _press(lh_index: int, count1: int, count2: int, n: int = 1) -> ButtonCapture
 def _info(version=4, site="", calibration_id=""):
     """A robot's device info as swarmit decodes it."""
     return SimpleNamespace(
-        info_version=version, lh2_site_name=site, lh2_calibration_id=calibration_id
+        info_version=version,
+        info_gen=1,
+        lh2_site_name=site,
+        lh2_calibration_id=calibration_id,
+        lh2_station_mask=0,
     )
 
 
@@ -111,7 +115,7 @@ class _FakeClient:
     def send_lh2_calibration(self, payload: bytes, devices=None) -> None:
         self.pushed.append(payload)
         self.pushed_to = devices
-        # The bot commits the push and reports its site and id from then on.
+        # The bot commits the push, resets and reports its site, id and stations.
         for addr, info in self.infos.items():
             if devices is not None and addr not in devices:
                 continue
@@ -119,6 +123,8 @@ class _FakeClient:
                 info.lh2_site_name, info.lh2_calibration_id = message_site(
                     payload[:LH2_CALIBRATION_MESSAGE_BYTES]
                 )
+                info.lh2_station_mask = int.from_bytes(payload[:4], "little")
+                info.info_gen += 1
 
     def refresh_device_info(self, devices=None) -> None:
         pass
