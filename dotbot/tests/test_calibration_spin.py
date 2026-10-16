@@ -450,6 +450,21 @@ def test_site_init_force_replaces_the_site(monkeypatch, lab):
     assert site_catalog(lab)["spun"].site().extent_mm == (5000, 5000)
 
 
+def test_site_init_carries_the_spin_radius_over(monkeypatch, lab):
+    toml = lab.project_dir / "sites" / "c405" / "site.toml"
+    toml.write_text(toml.read_text() + "spin_radius_mm = 53.0\n")
+    _, fleet = _fleet()
+    result = _collect(monkeypatch, lab, fleet)
+    free_id = re.search(r"--from-calibration (\w+)", result.output).group(1)
+    result = CliRunner().invoke(
+        site_cmd.cmd,
+        ["init", "spun", "--from-calibration", free_id],
+        obj={"config": lab},
+    )
+    assert result.exit_code == 0, result.output
+    assert site_catalog(lab)["spun"].site().spin_radius_mm == 53.0
+
+
 def test_site_init_refuses_a_name_too_long_to_reach_the_robots(monkeypatch, lab):
     _, fleet = _fleet()
     result = _collect(monkeypatch, lab, fleet)

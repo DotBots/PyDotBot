@@ -672,7 +672,12 @@ def _render_site_pack(site, source_id8: str) -> str:
         "\n"
         f"anchor = {json.dumps(site.anchor)}\n"
         f"extent_mm = [{width}, {height}]\n"
-        "\n"
+        + (
+            f"spin_radius_mm = {float(site.spin_radius_mm)}   # as the robots spun\n"
+            if site.spin_radius_mm is not None
+            else ""
+        )
+        + "\n"
         + area("field", "where the robots spun, grown by a robot's footprint")
         + "\n"
         + area("staging", "where robots park, along the field's bottom edge")
