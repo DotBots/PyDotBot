@@ -23,6 +23,7 @@ import click
 
 from dotbot.cli import _config_write as cw
 from dotbot.cli._site import SITE_ENV, active_site
+from dotbot.cli.site_stations import stations
 from dotbot.config import ConfigError
 from dotbot.site import PACK_CALIBRATIONS, SITE_MARGIN_MM, check_site_name
 from dotbot.site_packs import (
@@ -784,3 +785,6 @@ def init(ctx, name, calibration, size, force):
         f"--lh2-calibration {placed.id8} "
         "--headless"
     )
+
+
+cmd.add_command(stations)
