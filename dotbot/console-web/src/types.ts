@@ -266,7 +266,8 @@ export interface SwarmitDeviceInfo {
   image_name: string;
   image_version: string;
   image_digest: string;
-  lh2_homography_count?: number;
+  // Bit i set: the bot holds station i's homography (channel i + 1).
+  lh2_station_mask?: number;
   lh2_flags?: number;
   // Device info v2: the site and calibration id the bot holds, "" for none.
   lh2_site_name?: string;
