@@ -8,11 +8,11 @@ from __future__ import annotations
 import hashlib
 import time
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Iterable
 
 import click
 
-from dotbot.calibration.spin import SPIN_IMAGE
+from dotbot.calibration.spin import on_spin_image
 from dotbot.cli._artifacts import artifacts_dir
 from dotbot.cli._swarm_flash import APP_CATALOG, _filename
 
@@ -29,6 +29,16 @@ def image_sets(artifacts: Path) -> dict[str, list[Path]]:
             digest = hashlib.sha256(image.read_bytes()).hexdigest()
             index.setdefault(digest, []).append(folder)
     return index
+
+
+def spin_digests(index: dict[str, list[Path]]) -> set[str]:
+    """The sha256 of the calibrate-spin image in each set of `index`."""
+    folders = {f for found in index.values() for f in found}
+    return {
+        hashlib.sha256((f / SPIN_FILE).read_bytes()).hexdigest()
+        for f in folders
+        if (f / SPIN_FILE).is_file()
+    }
 
 
 def sets_of_digest(digest: str, index: dict[str, list[Path]]) -> list[Path]:
@@ -169,11 +179,11 @@ def flash_spin_app(
         )
 
 
-def _confirmed(node: Any) -> bool:
+def _confirmed(node: Any, digests: Iterable[str]) -> bool:
     """Whether `node` reports the calibrate-spin image and is done flashing."""
-    name = getattr(getattr(node, "info", None), "image_name", "") or ""
     state = getattr(getattr(node, "status", None), "name", "")
-    return name.startswith(SPIN_IMAGE) and state not in ("Resetting", "Programming")
+    info = getattr(node, "info", None)
+    return on_spin_image(info, digests) and state not in ("Resetting", "Programming")
 
 
 def await_flashed(
@@ -183,9 +193,11 @@ def await_flashed(
     timeout: float = 15.0,
     clock: Callable[[], float] | None = None,
     sleep: Callable[[float], None] | None = None,
+    digests: Iterable[str] = (),
 ) -> tuple[dict[str, Any], list[str]]:
     """Re-read device info until every robot in `flashed` reports the
-    calibrate-spin image, done flashing, or `timeout` seconds pass.
+    calibrate-spin image, done flashing, or `timeout` seconds pass;
+    `digests` are the calibrate-spin images known, as from `spin_digests()`.
 
     Returns the last `status()` and the robots that did not confirm.
     """
@@ -195,7 +207,7 @@ def await_flashed(
     while True:
         client.refresh_device_info(devices)
         fresh = client.status()
-        pending = [a for a in flashed if not _confirmed(fresh.get(a))]
+        pending = [a for a in flashed if not _confirmed(fresh.get(a), digests)]
         if not pending or clock() >= deadline:
             return fresh, pending
         sleep(1.0)

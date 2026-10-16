@@ -494,10 +494,12 @@ def _spin_ready(ctx, client, status, devices):
         flash_spin_app,
         image_sets,
         robots_sets,
+        spin_digests,
     )
 
-    robots = check_spin_robots(status)
     index = image_sets(artifacts_dir())
+    digests = spin_digests(index)
+    robots = check_spin_robots(status, digests)
     before = robots_sets(status, sorted(status), index)
     if not robots.wrong_image:
         return robots, before
@@ -526,7 +528,7 @@ def _spin_ready(ctx, client, status, devices):
             )
         raise
     click.echo("Reading device info...")
-    fresh, pending = await_flashed(client, flashed, devices)
+    fresh, pending = await_flashed(client, flashed, devices, digests=digests)
     if pending:
         click.echo(
             f"To put back the app of the robots flashed with {SPIN_IMAGE}:\n"
@@ -537,7 +539,7 @@ def _spin_ready(ctx, client, status, devices):
             "in time; check `dotbot swarm status`, then retry."
         )
     status = {addr: fresh.get(addr, node) for addr, node in status.items()}
-    return check_spin_robots(status), before
+    return check_spin_robots(status, digests), before
 
 
 def _restore_hint(spun: str, sets: list) -> str:

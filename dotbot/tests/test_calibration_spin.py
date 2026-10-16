@@ -234,6 +234,33 @@ def test_robots_without_the_spin_app_are_refused_with_the_flash_line():
     assert "dotbot swarm -d B flash -y calibrate-spin" in robots.refusal()
 
 
+def test_a_robot_is_on_the_spin_app_by_its_digest_whatever_its_name():
+    import hashlib
+
+    spin = hashlib.sha256(b"spin").hexdigest()
+    unnamed = _node(image="")
+    unnamed.info.image_digest = spin[:16]
+    other = _node(image="dotbot-sandbox-dotbot-v3.bin")
+    other.info.image_digest = hashlib.sha256(b"app").hexdigest()[:16]
+    robots = check_spin_robots({"A": unnamed, "B": other, "C": _node()}, {spin})
+    assert robots.ready == ["A", "C"]
+    assert list(robots.wrong_image) == ["B"]
+    assert check_spin_robots({"A": unnamed}).wrong_image == {"A": "unnamed image"}
+
+
+def test_robots_on_an_unnamed_spin_image_are_not_reflashed(monkeypatch, lab, cache):
+    import hashlib
+
+    _bench_cache(cache)
+    _, fleet = _app_fleet(hashlib.sha256(b"spin").hexdigest()[:16])
+    for node in fleet.nodes.values():
+        node.info.image_name = ""
+        node.status.name = "Bootloader"
+    result = _collect(monkeypatch, lab, fleet)
+    assert result.exit_code == 0, result.output
+    assert "flash" not in [c for c, _ in fleet.calls]
+
+
 def test_spins_end_to_end_into_a_self_defined_site(monkeypatch, lab):
     addrs, fleet = _fleet()
     result = _collect(monkeypatch, lab, fleet)
