@@ -1116,3 +1116,68 @@ def _reframe(ctx, calibration, site_name, shift, rotate):
         )
     click.echo(f"\nCalibration saved to {path}")
     click.echo(f"Calibration id {reframed.id}, site {site.name}")
+
+
+@cmd.command(
+    name="place",
+    help=(
+        "Move a free-mode spin calibration onto the site of another "
+        "calibration, through a station both solved: the turn and shift that "
+        "best map its circles there are fitted, the residual printed, and the "
+        "moved calibration saved under ~/.dotbot/calibrations/<site>/."
+    ),
+)
+@click.argument("calibration")
+@click.option(
+    "--to-calibration",
+    "target",
+    required=True,
+    metavar="ID",
+    help="The calibration whose site and frame to move it into: an id prefix, a tag or a path.",
+)
+@click.option(
+    "--station",
+    "stations",
+    type=int,
+    multiple=True,
+    metavar="INDEX",
+    help=(
+        "A station to align through, by index (channel - 1); repeatable. "
+        "Needed when the two calibrations share several."
+    ),
+)
+@click.option("--tag", default=None, help="Tag for the moved calibration.")
+@click.pass_context
+def _place(ctx, calibration, target, stations, tag):
+    if _devices(ctx):
+        raise click.UsageError("place sends nothing, so it takes no `dotbot swarm -d`")
+    from dotbot.calibration.conics import align_to_calibration
+    from dotbot.calibration.lighthouse2 import (
+        read_calibration_file,
+        resolve_calibration_path,
+        slug_tag,
+        write_calibration,
+    )
+
+    try:
+        source = read_calibration_file(resolve_calibration_path(calibration))
+        onto = read_calibration_file(resolve_calibration_path(target))
+        aligned = align_to_calibration(
+            source, onto, stations, tag=slug_tag(tag) if tag else None
+        )
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    placed = aligned.calibration
+    path = write_calibration(placed)
+    through = ", ".join(f"{i} (channel {i + 1})" for i in aligned.stations)
+    click.echo(
+        f"Placed {source.id8} (site {source.site.name}) on site {placed.site.name} "
+        f"through station {through} of {onto.id8}: turn {aligned.turn_deg:.3f} deg, "
+        f"shift ({aligned.shift_mm[0]:.1f}, {aligned.shift_mm[1]:.1f}) mm"
+    )
+    click.echo(
+        f"  {len(aligned.residuals_mm)} circles: residual rms "
+        f"{aligned.rms_mm:.2f} mm, max {aligned.max_mm:.2f} mm"
+    )
+    click.echo(f"\nCalibration saved to {path}")
+    click.echo(f"Calibration id {placed.id}, site {placed.site.name}")

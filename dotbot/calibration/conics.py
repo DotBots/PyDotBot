@@ -27,6 +27,7 @@ import numpy as np
 
 from dotbot.calibration.lighthouse2 import (
     Calibration,
+    Placement,
     StationSolution,
     TrackSample,
     union_rect,
@@ -690,6 +691,8 @@ def field_angle(centres: np.ndarray) -> float:
 
 # What a free-mode calibration records as its site's anchor: no mark in the
 # room is its origin.
+# A site made by `site init` records the calibration it came from in its anchor
+SELF_DEFINED_ANCHOR = "self-defined from spin calibration "
 FREE_FRAME_ANCHOR = (
     "free mode: zero at the top-left of the rectangle around the spinning "
     "robots, grown by a robot's footprint; axes along that rectangle"
@@ -787,6 +790,18 @@ def spin_field(calibration: Calibration) -> tuple[int, int]:
     return int(hi[0]), int(hi[1])
 
 
+def is_free_mode(calibration: Calibration) -> bool:
+    """Whether `calibration` is a spin calibration in its own free frame."""
+    return (
+        bool(calibration.stations)
+        and calibration.site.anchor == FREE_FRAME_ANCHOR
+        and all(
+            st.solved_from in ("conics-free", "conics-joint")
+            for st in calibration.stations
+        )
+    )
+
+
 def self_defined_site(
     calibration: Calibration,
     name: str,
@@ -801,14 +816,7 @@ def self_defined_site(
     site extent, and a tag gets `-<name>` appended, so the two files answer
     to different tags.
     """
-    if (
-        not calibration.stations
-        or calibration.site.anchor != FREE_FRAME_ANCHOR
-        or any(
-            st.solved_from not in ("conics-free", "conics-joint")
-            for st in calibration.stations
-        )
-    ):
+    if not is_free_mode(calibration):
         raise ValueError(
             f"calibration {calibration.id8} is not a free-mode spin calibration; "
             "a site can only be defined from one"
@@ -822,7 +830,7 @@ def self_defined_site(
     extent, field_area, staging = starter_layout((field_w, field_h), size_mm)
     dx, dy = field_area.x, field_area.y
     shift = np.array([[1, 0, dx], [0, 1, dy], [0, 0, 1.0]])
-    anchor = f"self-defined from spin calibration {calibration.id8}"
+    anchor = f"{SELF_DEFINED_ANCHOR}{calibration.id8}"
     stations = []
     for st in calibration.stations:
         H = shift @ st.matrix
@@ -853,5 +861,157 @@ def self_defined_site(
         created_at=calibration.created_at,
         tag=f"{calibration.tag}-{name}" if calibration.tag else "",
         robot=calibration.robot,
+        placed_from=calibration.id,
     )
     return site, placed
+
+
+# Fewest circles a station must share for `align_to_calibration` to report a
+# residual: a turn and a shift take two.
+ALIGN_CIRCLES_MIN = 3
+
+
+@dataclass(frozen=True)
+class Alignment:
+    """A free-mode calibration moved onto another one's site, and how well
+    the circles of the stations they share agreed."""
+
+    calibration: Calibration
+    stations: tuple[int, ...]
+    turn_deg: float
+    shift_mm: tuple[float, float]
+    residuals_mm: tuple[float, ...]
+
+    @property
+    def rms_mm(self) -> float:
+        return float(np.sqrt(np.mean(np.square(self.residuals_mm))))
+
+    @property
+    def max_mm(self) -> float:
+        return float(np.max(self.residuals_mm))
+
+
+def _rigid_fit(src: np.ndarray, dst: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """The turn R and shift t minimising |R src + t - dst| (Kabsch)."""
+    mu_s, mu_d = src.mean(0), dst.mean(0)
+    U, _, Vt = np.linalg.svd((dst - mu_d).T @ (src - mu_s))
+    E = np.diag([1.0, np.sign(np.linalg.det(U @ Vt)) or 1.0])
+    R = U @ E @ Vt
+    return R, mu_d - R @ mu_s
+
+
+def align_to_calibration(
+    source: Calibration,
+    target: Calibration,
+    stations: Sequence[int] = (),
+    tag: str | None = None,
+) -> Alignment:
+    """`source`, a free-mode calibration, moved rigidly onto `target`'s site.
+
+    Every source circle a shared station saw is mapped through that
+    station's homography in each calibration; the mean of each circle's
+    points in the two frames is one correspondence, and the turn and shift
+    are their least-squares fit. Scale is kept: both frames are metric
+    through the spin radius. Every station's rectangle and the fence become
+    `target`'s fence. `stations` picks the shared stations to align through,
+    and is needed when they share more than one.
+    """
+    if not is_free_mode(source):
+        raise ValueError(
+            f"calibration {source.id8} is not a free-mode spin calibration, "
+            "so it is already in a site's frame and cannot be moved"
+        )
+    if is_free_mode(target):
+        raise ValueError(
+            f"calibration {target.id8} is a free-mode spin calibration itself; "
+            "align to one placed on a site"
+        )
+    shared = sorted(
+        {st.index for st in source.stations} & {st.index for st in target.stations}
+    )
+    labels = ", ".join(f"{i} (channel {i + 1})" for i in shared) or "none"
+    if not shared:
+        raise ValueError(
+            f"calibrations {source.id8} and {target.id8} share no station"
+        )
+    if not stations:
+        if len(shared) > 1:
+            raise ValueError(
+                f"calibrations {source.id8} and {target.id8} share stations "
+                f"{labels}: pick the one(s) to align through"
+            )
+        stations = shared
+    unshared = sorted(set(stations) - set(shared))
+    if unshared:
+        raise ValueError(
+            f"station(s) {', '.join(map(str, unshared))} are not in both "
+            f"calibrations; they share {labels}"
+        )
+    src, dst = [], []
+    for track in source.tracks:
+        if track.station not in stations or not track.count1:
+            continue
+        cam = track.camera_points()
+        src.append(apply(source.station(track.station).matrix, cam).mean(0))
+        dst.append(apply(target.station(track.station).matrix, cam).mean(0))
+    if len(src) < ALIGN_CIRCLES_MIN:
+        raise ValueError(
+            f"station(s) {', '.join(map(str, stations))} saw {len(src)} circle(s) "
+            f"of {source.id8}; aligning takes {ALIGN_CIRCLES_MIN}"
+        )
+    src, dst = np.array(src), np.array(dst)
+    R, t = _rigid_fit(src, dst)
+    residuals = np.linalg.norm(src @ R.T + t - dst, axis=1)
+    turn = float(np.degrees(np.arctan2(R[1, 0], R[0, 0])))
+    c, s = np.cos(np.radians(turn)), np.sin(np.radians(turn))
+    T = np.array([[c, -s, t[0]], [s, c, t[1]], [0.0, 0.0, 1.0]])
+    fence = tuple(int(v) for v in target.valid_mm)
+    moved = []
+    for st in source.stations:
+        H = T @ st.matrix
+        H = H / H[2, 2]
+        moved.append(
+            StationSolution(
+                index=st.index,
+                homography=[[float(v) for v in row] for row in H],
+                points=st.points,
+                residual_mm=st.residual_mm,
+                solved_from=st.solved_from,
+                valid_mm=fence,
+            )
+        )
+    site = target.site
+    placements = [
+        Placement(
+            index=p.index,
+            points_mm=[tuple(map(float, T[:2, :2] @ q + T[:2, 2])) for q in p.points_mm],
+            at=p.at,
+            points_from=p.points_from,
+            captured_at=p.captured_at,
+            samples=p.samples,
+        )
+        for p in source.placements
+    ]
+    placed = Calibration(
+        site=Site(name=site.name, anchor=site.anchor),
+        valid_mm=fence,
+        placements=placements,
+        stations=moved,
+        tracks=source.tracks,
+        links=source.links,
+        created_at=source.created_at,
+        tag=(
+            tag
+            if tag is not None
+            else (f"{source.tag}-{site.name}" if source.tag else "")
+        ),
+        robot=source.robot,
+        placed_from=source.id,
+    )
+    return Alignment(
+        calibration=placed,
+        stations=tuple(stations),
+        turn_deg=turn,
+        shift_mm=(float(t[0]), float(t[1])),
+        residuals_mm=tuple(float(r) for r in residuals),
+    )

@@ -18,6 +18,7 @@ from click.testing import CliRunner
 from dotbot.calibration import conics, lighthouse2, push
 from dotbot.calibration import spin as spin_module
 from dotbot.calibration.lighthouse2 import counts_for_camera_point, load_calibration
+from dotbot.calibration.multi_station import appendable_rounds
 from dotbot.calibration.spin import (
     SPIN_CHUNK_RECORDS,
     SPIN_TAG,
@@ -746,6 +747,46 @@ def test_append_refuses_a_corner_calibration(monkeypatch, lab, tmp_path):
     assert fleet.calls == []
 
 
+def test_append_to_a_placed_calibration_names_the_one_it_came_from(monkeypatch, lab):
+    _, fleet = _fleet()
+    result = _collect(monkeypatch, lab, fleet)
+    free_id = re.search(r"--from-calibration (\w+)", result.output).group(1)
+    result = CliRunner().invoke(
+        site_cmd.cmd,
+        ["init", "spun", "--from-calibration", free_id],
+        obj={"config": lab},
+    )
+    placed_id = re.search(r"push (\w+) --site spun", result.output).group(1)
+    _, fleet = _fleet()
+    result = _collect(monkeypatch, lab, fleet, "--site", "spun", "--append", placed_id)
+    assert result.exit_code != 0
+    assert "not a free-mode spin calibration" in result.output
+    assert f"placed from spin calibration {free_id}" in result.output
+    assert f"--append {free_id} --site c405" in result.output
+    assert fleet.calls == []
+
+
+def test_a_placed_file_without_its_source_falls_back_to_the_site_anchor(
+    monkeypatch, lab
+):
+    _, fleet = _fleet()
+    result = _collect(monkeypatch, lab, fleet)
+    free_id = re.search(r"--from-calibration (\w+)", result.output).group(1)
+    result = CliRunner().invoke(
+        site_cmd.cmd,
+        ["init", "spun", "--from-calibration", free_id],
+        obj={"config": lab},
+    )
+    path = Path(re.search(r"saved to (\S+)", result.output).group(1))
+    text = path.read_text()
+    assert f'placed_from = "{free_id}' in text
+    path.write_text(re.sub(r'placed_from = "\w+"\n', "", text))
+    with pytest.raises(ValueError) as refused:
+        appendable_rounds(lighthouse2.read_calibration_file(path))
+    assert f"its site was defined from spin calibration {free_id}" in str(refused.value)
+    assert f"--append {free_id} --site c405" in str(refused.value)
+
+
 def test_append_and_drop_station_go_with_spin(lab):
     for flags in (["--append", "x"], ["--drop-station", "2"]):
         result = CliRunner().invoke(
@@ -852,3 +893,85 @@ def test_show_next_round_refuses_a_calibration_a_round_cannot_join(lab, tmp_path
     assert shown.exit_code != 0
     assert "--next-round plans a round for collect --spin --append" in shown.output
     assert "not a free-mode spin calibration" in shown.output
+
+
+# --- place --to-calibration ----------------------------------------------------
+
+
+def _place(lab, *args):
+    return CliRunner().invoke(swarm_lh2.cmd, ["place", *args], obj={"config": lab})
+
+
+def _saved(result) -> Path:
+    return Path(re.search(r"Calibration saved to (\S+)", result.output).group(1))
+
+
+def test_place_moves_a_spin_calibration_onto_another_through_a_station(
+    monkeypatch, lab
+):
+    a, b = _two_stations()
+    grid = _floor_grid([a, b])
+    _, fleet = _two_station_fleet([a, b], grid[:40])
+    result = _collect(monkeypatch, lab, fleet, "--tag", "first")
+    assert result.exit_code == 0, result.output
+    result = CliRunner().invoke(
+        site_cmd.cmd,
+        ["init", "spun", "--from-calibration", "first"],
+        obj={"config": lab},
+    )
+    assert result.exit_code == 0, result.output
+    target = load_calibration("first-spun", site="spun")
+    # a second spin calibration over other robots, so in another free frame
+    _, fleet = _two_station_fleet([a, b], grid[10:])
+    result = _collect(monkeypatch, lab, fleet, "--tag", "second")
+    assert result.exit_code == 0, result.output
+    source = lighthouse2.read_calibration_file(_saved(result))
+
+    result = _place(lab, "second", "--to-calibration", target.id8)
+    assert result.exit_code != 0
+    assert "share stations 0 (channel 1), 1 (channel 2)" in result.output
+
+    result = _place(lab, "second", "--to-calibration", target.id8, "--station", "0")
+    assert result.exit_code == 0, result.output
+    rms, worst = re.search(
+        r"residual rms (\S+) mm, max (\S+) mm", result.output
+    ).groups()
+    assert float(rms) < 1.0 and float(worst) < 2.0
+    turn, dx, dy = re.search(
+        r"turn (\S+) deg, shift \((\S+), (\S+)\) mm", result.output
+    ).groups()
+    assert abs(float(turn)) > 1.0 or np.hypot(float(dx), float(dy)) > 50.0
+    placed = lighthouse2.read_calibration_file(_saved(result))
+    assert placed.site.name == "spun" and placed.site.anchor == target.site.anchor
+    assert placed.placed_from == source.id and placed.tag == "second-spun"
+    assert placed.valid_mm == target.valid_mm
+    assert {s.valid_mm for s in placed.stations} == {target.valid_mm}
+    # both put any floor point either station sees at the same place
+    floor = np.array([c for c in grid if a.sees(c) and b.sees(c)], dtype=float)
+    for st in (a, b):
+        cam = conics.apply(st.floor_to_cam, floor)
+        moved = conics.apply(placed.station(st.index).matrix, cam)
+        there = conics.apply(target.station(st.index).matrix, cam)
+        assert np.max(np.linalg.norm(moved - there, axis=1)) < 2.0
+
+
+def test_place_refuses_a_placed_source_and_a_free_target(monkeypatch, lab):
+    _, fleet = _fleet()
+    result = _collect(monkeypatch, lab, fleet, "--tag", "free")
+    assert result.exit_code == 0, result.output
+    result = CliRunner().invoke(
+        site_cmd.cmd,
+        ["init", "spun", "--from-calibration", "free"],
+        obj={"config": lab},
+    )
+    assert result.exit_code == 0, result.output
+    result = _place(lab, "free-spun", "--to-calibration", "free")
+    assert result.exit_code != 0
+    assert "already in a site's frame" in result.output
+    _, fleet = _fleet(CENTRES[:-1])  # another file, not the same one retagged
+    result = _collect(monkeypatch, lab, fleet, "--tag", "other")
+    assert result.exit_code == 0, result.output
+    result = _place(lab, "other", "--to-calibration", "free")
+    assert result.exit_code != 0 and "align to one placed on a site" in result.output
+    result = _place(lab, "other", "--to-calibration", "free-spun", "--station", "3")
+    assert result.exit_code != 0 and "are not in both calibrations" in result.output
