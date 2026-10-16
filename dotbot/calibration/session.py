@@ -11,14 +11,14 @@ same solver and same writer, so a file saved from either is byte-identical
 for the same reads.
 
 Nothing here talks to a transport. The caller hands in a `PointCapture`, or
-a swarmit `CaptureSession` to take one with.
+the reads of a button capture.
 """
 
 from __future__ import annotations
 
 import datetime
 from dataclasses import dataclass, field
-from typing import Any, Callable, Sequence
+from typing import Any, Sequence
 
 from dotbot.calibration.lighthouse2 import (
     VALID_MM_DEFAULT,
@@ -30,9 +30,6 @@ from dotbot.calibration.lighthouse2 import (
     read_calibration_file,
 )
 from dotbot.calibration.ota import (
-    CAPTURE_READS_DEFAULT,
-    CAPTURE_RETRIES_DEFAULT,
-    CAPTURE_TIMEOUT_DEFAULT,
     PointCapture,
     samples_from_reads,
 )
@@ -65,7 +62,6 @@ class SessionPoint:
     device: str = ""
     # Reads received per station while this point's capture is running.
     reads_per_station: dict[int, int] = field(default_factory=dict)
-    reads_target: int = 0
 
     @property
     def captured(self) -> bool:
@@ -88,9 +84,6 @@ class CalibrationSession:
     area: str = ""
     device: str = ""
     robot: str = ROBOT_DEFAULT
-    reads: int = CAPTURE_READS_DEFAULT
-    timeout: float = CAPTURE_TIMEOUT_DEFAULT
-    retries: int = CAPTURE_RETRIES_DEFAULT
     tag: str = ""
     stations: list[StationSolution] = field(default_factory=list)
     unsolved: list[tuple[int, int]] = field(default_factory=list)
@@ -196,32 +189,6 @@ class CalibrationSession:
             return None
         return self.store(point.index, samples_from_reads(reads, point.index), device)
 
-    def capture(self, stream, on_progress: Callable | None = None) -> SessionPoint:
-        """Take the outstanding point's reads over `stream`, a `CaptureSession`."""
-        point = self.outstanding
-        if point is None:
-            raise SessionError("every point of this session is already captured")
-        point.reads_target = self.reads
-        point.reads_per_station = {}
-
-        def on_read(done: int, total: int, collected: list) -> None:
-            counts: dict[int, int] = {}
-            for read in collected:
-                for record in read:
-                    counts[record.lh_index] = counts.get(record.lh_index, 0) + 1
-            point.reads_per_station = counts
-            if on_progress is not None:
-                on_progress(point)
-
-        capture = stream.capture_point(
-            point=point.index,
-            reads=self.reads,
-            timeout=self.timeout,
-            retries=self.retries,
-            on_read=on_read,
-        )
-        return self.store(point.index, capture, stream.device)
-
     def redo(self) -> SessionPoint:
         """Discard the last captured point's reads and re-open it."""
         captured = [p for p in self.points if p.captured]
@@ -231,7 +198,6 @@ class CalibrationSession:
         point.capture = None
         point.device = ""
         point.reads_per_station = {}
-        point.reads_target = 0
         self.stations = []
         self.saved_path = None
         self.saved_id = ""
@@ -300,7 +266,6 @@ class CalibrationSession:
             "site": self.site.name,
             "area": self.area,
             "device": self.device,
-            "reads": self.reads,
             "status": self.status,
             "outstanding": None if self.complete else self.outstanding.index,
             "captured": self.captured_count,
@@ -363,11 +328,7 @@ def _point_dict(point: SessionPoint) -> dict:
         **placement_dict(point.index, point.placement),
         "captured": point.captured,
         "reads": [
-            {
-                "station": station,
-                "reads": count,
-                "target": point.reads_target or count,
-            }
+            {"station": station, "reads": count}
             for station, count in sorted(point.reads_per_station.items())
         ],
         "dropped": (point.capture.drop_count if point.capture else 0),

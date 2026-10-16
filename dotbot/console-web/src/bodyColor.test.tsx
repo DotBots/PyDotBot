@@ -120,8 +120,6 @@ const Harness: React.FC = () => {
         onBodyColorMode={setMode}
         session={null}
         calibration={{} as Calibration}
-        device=""
-        onDeviceChange={() => {}}
         onCalibrationDone={() => {}}
       />
     </>

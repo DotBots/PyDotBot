@@ -18,7 +18,6 @@ const calibration = {
   error: "",
   pushed: "",
   start: vi.fn(),
-  capture: vi.fn(),
   redo: vi.fn(),
   save: vi.fn(),
   push: vi.fn(),
@@ -30,7 +29,6 @@ const SESSION = {
   site: "c405-arena",
   area: "arena",
   device: "",
-  reads: 25,
   status: "collecting",
   outstanding: 0,
   captured: 0,
@@ -90,8 +88,6 @@ const Harness: React.FC<{ session?: CalibrationSession | null }> = ({
         onLayerToggle={() => {}}
         session={session}
         calibration={calibration}
-        device=""
-        onDeviceChange={() => {}}
         onCalibrationDone={() => {}}
       />
     </>

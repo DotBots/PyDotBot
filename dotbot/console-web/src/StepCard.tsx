@@ -6,7 +6,6 @@ import {
   expectedErrorLine,
   isComplete,
   placementInstruction,
-  readFraction,
   residualLines,
   stepLabel,
 } from "./calibration";
@@ -50,46 +49,10 @@ function button(kind: "accent" | "plain", disabled: boolean): React.CSSPropertie
   };
 }
 
-const ReadBar: React.FC<{ station: number; reads: number; target: number }> = ({
-  station,
-  reads,
-  target,
-}) => (
-  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 5 }}>
-    <span style={{ ...mono, fontSize: 11, color: "var(--muted)", width: 62, flex: "none" }}>
-      station {station}
-    </span>
-    <div
-      style={{
-        flex: 1,
-        height: 5,
-        minWidth: 0,
-        background: "var(--elevated)",
-        borderRadius: 3,
-        overflow: "hidden",
-      }}
-    >
-      <div
-        style={{
-          height: "100%",
-          width: `${readFraction(reads, target) * 100}%`,
-          background: "var(--s-Running)",
-        }}
-      />
-    </div>
-    <span style={{ ...mono, fontSize: 11, width: 44, flex: "none", textAlign: "right" }}>
-      {reads}/{target}
-    </span>
-  </div>
-);
-
 interface StepCardProps {
   session: CalibrationSession;
   calibration: Calibration;
   areaNames: string[];
-  /** The robot chosen to capture, clicked on the map or typed. */
-  device: string;
-  onDeviceChange: (device: string) => void;
   phone?: boolean;
   onDone: () => void;
 }
@@ -98,8 +61,6 @@ export const StepCard: React.FC<StepCardProps> = ({
   session,
   calibration,
   areaNames,
-  device,
-  onDeviceChange,
   phone = false,
   onDone,
 }) => {
@@ -144,43 +105,15 @@ export const StepCard: React.FC<StepCardProps> = ({
 
       {!done && (
         <>
-          <div style={{ ...label10, marginTop: 4 }}>Capturing</div>
-          <input
-            value={device}
-            onChange={(e) => onDeviceChange(e.target.value)}
-            placeholder="click a robot on the map, or type its address"
-            style={{
-              ...mono,
-              fontSize: 12,
-              width: "100%",
-              boxSizing: "border-box",
-              minWidth: 0,
-              padding: "7px 9px",
-              borderRadius: 7,
-              border: "1px solid var(--hairline)",
-              background: "var(--elevated)",
-              color: "var(--text)",
-            }}
-          />
-          {point && point.reads.length > 0 && (
-            <div>
-              <div style={label10}>Reads per station</div>
-              {point.reads.map((r) => (
-                <ReadBar key={r.station} station={r.station} reads={r.reads} target={r.target} />
-              ))}
+          <div style={{ fontSize: 12, marginTop: 4 }}>
+            Press the calibrate app's button on the robot when it is still.
+          </div>
+          {session.device && (
+            <div style={{ ...mono, fontSize: 12, color: "var(--muted)" }}>
+              last capture from {session.device}
             </div>
           )}
           <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-            <div
-              onClick={() => !calibration.busy && device && calibration.capture(device)}
-              style={{
-                ...button("accent", calibration.busy || !device),
-                padding: phone ? "16px 14px" : "9px 14px",
-                fontSize: phone ? 16 : 13,
-              }}
-            >
-              {calibration.busy ? "Capturing…" : "Capture"}
-            </div>
             <div
               onClick={() =>
                 !calibration.busy && session.captured > 0 && calibration.redo()

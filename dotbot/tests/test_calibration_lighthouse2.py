@@ -610,26 +610,26 @@ def test_every_corner_describes_the_pose_before_the_coordinate():
     assert prompts[0] == (
         "point 0 of 4, top-left corner of arena: robot inside the rectangle, "
         "left edge on the left line, front edge on the top line, nose toward "
-        "the top. Photodiode lands at (47, 18.5) mm. Press Enter when it is "
-        "still."
+        "the top. Photodiode lands at (47, 18.5) mm. Press the robot's button "
+        "when it is still."
     )
     assert prompts[1] == (
         "point 1 of 4, top-right corner of arena: robot inside the rectangle, "
         "right edge on the right line, front edge on the top line, nose "
-        "toward the top. Photodiode lands at (1953, 18.5) mm. Press Enter "
-        "when it is still."
+        "toward the top. Photodiode lands at (1953, 18.5) mm. Press the "
+        "robot's button when it is still."
     )
     assert prompts[2] == (
         "point 2 of 4, bottom-left corner of arena: robot inside the "
         "rectangle, left edge on the left line, front edge on the bottom "
         "line, nose toward the bottom. Photodiode lands at (47, 1981.5) mm. "
-        "Press Enter when it is still."
+        "Press the robot's button when it is still."
     )
     assert prompts[3] == (
         "point 3 of 4, bottom-right corner of arena: robot inside the "
         "rectangle, right edge on the right line, front edge on the bottom "
         "line, nose toward the bottom. Photodiode lands at (1953, 1981.5) "
-        "mm. Press Enter when it is still."
+        "mm. Press the robot's button when it is still."
     )
 
 
@@ -638,12 +638,13 @@ def test_a_typed_point_instructs_nothing_beyond_the_coordinate():
     assert point.corner is None
     assert point.where == "" and point.how == ""
     assert point_prompt(2, 5, point) == (
-        "point 2 of 5: photodiode on (1500, 2500) mm. Press Enter when it is " "still."
+        "point 2 of 5: photodiode on (1500, 2500) mm. Press the robot's button "
+        "when it is still."
     )
 
 
 def test_the_header_states_the_site_the_orientation_and_the_rule():
-    header = collect_header(C405, "the config file", 4, 10)
+    header = collect_header(C405, "the config file", 4)
     assert "site c405-arena (from the config file)" in header
     assert "x grows right, y grows down" in header
     assert f"zero is {C405.anchor}" in header
@@ -651,7 +652,7 @@ def test_the_header_states_the_site_the_orientation_and_the_rule():
 
 
 def test_the_header_names_the_missing_anchor_key():
-    header = collect_header(Site(), "the default", 4, 10)
+    header = collect_header(Site(), "the default", 4)
     assert "add `anchor` to [sites.default]" in header
 
 

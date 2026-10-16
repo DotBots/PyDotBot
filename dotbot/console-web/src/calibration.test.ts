@@ -13,7 +13,6 @@ import {
   noseRotation,
   outstandingIndex,
   placementInstruction,
-  readFraction,
   residualLines,
   sessionRect,
   stepLabel,
@@ -53,7 +52,6 @@ const session = (over: Partial<CalibrationSession> = {}): CalibrationSession => 
   site: "c405-arena",
   area: "",
   device: "",
-  reads: 25,
   status: "collecting",
   outstanding: 0,
   captured: 0,
@@ -163,18 +161,6 @@ describe("the step card's wording", () => {
   it("shows the outstanding point, and none once every one is captured", () => {
     expect(currentPoint(session({ points: upTo(2) }))?.index).toBe(2);
     expect(currentPoint(session({ points: upTo(4) }))).toBeNull();
-  });
-});
-
-describe("the read bars", () => {
-  it("fills in proportion to the target and never past it", () => {
-    expect(readFraction(0, 25)).toBe(0);
-    expect(readFraction(18, 25)).toBeCloseTo(0.72);
-    expect(readFraction(30, 25)).toBe(1);
-  });
-
-  it("stays empty when no target is known yet", () => {
-    expect(readFraction(3, 0)).toBe(0);
   });
 });
 

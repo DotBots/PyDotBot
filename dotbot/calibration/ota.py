@@ -3,13 +3,9 @@
 
 """Over-the-air LH2 capture collection (swarmit transport).
 
-A capture comes either from the calibrate app, taken on the robot's own
-button, or from the secure bootloader, which samples its raw LH2 counts on
-request (READY mode only). Both arrive inside a SWARMIT_EVENT_LOG. This
-module decodes the records and triggers the bootloader captures; the solve
-and the file live in `lighthouse2`.
-
-DEPRECATED: the bootloader capture request, in favour of the calibrate app.
+A capture is taken by the calibrate app on the robot's own button and
+arrives inside SWARMIT_EVENT_LOGs. This module decodes and assembles the
+records; the solve and the file live in `lighthouse2`.
 
 A capture is n reads per point, not one: the per-point error is the
 placement sigma and the lighthouse's own over sqrt(n) in quadrature, so a
@@ -21,7 +17,6 @@ real pair of sweeps cannot produce, which `samples_from_reads` drops.
 
 from __future__ import annotations
 
-import queue
 import threading
 import time
 from collections.abc import Callable
@@ -30,9 +25,6 @@ from dataclasses import dataclass, field
 from dotbot.calibration.lighthouse2 import LH_PERIODS, LH2CalibrationSample, Sample
 from dotbot.calibration.points import CORNERS  # noqa: F401 - the capture order
 
-CAPTURE_TIMEOUT_DEFAULT = 5.0
-CAPTURE_RETRIES_DEFAULT = 3
-CAPTURE_READS_DEFAULT = 25
 
 # Each raw sample inside the LOG payload is [lh_index:1][count1:4 LE][count2:4 LE].
 _SAMPLE_SIZE = 9
@@ -53,18 +45,6 @@ BUTTON_CAPTURE_TIMEOUT_DEFAULT = 20.0
 # A station really in view is decoded on nearly every read, so a station under
 # this share of a point's reads is a decode artefact rather than a station.
 STATION_PRESENCE_RATIO_MIN = 0.5
-
-
-def parse_capture_payload(data: bytes, tag: int) -> list[LH2CalibrationSample]:
-    """Decode a SWARMIT_EVENT_LOG payload of raw LH2 samples.
-
-    Layout (mirrors the swarmit bootloader): a 1-byte `tag`, then N
-    fixed-size records. Returns [] for any payload that is not a capture
-    (regular text log lines do not carry `tag` as their first byte).
-    """
-    if len(data) < 1 or data[0] != tag:
-        return []
-    return _parse_records(data[1:])
 
 
 def _parse_records(body: bytes) -> list[LH2CalibrationSample]:
@@ -307,25 +287,15 @@ class CaptureSession:
     A capture from the calibrate app's button can come from any device and
     at any time; its chunks are assembled into one `ButtonCapture` per press
     and handed to `on_button_capture`.
-
-    With a `device`, `capture()` also triggers that device's READY-mode
-    capture (DEPRECATED, in favour of the button) and waits for the reply,
-    re-triggering on timeout because the trigger send is best-effort. The
-    bootloader only answers a trigger, so one stream serves every point.
     """
 
     def __init__(
         self,
         client,
-        device: str | None,
-        tag: int,
         on_button_capture: Callable[[ButtonCapture], None] | None = None,
         button_timeout: float = BUTTON_CAPTURE_TIMEOUT_DEFAULT,
     ):
         self._client = client
-        self._device = (device or "").upper()
-        self._tag = tag
-        self._queue: queue.Queue = queue.Queue()
         self._stop = threading.Event()
         self._on_button_capture = on_button_capture
         self._assembler = ButtonAssembler(timeout=button_timeout)
@@ -340,23 +310,12 @@ class CaptureSession:
         self._stop.set()
 
     def _reader(self) -> None:
-        try:
-            for event in self._client.watch_log_events():
-                if self._stop.is_set():
-                    break
-                addr = str(event.get("addr", "")).upper()
-                data = bytes.fromhex(event.get("data_hex", ""))
-                chunk = parse_button_payload(data)
-                if chunk is not None:
-                    self._on_button_chunk(addr, chunk)
-                    continue
-                if not self._device or addr != self._device:
-                    continue
-                decoded = parse_capture_payload(data, self._tag)
-                if decoded:
-                    self._queue.put(decoded)
-        except Exception as exc:  # surfaced on the next capture() get()
-            self._queue.put(exc)
+        for event in self._client.watch_log_events():
+            if self._stop.is_set():
+                break
+            chunk = parse_button_payload(bytes.fromhex(event.get("data_hex", "")))
+            if chunk is not None:
+                self._on_button_chunk(str(event.get("addr", "")).upper(), chunk)
 
     def _on_button_chunk(self, addr: str, chunk: ButtonChunk) -> None:
         if self._on_button_capture is None:
@@ -366,73 +325,7 @@ class CaptureSession:
         if capture is not None:
             self._on_button_capture(capture)
 
-    @property
-    def device(self) -> str:
-        """The device `capture()` triggers, or "" for a button-only stream."""
-        return self._device
-
     def expired_presses(self) -> list[tuple[str, int]]:
         """Button presses given up on since the last call: (device, press)."""
         with self._assembler_lock:
             return self._assembler.expired()
-
-    def capture(
-        self,
-        timeout: float,
-        retries: int,
-        on_attempt: Callable[[int, int], None] | None = None,
-    ) -> list[LH2CalibrationSample]:
-        """Trigger one capture and return every station's record from the reply.
-
-        Raises TimeoutError if nothing arrives within `retries + 1` triggers,
-        and ValueError on a stream opened without a device.
-        """
-        if not self._device:
-            raise ValueError(
-                "no device to trigger: this stream only takes button captures"
-            )
-        # Discard anything left over from the previous point.
-        while not self._queue.empty():
-            self._queue.get_nowait()
-
-        attempts = retries + 1
-        for attempt in range(attempts):
-            if on_attempt is not None:
-                on_attempt(attempt + 1, attempts)
-            self._client.request_lh2_capture(self._device)
-            deadline = time.monotonic() + timeout
-            remaining = deadline - time.monotonic()
-            while remaining > 0:
-                try:
-                    item = self._queue.get(timeout=remaining)
-                except queue.Empty:
-                    break
-                if isinstance(item, Exception):
-                    raise item
-                return item
-
-        raise TimeoutError(
-            f"no LH2 samples from {self._device} after {retries + 1} attempt(s); "
-            f"is the DotBot in READY (app stopped) and in view of a lighthouse?"
-        )
-
-    def capture_point(
-        self,
-        point: int,
-        reads: int = CAPTURE_READS_DEFAULT,
-        timeout: float = CAPTURE_TIMEOUT_DEFAULT,
-        retries: int = CAPTURE_RETRIES_DEFAULT,
-        on_attempt: Callable[[int, int], None] | None = None,
-        on_read: (
-            Callable[[int, int, list[list[LH2CalibrationSample]]], None] | None
-        ) = None,
-    ) -> PointCapture:
-        """Take `reads` captures at one point and group them per station."""
-        collected: list[list[LH2CalibrationSample]] = []
-        for index in range(reads):
-            collected.append(
-                self.capture(timeout=timeout, retries=retries, on_attempt=on_attempt)
-            )
-            if on_read is not None:
-                on_read(index + 1, reads, collected)
-        return samples_from_reads(collected, point)

@@ -4,7 +4,6 @@ import {
   TYPED_RECT,
   areaChoices,
   defaultChoice,
-  parseReads,
   parseRect,
   pointsSpec,
 } from "./calibrationSetup";
@@ -94,20 +93,5 @@ describe("the specification Start sends", () => {
 
   it("is absent while the typed rectangle is incomplete", () => {
     expect(pointsSpec(TYPED_RECT, "750,750")).toBeNull();
-  });
-});
-
-describe("reads per point", () => {
-  it("takes a whole count of at least one", () => {
-    expect(parseReads("25")).toBe(25);
-    expect(parseReads(" 1 ")).toBe(1);
-  });
-
-  it("refuses anything that is not one", () => {
-    expect(parseReads("")).toBeNull();
-    expect(parseReads("0")).toBeNull();
-    expect(parseReads("-5")).toBeNull();
-    expect(parseReads("2.5")).toBeNull();
-    expect(parseReads("lots")).toBeNull();
   });
 });
