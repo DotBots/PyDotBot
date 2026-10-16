@@ -18,6 +18,7 @@ from click.testing import CliRunner
 from dotbot.calibration import conics, lighthouse2, push
 from dotbot.calibration import spin as spin_module
 from dotbot.calibration.lighthouse2 import counts_for_camera_point, load_calibration
+from dotbot.calibration.multi_station import appendable_rounds
 from dotbot.calibration.spin import (
     SPIN_CHUNK_RECORDS,
     SPIN_TAG,
@@ -744,6 +745,46 @@ def test_append_refuses_a_corner_calibration(monkeypatch, lab, tmp_path):
     assert result.exit_code != 0
     assert "not a free-mode spin calibration" in result.output
     assert fleet.calls == []
+
+
+def test_append_to_a_placed_calibration_names_the_one_it_came_from(monkeypatch, lab):
+    _, fleet = _fleet()
+    result = _collect(monkeypatch, lab, fleet)
+    free_id = re.search(r"--from-calibration (\w+)", result.output).group(1)
+    result = CliRunner().invoke(
+        site_cmd.cmd,
+        ["init", "spun", "--from-calibration", free_id],
+        obj={"config": lab},
+    )
+    placed_id = re.search(r"push (\w+) --site spun", result.output).group(1)
+    _, fleet = _fleet()
+    result = _collect(monkeypatch, lab, fleet, "--site", "spun", "--append", placed_id)
+    assert result.exit_code != 0
+    assert "not a free-mode spin calibration" in result.output
+    assert f"placed from spin calibration {free_id}" in result.output
+    assert f"--append {free_id} --site c405" in result.output
+    assert fleet.calls == []
+
+
+def test_a_placed_file_without_its_source_falls_back_to_the_site_anchor(
+    monkeypatch, lab
+):
+    _, fleet = _fleet()
+    result = _collect(monkeypatch, lab, fleet)
+    free_id = re.search(r"--from-calibration (\w+)", result.output).group(1)
+    result = CliRunner().invoke(
+        site_cmd.cmd,
+        ["init", "spun", "--from-calibration", free_id],
+        obj={"config": lab},
+    )
+    path = Path(re.search(r"saved to (\S+)", result.output).group(1))
+    text = path.read_text()
+    assert f'placed_from = "{free_id}' in text
+    path.write_text(re.sub(r'placed_from = "\w+"\n', "", text))
+    with pytest.raises(ValueError) as refused:
+        appendable_rounds(lighthouse2.read_calibration_file(path))
+    assert f"its site was defined from spin calibration {free_id}" in str(refused.value)
+    assert f"--append {free_id} --site c405" in str(refused.value)
 
 
 def test_append_and_drop_station_go_with_spin(lab):

@@ -1174,17 +1174,33 @@ def appendable_rounds(calibration: Calibration) -> int:
     calibration is in a frame a re-solve would not keep.
     """
     # pylint: disable=import-outside-toplevel
-    from dotbot.calibration.conics import FREE_FRAME_ANCHOR
+    from dotbot.calibration.conics import FREE_FRAME_ANCHOR, SELF_DEFINED_ANCHOR
+    from dotbot.calibration.lighthouse2 import calibration_site_of
 
     if (
         not calibration.tracks
         or calibration.site.anchor != FREE_FRAME_ANCHOR
         or not all(st.solved_from.startswith("conics") for st in calibration.stations)
     ):
-        raise ValueError(
+        refused = (
             f"calibration {calibration.id8} is not a free-mode spin calibration, "
-            "so a round cannot be appended to it; append to the spin calibration "
-            "it was made from"
+            "so a round cannot be appended to it"
+        )
+        anchor = calibration.site.anchor
+        if calibration.placed_from:
+            source = calibration.placed_from
+            how = f"it was placed from spin calibration {source[:8]}"
+        elif anchor.startswith(SELF_DEFINED_ANCHOR):
+            source = anchor[len(SELF_DEFINED_ANCHOR) :].strip()
+            how = f"its site was defined from spin calibration {source[:8]}"
+        else:
+            raise ValueError(
+                f"{refused}; append to the spin calibration it was made from"
+            )
+        where = calibration_site_of(source)
+        raise ValueError(
+            f"{refused}: {how}, so append to that one"
+            + (f" (--append {source[:8]} --site {where})" if where else "")
         )
     return max(t.round for t in calibration.tracks) + 1
 
