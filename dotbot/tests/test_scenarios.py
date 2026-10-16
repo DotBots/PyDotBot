@@ -140,7 +140,11 @@ async def test_a_batch_waits_near_the_start_until_the_robot_has_a_heading(scenar
     assert held_travel and max(held_travel) < 100
     assert axle_error_mm(robot, 1500, 1000) <= 20
     # The stream told the console it was held, then that it no longer is
-    held = [p["waypoints_awaiting_heading"] for p in s.socket.robot_states() if "waypoints_awaiting_heading" in p]
+    held = [
+        p["waypoints_awaiting_heading"]
+        for p in s.socket.robot_states()
+        if "waypoints_awaiting_heading" in p
+    ]
     assert True in held and held[-1] is False
 
 

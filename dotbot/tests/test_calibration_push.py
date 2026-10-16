@@ -92,7 +92,9 @@ class _Fleet:
                 payload[:LH2_CALIBRATION_MESSAGE_BYTES]
             )
             node.info.lh2_station_mask = (
-                int.from_bytes(payload[:4], "little") if self.mask is None else self.mask
+                int.from_bytes(payload[:4], "little")
+                if self.mask is None
+                else self.mask
             )
             node.info.info_gen += 1
 
@@ -201,7 +203,9 @@ def test_a_robot_already_on_the_id_that_does_not_reboot_is_listed(calibration_fi
     fleet.send_lh2_calibration(
         lighthouse2.calibration_payload(calibration), check.send_to
     )
-    assert push.push_worklist(fleet, calibration, check.addresses, check.info_gens) == []
+    assert (
+        push.push_worklist(fleet, calibration, check.addresses, check.info_gens) == []
+    )
 
 
 def test_a_robot_reporting_other_stations_is_listed(calibration_file):

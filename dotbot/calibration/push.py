@@ -221,7 +221,10 @@ def push_worklist(
                 info is not None
                 and _reported_id(info) == wanted_id
                 and getattr(info, "lh2_station_mask", 0) == wanted_mask
-                and (addr not in before or getattr(info, "info_gen", None) != before[addr])
+                and (
+                    addr not in before
+                    or getattr(info, "info_gen", None) != before[addr]
+                )
             ):
                 pending.discard(addr)
         if not pending or time.monotonic() >= deadline:

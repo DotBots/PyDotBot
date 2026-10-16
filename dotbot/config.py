@@ -227,9 +227,13 @@ class SiteSection(_Strict):
     def _stations(self) -> SiteSection:
         for serial, channel in self.stations.items():
             if not re.fullmatch(r"[0-9A-F]{8}", serial):
-                raise ValueError(f"station serial {serial!r} is not 8 upper-case hex digits")
+                raise ValueError(
+                    f"station serial {serial!r} is not 8 upper-case hex digits"
+                )
             if not 1 <= channel <= 16:
-                raise ValueError(f"station {serial} on channel {channel}, outside 1 to 16")
+                raise ValueError(
+                    f"station {serial} on channel {channel}, outside 1 to 16"
+                )
         channels = list(self.stations.values())
         shared = sorted({c for c in channels if channels.count(c) > 1})
         if shared:

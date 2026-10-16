@@ -80,7 +80,10 @@ def test_a_site_table_becomes_its_anchor_extent_and_areas():
 
 
 def test_a_site_table_carries_its_floor_spin_radius():
-    assert site_from_table("tile", _table("spin_radius_mm = 53.0\n")).spin_radius_mm == 53.0
+    assert (
+        site_from_table("tile", _table("spin_radius_mm = 53.0\n")).spin_radius_mm
+        == 53.0
+    )
     assert site_from_table("tile", _table("")).spin_radius_mm is None
     with pytest.raises(ValueError):
         _table("spin_radius_mm = 0.5\n")
