@@ -525,3 +525,168 @@ def test_collect_spin_refuses_an_island_until_it_is_dropped(monkeypatch, lab):
     assert result.exit_code == 0, result.output
     path = Path(re.search(r"Calibration saved to (\S+)", result.output).group(1))
     assert [s.index for s in lighthouse2.read_calibration_file(path).stations] == [0, 1]
+
+
+# --- calibrate-spin flashed onto robots running another app ------------------
+
+
+class _FlashingFleet(_SpinFleet):
+    """A fleet that takes an OTA flash: the robots report the flashed image,
+    and stay `Programming` for the first `programming` status reads after."""
+
+    programming = 0
+
+    def flash(self, firmware, devices=None, image_name="", **_):
+        import hashlib
+
+        self.calls.append(("flash", devices))
+        for addr in devices:
+            self.nodes[addr].info.image_name = image_name
+            self.nodes[addr].info.image_digest = hashlib.sha256(firmware).hexdigest()[
+                :16
+            ]
+            self.nodes[addr].status.name = "Bootloader"
+            yield {"type": "device_done", "addr": addr, "success": True}
+        self.busy_reads = self.programming
+        yield {"type": "complete", "all_success": True}
+
+    def status(self):
+        out = super().status()
+        if getattr(self, "busy_reads", 0):
+            self.busy_reads -= 1
+            for node in out.values():
+                node.status = SimpleNamespace(name="Programming")
+        return out
+
+
+def _bench_cache(root, sets=None):
+    """Built sets (default: `bench`, holding the robots' app and
+    calibrate-spin)."""
+    import hashlib
+    import json
+
+    sets = {
+        f"dotbot-firmware-{name}": files
+        for name, files in (
+            sets
+            or {"bench": {"dotbot-sandbox-dotbot-v3.bin": b"app", SPIN_BIN: b"spin"}}
+        ).items()
+    }
+    for name, files in sets.items():
+        folder = root / name
+        folder.mkdir(parents=True)
+        entries = {}
+        for fname, data in files.items():
+            (folder / fname).write_bytes(data)
+            entries[fname] = {"sha256": hashlib.sha256(data).hexdigest()}
+        (folder / "manifest.json").write_text(
+            json.dumps({"kind": "build", "files": entries})
+        )
+    return hashlib.sha256(b"app").hexdigest()[:16]
+
+
+def _app_fleet(digest):
+    addrs, fleet = _fleet()
+    fleet = _FlashingFleet(fleet.nodes, fleet.events)
+    for node in fleet.nodes.values():
+        node.info = SimpleNamespace(
+            image_name="dotbot-sandbox-dotbot-v3.bin",
+            image_digest=digest,
+        )
+        node.status.name = "Running"
+    return addrs, fleet
+
+
+@pytest.fixture
+def cache(tmp_path, monkeypatch):
+    monkeypatch.setenv("DOTBOT_ARTIFACTS_DIR", str(tmp_path / "cache"))
+    return tmp_path / "cache"
+
+
+def test_robots_on_another_app_get_calibrate_spin_from_its_set(monkeypatch, lab, cache):
+    digest = _bench_cache(cache)
+    addrs, fleet = _app_fleet(digest)
+    result = _collect(monkeypatch, lab, fleet)
+    assert result.exit_code == 0, result.output
+    assert (
+        f"Flashing {SPIN_BIN} from {cache / 'dotbot-firmware-bench'}" in result.output
+    )
+    calls = [c for c, _ in fleet.calls]
+    assert calls[:3] == ["info", "stop", "flash"]
+    assert "start" in calls
+    assert "flash -y -f bench remote-control" in result.output
+
+
+def test_fw_version_goes_with_spin(lab):
+    result = CliRunner().invoke(
+        swarm_lh2.cmd, ["collect", "-f", "bench"], obj={"config": lab}
+    )
+    assert result.exit_code != 0
+    assert "-f goes with --spin" in result.output
+
+
+def test_the_spin_waits_for_robots_still_programming_after_the_flash(
+    monkeypatch, lab, cache
+):
+    from dotbot.cli import _spin_flash
+
+    monkeypatch.setattr(_spin_flash.time, "sleep", lambda s: None)
+    digest = _bench_cache(cache)
+    _, fleet = _app_fleet(digest)
+    fleet.programming = 2
+    result = _collect(monkeypatch, lab, fleet)
+    assert result.exit_code == 0, result.output
+    assert [c for c, _ in fleet.calls].count("info") == 4
+
+
+def test_await_flashed_gives_up_after_its_timeout():
+    class Stuck:
+        reads = 0
+
+        def refresh_device_info(self, devices=None):
+            pass
+
+        def status(self):
+            self.reads += 1
+            return {"A": SimpleNamespace(status=SimpleNamespace(name="Programming"))}
+
+    now = [0.0]
+
+    def sleep(seconds):
+        now[0] += seconds
+
+    from dotbot.cli._spin_flash import await_flashed
+
+    stuck = Stuck()
+    fresh = await_flashed(
+        stuck, ["A"], None, timeout=5, clock=lambda: now[0], sleep=sleep
+    )
+    assert fresh["A"].status.name == "Programming"
+    assert stuck.reads == 6
+
+
+def test_the_drive_hint_names_the_set_of_the_app_before_the_spin(
+    monkeypatch, lab, cache
+):
+    # Both sets hold the same calibrate-spin; only phasea2 holds the app.
+    digest = _bench_cache(
+        cache,
+        sets={
+            "multibench": {"other-sandbox-dotbot-v3.bin": b"other", SPIN_BIN: b"spin"},
+            "phasea2": {"dotbot-sandbox-dotbot-v3.bin": b"app", SPIN_BIN: b"spin"},
+        },
+    )
+    _, fleet = _app_fleet(digest)
+    result = _collect(monkeypatch, lab, fleet)
+    assert result.exit_code == 0, result.output
+    assert "flash -y -f phasea2 remote-control" in result.output
+
+
+def test_the_drive_hint_lists_the_sets_an_identical_app_is_in(monkeypatch, lab, cache):
+    files = {"dotbot-sandbox-dotbot-v3.bin": b"app", SPIN_BIN: b"spin"}
+    digest = _bench_cache(cache, sets={"a": files, "b": files})
+    _, fleet = _app_fleet(digest)
+    result = _collect(monkeypatch, lab, fleet)
+    assert result.exit_code == 0, result.output
+    assert "flash -y -f <set> remote-control" in result.output
+    assert "one of a, b" in result.output
