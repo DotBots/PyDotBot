@@ -7,6 +7,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed
+
+- Depend on `pygame-ce` instead of `pygame`, which publishes no wheels for
+  Python 3.14 and fails to build from source there. `pygame-ce` is a drop-in
+  replacement imported as `pygame`; uninstall `pygame` before upgrading, as
+  the two install the same module.
+
 ## [0.33.0] - 2026-10-07
 
 ### Added
