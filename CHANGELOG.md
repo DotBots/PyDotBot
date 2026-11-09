@@ -7,6 +7,80 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.34.0] - 2026-11-09
+
+Upgrading from 0.33.0? Read [Upgrading from 0.33.0](#upgrading-from-0330)
+first: LH2 calibration files and every robot's firmware change, and the robots
+must be reflashed in a fixed order.
+
+### Added
+
+- Several LH2 stations are solved jointly from one spin collect: a circle seen
+  by two stations ties them, and one refinement puts every station in one
+  frame. `collect --spin` reports each station's rectangle, each tie's
+  strength and a predicted error map, and refuses a station tied to no other;
+  `--drop-station N` leaves one out.
+- `dotbot swarm calibrate-lh2 collect --spin --append CALIBRATION` adds a
+  round to a saved spin calibration and solves every round together.
+- `dotbot swarm calibrate-lh2 show CALIBRATION` prints a calibration's
+  stations, ties and error map from the file alone; `--next-round N` says
+  where N robots should spin in the next round.
+- `collect --spin --anchor ADDRESS=X,Y` (two or more) fixes a spin
+  calibration to the floor with robots spinning on known points.
+- `dotbot swarm calibrate-lh2 place SOURCE --to-calibration TARGET` moves a
+  calibration onto another one through a station both solved.
+- `collect --spin` flashes calibrate-spin onto the robots it finds on another
+  app, from the set their app came from (`-f` picks another). It checks the
+  whole swarm before flashing, confirms the new image by digest before
+  spinning, and prints how to put the robots' apps back if anything fails.
+
+### Changed
+
+- LH2 stations are pushed and baked by a 16-bit station mask, each with its
+  own rectangle, so a calibration of stations on any channels (say 3 and 9)
+  goes to the robots as it is. `push` refuses robots below device info 4.
+- The robot advertisement's `calibrated` field is read as a 16-bit station
+  mask, as DotBot-firmware 1.26.0 sends it.
+- The simulator runs the DotBot-libs 0.6.0 control core.
+- `dotbot site init --from-calibration` carries the calibration's spin radius
+  into the new site.
+- A placed calibration records the spin calibration it was placed from, and
+  `--append` on a placed calibration names that one.
+- `dotbot fw fetch` with no `-f` fetches DotBot-firmware 1.26.0; PyDotBot
+  requires swarmit 0.12.0.
+
+### Removed
+
+- Corner calibration captures from the robot's button only: `collect` loses
+  `--device`, `--reads`, `--timeout` and `--retries`, Enter no longer captures,
+  `POST /controller/calibration/session/capture` is gone, and the console
+  drops its Capture button and read bars.
+
+### Fixed
+
+- A spin collect with one robot spinning a circle of the wrong size leaves
+  that circle out instead of failing every station.
+- `dotbot run controller` on a taken HTTP port exits with an error naming the
+  port and the process holding it, and prints the console URL when it starts.
+- `dotbot fw build --as SET` refuses a set built from another source folder
+  (`--force` overrides).
+
+### Upgrading from 0.33.0
+
+1. Collect every LH2 calibration again: files are schema 4, and a schema 3
+   file is refused.
+2. Install this release first, then reflash every robot **by cable** with the
+   swarmit 0.12.0 sandbox, both cores and the calibration at once:
+   `dotbot device flash swarmit-sandbox --lh2-calibration <schema 4 file>`.
+3. Then, **over the air**, flash every sandbox app again from DotBot-firmware
+   1.26.0 (`dotbot swarm flash <app> -ys`). Robots on the bare `dotbot` app
+   are reflashed by cable. Never flash the apps first: 1.25.0 apps do not run
+   on the new bootloader, and 1.26.0 apps call the wrong functions on the old
+   one. Until a robot's app is reflashed, this release misreads its
+   advertisements.
+4. Scripts calling `POST /controller/calibration/session/capture` or
+   `collect --device` capture from the robot's button instead.
+
 ## [0.33.0] - 2026-10-07
 
 ### Added

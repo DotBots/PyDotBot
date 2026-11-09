@@ -1486,9 +1486,9 @@ def test_fetch_release_name_with_a_tag(monkeypatch):
         "fetch_assets",
         lambda src, version, bin_dir: calls.append((src, version)) or Path("/x"),
     )
-    res = CliRunner().invoke(fw_cmd, ["fetch", "dotbot-firmware", "-f", "1.25.0"])
+    res = CliRunner().invoke(fw_cmd, ["fetch", "dotbot-firmware", "-f", "1.26.0"])
     assert res.exit_code == 0, res.output
-    assert calls == [("dotbot-firmware", "1.25.0")]
+    assert calls == [("dotbot-firmware", "1.26.0")]
 
 
 def test_fetch_refuses_mari_before_downloading(monkeypatch):
@@ -1521,7 +1521,7 @@ def test_fetch_both_roles_fetch_the_swarmit_release_once(monkeypatch):
 def test_fetch_an_app_checks_the_release_ships_it(tmp_path, monkeypatch):
     from dotbot.cli.fw import cmd as fw_cmd
 
-    out = tmp_path / "dotbot-firmware-1.25.0"
+    out = tmp_path / "dotbot-firmware-1.26.0"
     out.mkdir()
     for name in (
         "spin-sandbox-dotbot-v3.bin",
@@ -1531,10 +1531,10 @@ def test_fetch_an_app_checks_the_release_ships_it(tmp_path, monkeypatch):
         (out / name).write_text("")
     monkeypatch.setattr(fetch, "fetch_assets", lambda src, version, bin_dir: out)
     res = CliRunner().invoke(
-        fw_cmd, ["fetch", "spin", "dotbot_gateway", "-f", "1.25.0"]
+        fw_cmd, ["fetch", "spin", "dotbot_gateway", "-f", "1.26.0"]
     )
     assert res.exit_code == 0, res.output
-    res = CliRunner().invoke(fw_cmd, ["fetch", "dotbot", "-f", "1.25.0"])
+    res = CliRunner().invoke(fw_cmd, ["fetch", "dotbot", "-f", "1.26.0"])
     assert res.exit_code != 0
     output = " ".join(res.output.split())
     assert "ships no dotbot. It ships: dotbot-simple, dotbot_gateway, spin" in output
