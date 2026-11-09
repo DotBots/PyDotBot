@@ -28,6 +28,7 @@ from typing import Callable, Iterable, Optional, Sequence, Union
 import numpy as np
 
 from dotbot.calibration.points import PointsFrom
+from dotbot.lh2 import LH2_BASESTATION_COUNT_MAX
 from dotbot.robots import ROBOT_DEFAULT
 from dotbot.site import SITE_DEFAULT, Site
 
@@ -45,8 +46,6 @@ CALIBRATION_SCHEMA_VERSION = 4
 # own fence; this is what a site without one falls back to.
 VALID_MM_DEFAULT = (0, 0, 10000, 10000)
 VALID_MM_MAX = 0xFFFFFFFF
-
-LH2_BASESTATION_COUNT_MAX = 16
 
 LH_PERIODS = [
     959000,  # mode 1
@@ -479,11 +478,6 @@ def station_mask(calibration: Calibration) -> int:
             )
         mask |= 1 << station.index
     return mask
-
-
-def station_label(index: int) -> str:
-    """How a station is named to an operator: its index and its channel."""
-    return f"station {index} (channel {index + 1})"
 
 
 def pushable_stations(calibration: Calibration) -> list[StationSolution]:

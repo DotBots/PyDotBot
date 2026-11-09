@@ -46,6 +46,7 @@ from pydantic import (
 )
 
 from dotbot.area import Role, area_role
+from dotbot.lh2 import CHANNELS
 
 # The sections whose keys derive env-var names (DOTBOT_<SECTION>_<KEY>).
 SECTIONS = ("fw", "device", "run")
@@ -230,9 +231,10 @@ class SiteSection(_Strict):
                 raise ValueError(
                     f"station serial {serial!r} is not 8 upper-case hex digits"
                 )
-            if not 1 <= channel <= 16:
+            if channel not in CHANNELS:
                 raise ValueError(
-                    f"station {serial} on channel {channel}, outside 1 to 16"
+                    f"station {serial} on channel {channel}, outside "
+                    f"{CHANNELS[0]} to {CHANNELS[-1]}"
                 )
         channels = list(self.stations.values())
         shared = sorted({c for c in channels if channels.count(c) > 1})

@@ -21,10 +21,10 @@ from dotbot.calibration.conics import TRACKS_ADVISED, ConicSolution
 from dotbot.calibration.lighthouse2 import (
     LH2CalibrationSample,
     TrackSample,
-    station_label,
 )
 from dotbot.calibration.ota import _is_impossible, _parse_records
 from dotbot.calibration.push import in_app, stop_robots
+from dotbot.lh2 import station_label
 
 SPIN_TAG = 0xCC
 SPIN_HEADER_BYTES = 4
