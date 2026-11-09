@@ -175,9 +175,7 @@ interface MapViewProps {
   // The radii a mission is sent with, for the waypoints' tooltips.
   waypointSettings?: WaypointSettings;
   // Calibration mode: the rectangle being calibrated, drawn over the map.
-  // While it is open, clicking a robot chooses it as the capturer.
   session?: CalibrationSession | null;
-  onPickCapturer?: (id: string) => void;
   // The named zooms: the site the menu lists, and what a pick applies to.
   site: Site | null;
   onZoom: (name: string) => void;
@@ -880,10 +878,7 @@ export const MapView: React.FC<MapViewProps> = (props) => {
       beginGesture(e.clientX, e.clientY, b);
       return;
     }
-    if (props.session && props.onPickCapturer) {
-      props.onPickCapturer(id);
-      props.onSelect([id], "replace");
-    } else if (role === "select") {
+    if (role === "select") {
       props.onSelect([id], "toggle");
     } else if (props.selection.has(id) && props.selection.size === 1) {
       props.onSelect([], "replace"); // click the sole selected bot again = deselect

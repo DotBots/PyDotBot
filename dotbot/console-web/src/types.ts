@@ -190,7 +190,6 @@ export interface CameraDetection {
 export interface CalibrationReads {
   station: number;
   reads: number;
-  target: number;
 }
 
 export interface CalibrationPoint {
@@ -219,7 +218,6 @@ export interface CalibrationSession {
   site: string;
   area: string; // the area the expected error is for; "" means none chosen
   device: string;
-  reads: number;
   status: string; // collecting | solved | saved
   outstanding: number | null; // null once every point is captured
   captured: number;
@@ -236,11 +234,9 @@ export interface CalibrationSession {
 }
 
 // What a session over one points specification would open on, resolved by the
-// controller without opening one. `reads` is the captures-per-point a start
-// that names none would use.
+// controller without opening one.
 export interface CalibrationPreview {
   points: CalibrationPoint[];
-  reads: number;
 }
 
 export interface CalibrationSaved {

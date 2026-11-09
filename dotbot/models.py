@@ -12,7 +12,7 @@
 from enum import IntEnum
 from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
-from pydantic import BaseModel, BeforeValidator, Field, field_validator
+from pydantic import BaseModel, BeforeValidator, Field, field_validator, model_validator
 
 from dotbot.area import Area, Role
 from dotbot.calibration.points import PointsKind
@@ -383,7 +383,6 @@ class DotBotCalibrationReadsModel(BaseModel):
 
     station: int
     reads: int
-    target: int
 
 
 class DotBotCalibrationPointModel(BaseModel):
@@ -430,7 +429,6 @@ class DotBotCalibrationSessionModel(BaseModel):
     # The area the expected error is evaluated over; empty means none chosen.
     area: str = ""
     device: str = ""
-    reads: int = 0
     status: str = "collecting"
     outstanding: Optional[int] = None
     captured: int = 0
@@ -448,30 +446,27 @@ class DotBotCalibrationStartModel(BaseModel):
     """Where this session's points are, in `--points` form.
 
     Empty `points` means the site's field corners. `area` names the area the
-    expected error is evaluated over; empty means none chosen. `reads` is
-    captures averaged per point; None takes the session's own default.
+    expected error is evaluated over; empty means none chosen.
     """
 
     points: Union[str, List[str]] = []
     device: str = ""
     area: str = ""
-    reads: Optional[int] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _refuse_reads(cls, data):
+        if isinstance(data, dict) and "reads" in data:
+            raise ValueError(
+                "`reads` was removed: the calibrate app sets its own read count"
+            )
+        return data
 
 
 class DotBotCalibrationPreviewModel(BaseModel):
-    """What a session over one `--points` specification would open on.
-
-    `reads` is the captures-per-point a start with no `reads` would use.
-    """
+    """What a session over one `--points` specification would open on."""
 
     points: List[DotBotCalibrationPointModel] = []
-    reads: int = 0
-
-
-class DotBotCalibrationCaptureModel(BaseModel):
-    """Which robot takes the outstanding point's reads."""
-
-    device: str = ""
 
 
 class DotBotCalibrationSaveModel(BaseModel):

@@ -35,7 +35,6 @@ from dotbot.models import (
     DotBotBackgroundMapModel,
     DotBotBodyModel,
     DotBotBuildModel,
-    DotBotCalibrationCaptureModel,
     DotBotCalibrationPreviewModel,
     DotBotCalibrationPushedModel,
     DotBotCalibrationPushModel,
@@ -642,9 +641,7 @@ async def calibration_session_start(request: DotBotCalibrationStartModel):
     points = request.points
     specs = ([points] if points else []) if isinstance(points, str) else list(points)
     return await _calibration(
-        api.controller.calibration_session.start(
-            specs, request.device, request.area, request.reads
-        )
+        api.controller.calibration_session.start(specs, request.device, request.area)
     )
 
 
@@ -671,19 +668,6 @@ async def calibration_session_preview(points: Annotated[List[str], Query()]):
 async def calibration_session_state():
     """Calibration-session state HTTP GET handler."""
     return api.controller.calibration_session.state()
-
-
-@api.post(
-    path="/controller/calibration/session/capture",
-    response_model=DotBotCalibrationSessionModel,
-    summary="Capture the outstanding point from one robot",
-    tags=["calibration"],
-)
-async def calibration_session_capture(request: DotBotCalibrationCaptureModel):
-    """Calibration-capture HTTP POST handler."""
-    return await _calibration(
-        api.controller.calibration_session.capture(request.device)
-    )
 
 
 @api.post(

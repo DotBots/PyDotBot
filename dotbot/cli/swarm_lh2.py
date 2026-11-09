@@ -33,7 +33,6 @@ traceback.
 
 import queue
 import sys
-import threading
 import time
 
 import click
@@ -116,17 +115,12 @@ def cmd() -> None:
 
 
 def _await_point(session, stream, arrivals: queue.Queue):
-    """Capture the outstanding point from whichever trigger comes first.
-
-    A capture from any robot's button is stored as the point directly. Enter
-    runs the READY-mode capture of the stream's device (DEPRECATED, in favour
-    of the button); it only arrives when collect has a --device.
-    """
+    """Store the next button capture, from any robot, as the outstanding point."""
     from dotbot.calibration.session import SessionError
 
     while True:
         try:
-            kind, capture = arrivals.get(timeout=0.5)
+            capture = arrivals.get(timeout=0.5)
         except queue.Empty:
             for addr, press in stream.expired_presses():
                 click.echo(
@@ -135,14 +129,6 @@ def _await_point(session, stream, arrivals: queue.Queue):
                     err=True,
                 )
             continue
-        if kind == "eof":
-            raise click.Abort()
-        if kind == "enter":
-            try:
-                return session.capture(stream)
-            except TimeoutError as exc:
-                click.echo(f"  ! {exc}", err=True)
-                raise click.Abort()
         if capture.lost:
             click.echo(
                 f"  ! {capture.device}: {capture.lost} capture(s) lost before "
@@ -165,19 +151,10 @@ def _await_point(session, stream, arrivals: queue.Queue):
     help=(
         "Collect an LH2 calibration over the air (no serial cable). Walks "
         "you through the points of one placement, takes each point's reads "
-        "from the robot's button (calibrate app running) or, with --device, "
-        "from Enter, solves every visible station, and saves the "
+        "from the robot's button (calibrate app running), solves every "
+        "visible station, and saves the "
         "calibration. With --spin, the robots spin in place instead "
         "(experimental)."
-    ),
-)
-@click.option(
-    "--device",
-    default=None,
-    help=(
-        "DotBot link-layer address in hex (e.g. BC3D3C8A2A6F8E68) that Enter "
-        "captures from, with its app stopped (READY). Deprecated in favour of "
-        "the calibrate app's button, which needs no address."
     ),
 )
 @click.option(
@@ -244,28 +221,6 @@ def _await_point(session, stream, arrivals: queue.Queue):
     ),
 )
 @click.option(
-    "--reads",
-    default=None,
-    type=int,
-    help=(
-        "Captures averaged per point on Enter (--device); the calibrate app "
-        "sets its own. A single read costs about 60 % of the accuracy at "
-        "every point of the field."
-    ),
-)
-@click.option(
-    "--timeout",
-    default=None,
-    type=float,
-    help="Seconds to wait for each Enter capture before re-triggering.",
-)
-@click.option(
-    "--retries",
-    default=None,
-    type=int,
-    help="Re-trigger an Enter capture this many times before giving up.",
-)
-@click.option(
     "--tag",
     default=None,
     help=(
@@ -278,7 +233,7 @@ def _await_point(session, stream, arrivals: queue.Queue):
     is_flag=True,
     help=(
         "Send the computed calibration over the air to the robots whose "
-        "captures built it (and to --device, when given)."
+        "captures built it."
     ),
 )
 @click.option(
@@ -360,16 +315,12 @@ def _await_point(session, stream, arrivals: queue.Queue):
 @click.pass_context
 def _collect(
     ctx,
-    device,
     conn,
     swarm_id,
     points,
     over,
     square,
     site_name,
-    reads,
-    timeout,
-    retries,
     tag,
     push,
     spin,
@@ -383,13 +334,9 @@ def _collect(
         given = [
             flag
             for flag, value in (
-                ("--device", device),
                 ("--points", points),
                 ("--over", over),
                 ("--square", square),
-                ("--reads", reads),
-                ("--timeout", timeout),
-                ("--retries", retries),
             )
             if value not in (None, ())
         ]
@@ -426,14 +373,7 @@ def _collect(
             "corner collect takes its captures from whichever robot's button"
         )
     try:
-        from swarmit.testbed.protocol import LH2_CALIB_TAG
-
-        from dotbot.calibration.ota import (
-            CAPTURE_READS_DEFAULT,
-            CAPTURE_RETRIES_DEFAULT,
-            CAPTURE_TIMEOUT_DEFAULT,
-            CaptureSession,
-        )
+        from dotbot.calibration.ota import CaptureSession
         from dotbot.calibration.points import (
             collect_header,
             collect_points,
@@ -464,10 +404,6 @@ def _collect(
             specs,
             site=site,
             points_from=how,
-            device=device or "",
-            reads=reads if reads is not None else CAPTURE_READS_DEFAULT,
-            timeout=timeout if timeout is not None else CAPTURE_TIMEOUT_DEFAULT,
-            retries=retries if retries is not None else CAPTURE_RETRIES_DEFAULT,
         )
     except (SessionError, ValueError) as exc:
         raise click.ClickException(str(exc)) from exc
@@ -482,33 +418,15 @@ def _collect(
 
     arrivals: queue.Queue = queue.Queue()
 
-    def on_button_capture(capture) -> None:
-        arrivals.put(("button", capture))
-
-    def read_enter() -> None:
-        for _ in iter(sys.stdin.readline, ""):
-            arrivals.put(("enter", None))
-        arrivals.put(("eof", None))
-
     with client:
-        with CaptureSession(
-            client, device, LH2_CALIB_TAG, on_button_capture=on_button_capture
-        ) as stream:
+        with CaptureSession(client, on_button_capture=arrivals.put) as stream:
             # Give the transport's own connect/subscribe log lines a beat to
             # print before our prompts, so the two don't interleave on screen.
             time.sleep(0.2)
-            click.echo(
-                collect_header(
-                    site, site_source, len(session.points), session.reads, device or ""
-                )
-            )
+            click.echo(collect_header(site, site_source, len(session.points)))
             click.echo(f"Points: {session.at} ({session.points_from}).")
             if note:
                 click.echo(note)
-            trigger = "the robot's button"
-            if device:
-                trigger = "Enter"
-                threading.Thread(target=read_enter, daemon=True).start()
             while not session.complete:
                 outstanding = session.outstanding
                 click.echo(
@@ -517,7 +435,6 @@ def _collect(
                         outstanding.index,
                         len(session.points),
                         outstanding.placement,
-                        trigger,
                     )
                 )
                 point = _await_point(session, stream, arrivals)
