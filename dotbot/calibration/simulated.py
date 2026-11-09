@@ -23,17 +23,16 @@ from typing import Any, Callable
 
 import numpy as np
 
-from dotbot.calibration.ota import (
-    BUTTON_CAPTURE_TAG,
-    BUTTON_CHUNK_RECORDS,
-    BUTTON_PRESS_MODULUS,
-)
-
 from dotbot.calibration.lighthouse2 import (
     LH2_CALIBRATION_MESSAGE_BYTES,
     apply_homography,
     counts_for_camera_point,
     message_site,
+)
+from dotbot.calibration.ota import (
+    BUTTON_CAPTURE_TAG,
+    BUTTON_CHUNK_RECORDS,
+    BUTTON_PRESS_MODULUS,
 )
 
 # A wall-mounted station: the magnitude of perspective row real files carry.
@@ -140,7 +139,11 @@ class SimulatedCaptureClient:
             point = self._point_provider()
             if point != seen:
                 seen, opened_at, pressed = point, time.monotonic(), False
-            if point is not None and not pressed and time.monotonic() - opened_at >= self._press_delay_s:
+            if (
+                point is not None
+                and not pressed
+                and time.monotonic() - opened_at >= self._press_delay_s
+            ):
                 pressed = True
                 yield from self.press(point[1])
                 continue

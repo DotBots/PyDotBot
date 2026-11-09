@@ -41,4 +41,3 @@ export function pointsSpec(choice: string, rect: string): string | null {
   const parsed = parseRect(rect);
   return parsed === null ? null : `${parsed.name}:corners`;
 }
-

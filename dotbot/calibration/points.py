@@ -326,4 +326,3 @@ def collect_header(site: Site, source: str, total: int) -> str:
         "a capture from any robot takes the outstanding point.\n"
         f"{total} point(s), the calibrate app's reads each, in the order listed.\n"
     )
-

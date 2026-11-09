@@ -96,9 +96,7 @@ def test_a_station_with_no_known_period_is_dropped():
 def test_a_station_seen_in_too_few_reads_is_dropped():
     """Station 1 is decoded in 2 of 25 reads: too rare to be in view."""
     reads = [_read(_record(0, 100, 200))] * 23
-    reads += [
-        _read(_record(0, 100, 200), _record(1, 300, 400))
-    ] * 2
+    reads += [_read(_record(0, 100, 200), _record(1, 300, 400))] * 2
 
     capture = samples_from_reads(reads, point=0)
     assert [s.station for s in capture.samples] == [0]
@@ -116,9 +114,7 @@ def test_a_station_seen_in_every_read_is_kept():
 
 
 def test_a_genuine_second_station_in_every_read_is_kept():
-    reads = [
-        _read(_record(0, 100, 200), _record(1, 300, 400))
-    ] * 25
+    reads = [_read(_record(0, 100, 200), _record(1, 300, 400))] * 25
     capture = samples_from_reads(reads, point=0)
     assert {s.station: s.reads for s in capture.samples} == {0: 25, 1: 25}
     assert capture.dropped == {}
