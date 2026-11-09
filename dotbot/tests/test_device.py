@@ -569,8 +569,8 @@ def test_the_sandbox_page_with_a_calibration_is_pinned(tmp_path):
 
 
 def test_the_sandbox_page_has_a_slot_per_station_the_calibration_allows():
-    from dotbot.calibration.lighthouse2 import LH2_BASESTATION_COUNT_MAX
     from dotbot.firmware.flash import LH2_MAX_HOMOGRAPHIES
+    from dotbot.lh2 import LH2_BASESTATION_COUNT_MAX
 
     assert LH2_MAX_HOMOGRAPHIES == LH2_BASESTATION_COUNT_MAX
 

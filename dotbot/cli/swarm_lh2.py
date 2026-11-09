@@ -761,11 +761,8 @@ def _push(ctx, calibration, conn, swarm_id, site_name, site_changed, dry_run):
 
 def _print_messages(calibration):
     """What a push of `calibration` sends, message by message."""
-    from dotbot.calibration.lighthouse2 import (
-        calibration_messages,
-        station_label,
-        station_mask,
-    )
+    from dotbot.calibration.lighthouse2 import calibration_messages, station_mask
+    from dotbot.lh2 import station_label
 
     try:
         messages = calibration_messages(calibration)
@@ -789,7 +786,7 @@ def _gated_push(client, calibration, site_changed=False, devices=None, stop=Fals
 
     With `stop`, the named `devices` still in their app are stopped first.
     """
-    from dotbot.calibration.lighthouse2 import calibration_payload, station_label
+    from dotbot.calibration.lighthouse2 import calibration_payload
     from dotbot.calibration.push import (
         PushRefused,
         gate_push,
@@ -797,6 +794,7 @@ def _gated_push(client, calibration, site_changed=False, devices=None, stop=Fals
         push_worklist,
         stop_robots,
     )
+    from dotbot.lh2 import station_label
 
     try:
         payload = calibration_payload(calibration)

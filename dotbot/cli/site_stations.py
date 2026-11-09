@@ -13,6 +13,7 @@ import functools
 import click
 
 from dotbot import stations as lh
+from dotbot.lh2 import CHANNELS, channel_index
 
 VIA = click.Choice(["auto", "usb", "ble"])
 INVALIDATE = click.option(
@@ -108,7 +109,7 @@ def _calibrations_using(ctx, indices):
 def _check_calibrations(ctx, found, moves, invalidate, dry_run):
     """Refuse moves that change an index a calibration solved, unless
     `invalidate`."""
-    indices = {channel - 1 for channel in moves.values()}
+    indices = {channel_index(channel) for channel in moves.values()}
     indices |= {found[s].index for s in moves if found[s].index is not None}
     using = _calibrations_using(ctx, indices)
     if not using:
@@ -257,7 +258,7 @@ def _move(found, transport, serial, channel, cabled, unapplied):
         elif got != channel:
             found[serial].channel = got
             return f"{serial}: asked for channel {channel} over ble, reads {got} after a USB reboot"
-    click.echo(f"  {serial}: on channel {got} (index {got - 1})")
+    click.echo(f"  {serial}: on channel {got} (index {channel_index(got)})")
     return None
 
 
@@ -317,7 +318,7 @@ def assign(ctx, via, dry_run, yes, invalidate_calibrations):
 
 @stations.command(name="set")
 @click.argument("serial")
-@click.argument("channel", type=click.IntRange(1, 16))
+@click.argument("channel", type=click.IntRange(CHANNELS[0], CHANNELS[-1]))
 @click.option(
     "--via",
     type=VIA,

@@ -42,9 +42,9 @@ from dotbot.calibration.lighthouse2 import (
     Calibration,
     LinkRecord,
     TrackSample,
-    station_label,
     union_rect,
 )
+from dotbot.lh2 import station_label
 from dotbot.robots import robot_geometry
 
 __all__ = [

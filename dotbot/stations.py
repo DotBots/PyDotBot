@@ -20,7 +20,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable, Mapping, Protocol
 
-CHANNELS = range(1, 17)
+from dotbot.lh2 import CHANNELS, channel_index
+
 SERIAL_RE = re.compile(r"[0-9A-F]{8}")
 VALVE_USB_VID = 0x28DE
 LH2_USB_PID = 0x2500
@@ -52,7 +53,7 @@ class Station:
     @property
     def index(self) -> int | None:
         """The DotBot LH2 index this station's sweeps decode to."""
-        return None if self.channel is None else self.channel - 1
+        return None if self.channel is None else channel_index(self.channel)
 
 
 class Transport(Protocol):

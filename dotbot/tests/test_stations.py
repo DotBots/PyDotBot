@@ -447,3 +447,26 @@ def test_assign_moves_a_station_no_calibration_uses(tmp_path, monkeypatch):
     assert result.exit_code == 0, result.output
     assert stations["/dev/b"]["mode"] == 2
     assert "recalibrate" not in result.output
+
+
+def test_the_channel_range_has_one_source_and_stations_import_no_numpy():
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    from dotbot import lh2
+    from dotbot.calibration import lighthouse2
+
+    assert lh.CHANNELS is lh2.CHANNELS
+    assert lighthouse2.LH2_BASESTATION_COUNT_MAX == len(lh2.CHANNELS) == 16
+    assert lh2.channel_index(1) == 0 and lh2.channel_index(16) == 15
+    assert lh2.station_label(3) == "station 3 (channel 4)"
+    code = "import sys, dotbot.stations; print('numpy' in sys.modules)"
+    out = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=Path(lh.__file__).parents[1],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert out.stdout.strip() == "False"
