@@ -20,6 +20,7 @@ from dotbot.calibration.lighthouse2 import (
     render_calibration,
     station_mask,
 )
+from dotbot.calibration.spin import spin_report
 from dotbot.site import Site
 from dotbot.tests import lh2_multi_fixture as F
 
@@ -385,8 +386,8 @@ def test_a_single_station_is_solved_as_free_mode_solves_it():
     assert not joint.graph.links and joint.error_map.covered > 0
 
 
-def real_spin_samples():
-    data = tomllib.loads((HERE / "lh2_spin_c405.toml").read_text())
+def real_spin_samples(fixture="lh2_spin_c405.toml"):
+    data = tomllib.loads((HERE / fixture).read_text())
     samples = [
         TrackSample(
             station=t["station"],
@@ -414,6 +415,29 @@ def test_a_real_single_station_calibration_solves_as_before():
     assert list(joint.field_mm) == data["expected_field_mm"]
     assert calibration.valid_mm == station.valid_mm
     assert joint.error_map.worst_mm < 10
+
+
+def test_a_real_robot_spinning_too_wide_is_left_out():
+    _, samples = real_spin_samples("lh2_spin_outlier.toml")
+    bad = "50E11DE5AE67A016"
+    _, joint, unsolved = conics.solve_calibration(samples, Site(name="lab"))
+    _, clean, _ = conics.solve_calibration(
+        [s for s in samples if s.name != bad], Site(name="lab")
+    )
+    assert not unsolved and sorted(joint.homographies) == [0, 1]
+    report = "\n".join(spin_report({}, [], joint.solutions, unsolved))
+    for station, solution in joint.solutions.items():
+        assert solution.rejected == [bad]
+        assert "off its peers" in solution.dropped[0].why
+        assert solution.residual_mm < 2
+        cams = np.vstack([s.camera_points() for s in samples if s.station == station])
+        moved = np.linalg.norm(
+            apply(joint.homographies[station], cams)
+            - apply(clean.homographies[station], cams),
+            axis=1,
+        )
+        assert moved.max() < 1
+    assert f"{bad}  " in report and "dropped: radius" in report
 
 
 def test_stations_2_and_8_are_written_as_schema_4(tmp_path):
