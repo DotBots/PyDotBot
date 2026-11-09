@@ -67,6 +67,7 @@ def _no_real_usb(monkeypatch):
     from dotbot.cli import site_stations
 
     monkeypatch.setattr(site_stations, "_cabled", lambda: _usb({})[0])
+    monkeypatch.setattr(site_stations, "_calibration_folders", lambda ctx: [])
 
 
 def test_plan_keeps_unique_channels_and_moves_duplicates_lowest_serial_first():
@@ -382,3 +383,67 @@ def test_set_leaves_the_site_alone_while_another_pair_shares_a_channel(
     assert path.read_text() == 'anchor = "door"\n'
     assert "channel 1 is held by 0FF22226 and AAAA0000" in result.output
     assert "dotbot site stations assign" in result.output
+
+
+def _calibration(folder, cal_id, indices):
+    folder.mkdir(parents=True, exist_ok=True)
+    text = f'schema_version = 4\n\n[metadata]\nid = "{cal_id}"\n'
+    text += "".join(f"\n[[station]]\nindex = {i}\n" for i in indices)
+    (folder / f"calibration-20261109-{cal_id[:8]}.toml").write_text(text)
+
+
+def _two_on_channel_one(tmp_path, monkeypatch, calibrations):
+    from dotbot.cli import site_stations
+
+    stations = {
+        "/dev/a": {"serial": "0FF22226", "mode": 1},
+        "/dev/b": {"serial": "DED2B22A", "mode": 1},
+    }
+    usb, _ = _usb(stations)
+    path = tmp_path / "site.toml"
+    path.write_text('anchor = "door"\n')
+    folder = tmp_path / "calibrations"
+    for cal_id, indices in calibrations.items():
+        _calibration(folder, cal_id, indices)
+    monkeypatch.setattr(site_stations, "_transports", lambda via: [usb])
+    monkeypatch.setattr(site_stations, "_site_toml", lambda ctx: (path, {}))
+    monkeypatch.setattr(site_stations, "_calibration_folders", lambda ctx: [folder])
+    return stations, path
+
+
+def test_assign_refuses_to_move_a_station_whose_index_a_calibration_uses(
+    tmp_path, monkeypatch
+):
+    from dotbot.cli import site_stations
+
+    stations, path = _two_on_channel_one(
+        tmp_path, monkeypatch, {"4f3a9c01aa": [0], "77d2e5b0bb": [1, 4], "9e": [5]}
+    )
+    args = ["assign", "--via", "usb", "-y"]
+    result = CliRunner().invoke(site_stations.stations, args)
+    assert result.exit_code == 1
+    assert "4f3a9c01aa (station 0)" in result.output
+    assert "77d2e5b0bb (station 1)" in result.output
+    assert "9e" not in result.output
+    assert "--invalidate-calibrations" in result.output
+    assert stations["/dev/b"]["mode"] == 1
+    assert path.read_text() == 'anchor = "door"\n'
+
+    result = CliRunner().invoke(
+        site_stations.stations, args + ["--invalidate-calibrations"]
+    )
+    assert result.exit_code == 0, result.output
+    assert stations["/dev/b"]["mode"] == 2
+    assert "recalibrate" in result.output
+
+
+def test_assign_moves_a_station_no_calibration_uses(tmp_path, monkeypatch):
+    from dotbot.cli import site_stations
+
+    stations, _ = _two_on_channel_one(tmp_path, monkeypatch, {"9e": [5]})
+    result = CliRunner().invoke(
+        site_stations.stations, ["assign", "--via", "usb", "-y"]
+    )
+    assert result.exit_code == 0, result.output
+    assert stations["/dev/b"]["mode"] == 2
+    assert "recalibrate" not in result.output

@@ -15,6 +15,12 @@ import click
 from dotbot import stations as lh
 
 VIA = click.Choice(["auto", "usb", "ble"])
+INVALIDATE = click.option(
+    "--invalidate-calibrations",
+    is_flag=True,
+    help="Move a station even when a calibration of the site uses its old or "
+    "new index; recalibrate after.",
+)
 
 
 def _transports(via: str):
@@ -69,6 +75,63 @@ def _site_toml(ctx):
     return entry.pack / PACK_FILE, dict(entry.table.stations)
 
 
+def _calibration_folders(ctx):
+    from dotbot.calibration.lighthouse2 import calibration_folders, calibration_root
+    from dotbot.cli._site import active_site
+
+    site = active_site(ctx).site()
+    return [folder for folder, _ in calibration_folders(site, calibration_root())]
+
+
+def _calibrations_using(ctx, indices):
+    """Calibration id -> the station indices of `indices` it solved."""
+    import tomllib
+
+    from dotbot.calibration.lighthouse2 import CALIBRATION_TOML_GLOB
+
+    out = {}
+    for folder in _calibration_folders(ctx):
+        for path in sorted(folder.glob(CALIBRATION_TOML_GLOB)):
+            try:
+                with open(path, "rb") as handle:
+                    data = tomllib.load(handle)
+            except (OSError, tomllib.TOMLDecodeError):
+                continue
+            used = sorted(
+                {st.get("index") for st in data.get("station", [])} & set(indices)
+            )
+            if used:
+                out[str(data.get("metadata", {}).get("id", path.name))] = used
+    return out
+
+
+def _check_calibrations(ctx, found, moves, invalidate, dry_run):
+    """Refuse moves that change an index a calibration solved, unless
+    `invalidate`."""
+    indices = {channel - 1 for channel in moves.values()}
+    indices |= {found[s].index for s in moves if found[s].index is not None}
+    using = _calibrations_using(ctx, indices)
+    if not using:
+        return
+    named = "\n".join(
+        f"  {cal_id} (station {', '.join(str(i) for i in used)})"
+        for cal_id, used in using.items()
+    )
+    what = (
+        "These moves change station indices that calibrations of this site "
+        f"solved, so those would no longer match:\n{named}"
+    )
+    if invalidate:
+        click.echo(what + "\nMoving them anyway; recalibrate after.")
+    elif dry_run:
+        click.echo(what + "\nMoving needs --invalidate-calibrations.")
+    else:
+        raise click.ClickException(
+            what + "\nRerun with --invalidate-calibrations to move them anyway, "
+            "then recalibrate."
+        )
+
+
 def _echo(stations, registry):
     if not stations:
         click.echo(
@@ -119,12 +182,14 @@ def list_stations(ctx, via):
     _echo(found, registry)
 
 
-def _apply(ctx, found, used, moves, yes, dry_run, again):
+def _apply(ctx, found, used, moves, yes, dry_run, again, invalidate):
     """Write `moves`, then record the channels in the site. A failure records
     nothing, names what moved and what is left, and how to finish (`again`)."""
     for serial, channel in moves.items():
         click.echo(f"  {serial}: channel {found[serial].channel} -> {channel}")
-    if not moves:
+    if moves:
+        _check_calibrations(ctx, found, moves, invalidate, dry_run)
+    else:
         click.echo(
             "No station to move."
             if lh.duplicates(found)
@@ -229,8 +294,9 @@ def _record(ctx, found):
 )
 @click.option("--dry-run", is_flag=True, help="Print the plan and change nothing.")
 @click.option("-y", "--yes", is_flag=True, help="Do not ask before writing.")
+@INVALIDATE
 @click.pass_context
-def assign(ctx, via, dry_run, yes):
+def assign(ctx, via, dry_run, yes, invalidate_calibrations):
     """Give every station a channel no other station holds: a station keeps
     its channel unless a lower serial holds it, the others take the lowest
     free ones. Writes over USB where a station is cabled, otherwise over
@@ -243,7 +309,10 @@ def assign(ctx, via, dry_run, yes):
         moves = lh.plan({serial: st.channel for serial, st in found.items()})
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
-    _apply(ctx, found, used, moves, yes, dry_run, "dotbot site stations assign")
+    again = "dotbot site stations assign"
+    if invalidate_calibrations:
+        again += " --invalidate-calibrations"
+    _apply(ctx, found, used, moves, yes, dry_run, again, invalidate_calibrations)
 
 
 @stations.command(name="set")
@@ -257,8 +326,9 @@ def assign(ctx, via, dry_run, yes):
     help="How to reach the stations.",
 )
 @click.option("-y", "--yes", is_flag=True, help="Do not ask before writing.")
+@INVALIDATE
 @click.pass_context
-def set_station(ctx, serial, channel, via, yes):
+def set_station(ctx, serial, channel, via, yes, invalidate_calibrations):
     """Put one station (by serial) on CHANNEL (1 to 16; index CHANNEL - 1)."""
     serial = serial.upper()
     found, used = _discover(via)
@@ -269,4 +339,6 @@ def set_station(ctx, serial, channel, via, yes):
         raise click.ClickException(f"channel {channel} is held by {', '.join(others)}")
     moves = {} if found[serial].channel == channel else {serial: channel}
     again = f"dotbot site stations set {serial} {channel}"
-    _apply(ctx, found, used, moves, yes, False, again)
+    if invalidate_calibrations:
+        again += " --invalidate-calibrations"
+    _apply(ctx, found, used, moves, yes, False, again, invalidate_calibrations)
