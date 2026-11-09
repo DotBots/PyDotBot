@@ -142,6 +142,8 @@ jobs:
     name: publish release
     if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags')
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
     - uses: actions/checkout@v4
     - name: Download the sdist and wheel
@@ -161,4 +163,4 @@ jobs:
       with:
         generateReleaseNotes: true
         artifacts: "dist/*.tar.gz,dist/*.whl"
-        token: ${{ secrets.RELEASE_TOKEN }}
+        token: ${{ secrets.GITHUB_TOKEN }}
