@@ -263,6 +263,8 @@ dev-corner = { x = 4000, y = 300,  w = 700,  h = 700, role = "corner" }
 |---|---|
 | `anchor` | Prose saying where zero is on the real floor. No code reads it, but a calibration records it, and one made against another anchor is refused. |
 | `extent_mm` | `[width, height]` of the floor. |
+| `spin_radius_mm` | Optional: the radius of a spinning robot's photodiode circle measured on this floor, in mm (1 to 200). `calibrate-lh2 collect --spin` uses it unless `--spin-radius` is given; `site init` writes it. |
+| `stations.<serial>` | Optional: the site's LH2 base stations, each serial (8 upper-case hex digits) with its channel, 1 to 16, e.g. `[stations]` `"1A2B3C4D" = 3`. Two stations on one channel are refused. |
 | `areas.<name>` | A rectangle `{ x, y, w, h }` in mm, with an optional `role`. |
 | `connection` | The site's usual broker and, optionally, swarm id; see [below](#a-sites-connection). |
 

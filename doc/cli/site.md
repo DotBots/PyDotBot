@@ -175,7 +175,9 @@ commands run in it, as the ones `init` prints do, or add one to its
 home (`sites/` beside the project's `dotbot.toml`, else `~/.dotbot/sites/`),
 and the calibration, re-expressed in the new site, under
 `~/.dotbot/calibrations/<name>/` with a new id and, when it has a tag, the tag
-with `-<name>` appended. The site name must fit the 16 characters a robot
+with `-<name>` appended. The calibration's spin radius goes into the
+`site.toml` as `spin_radius_mm`, so a later `collect --spin` in the site uses
+the same scale. The site name must fit the 16 characters a robot
 stores, since `calibrate-lh2 push` sends it to them.
 
 ```bash
