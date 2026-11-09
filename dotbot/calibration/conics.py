@@ -787,6 +787,15 @@ def spin_field(calibration: Calibration) -> tuple[int, int]:
     return int(hi[0]), int(hi[1])
 
 
+def spin_radius(calibration: Calibration) -> float | None:
+    """The spin radius of a calibration's newest round, None without tracks."""
+    if not calibration.tracks:
+        return None
+    newest = max(t.round for t in calibration.tracks)
+    radii = [t.radius_mm for t in calibration.tracks if t.round == newest]
+    return max(set(radii), key=radii.count)
+
+
 def self_defined_site(
     calibration: Calibration,
     name: str,
@@ -842,6 +851,7 @@ def self_defined_site(
         anchor=anchor,
         extent_mm=extent,
         areas={"field": field_area, "staging": staging},
+        spin_radius_mm=spin_radius(calibration),
     )
     placed = Calibration(
         site=Site(name=name, anchor=anchor),
