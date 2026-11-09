@@ -257,6 +257,8 @@ class Calibration:
     created_at: str = ""
     tag: str = ""
     robot: str = ROBOT_DEFAULT
+    # The id of the free-frame spin calibration this one was moved from
+    placed_from: str = ""
     path: Optional[Path] = None
     # The id the file on disk declares, when this came from one. A mismatch
     # with `id` means the file was hand-edited into a different calibration.
@@ -686,6 +688,8 @@ def render_calibration(calibration: Calibration) -> str:
     ]
     if calibration.tag:
         out.append(f'tag = "{toml_escape(calibration.tag)}"')
+    if calibration.placed_from:
+        out.append(f'placed_from = "{calibration.placed_from}"')
     out += [
         "",
         "[site]",
@@ -867,6 +871,7 @@ def read_calibration_file(path: Path) -> Calibration:
         created_at=metadata.get("created_at", ""),
         tag=metadata.get("tag", ""),
         robot=metadata.get("robot", ROBOT_DEFAULT),
+        placed_from=str(metadata.get("placed_from", "")),
         path=path,
     )
     calibration.stored_id = str(metadata.get("id", ""))
@@ -1041,6 +1046,15 @@ def _file_metadata(path: Path) -> dict:
             return tomllib.load(handle).get("metadata", {})
     except (OSError, tomllib.TOMLDecodeError):
         return {}
+
+
+def calibration_site_of(spec: str) -> Optional[str]:
+    """The site of the one calibration file under any site that `spec`
+    names, None when none or several do."""
+    try:
+        return read_calibration_file(resolve_calibration_path(spec)).site.name
+    except (OSError, ValueError):
+        return None
 
 
 def load_calibration(
