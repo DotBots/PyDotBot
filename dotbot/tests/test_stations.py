@@ -313,7 +313,8 @@ def test_set_over_bluetooth_fails_when_the_usb_reboot_reads_another_channel(
     )
     assert result.exit_code == 1
     assert "reads 2 after a USB reboot" in result.output
-    assert tomllib.loads(path.read_text())["stations"] == {"DED2B22A": 2}
+    assert "dotbot site stations set DED2B22A 9" in result.output
+    assert path.read_text() == 'anchor = "door"\n'
 
 
 def test_the_bleak_radio_refuses_a_forbidden_write_before_connecting():
@@ -321,7 +322,9 @@ def test_the_bleak_radio_refuses_a_forbidden_write_before_connecting():
         lh.BleakRadio().write("AA:01", "00001525-1212-efde-1523-785feabcd124", b"\x01")
 
 
-def test_assign_records_the_stations_moved_before_one_fails(tmp_path, monkeypatch):
+def test_assign_writes_nothing_to_the_site_when_one_station_fails(
+    tmp_path, monkeypatch
+):
     from dotbot.cli import site_stations
 
     stations = {
@@ -338,16 +341,44 @@ def test_assign_records_the_stations_moved_before_one_fails(tmp_path, monkeypatc
 
     radio.write = write
     path = tmp_path / "site.toml"
-    path.write_text('anchor = "door"\n')
+    site = 'anchor = "door"\n\n[stations]\n"0FF22226" = 1\n'
+    path.write_text(site)
     monkeypatch.setattr(site_stations, "_transports", lambda via: [ble])
-    monkeypatch.setattr(site_stations, "_site_toml", lambda ctx: (path, {}))
+    monkeypatch.setattr(
+        site_stations, "_site_toml", lambda ctx: (path, {"0FF22226": 1})
+    )
     result = CliRunner().invoke(
         site_stations.stations, ["assign", "--via", "ble", "-y"]
     )
     assert result.exit_code == 1
     assert "AA:03 failed" in result.output
-    assert tomllib.loads(path.read_text())["stations"] == {
-        "0FF22226": 1,
-        "AAAA0000": 2,
-        "DED2B22A": 1,
+    assert path.read_text() == site
+    assert "Moved: AAAA0000 to channel 2" in result.output
+    assert "Still to move: DED2B22A from channel 1 to 3" in result.output
+    assert "dotbot site stations assign" in result.output
+    assert "dotbot site stations list" in result.output
+
+
+def test_set_leaves_the_site_alone_while_another_pair_shares_a_channel(
+    tmp_path, monkeypatch
+):
+    from dotbot.cli import site_stations
+
+    stations = {
+        "/dev/a": {"serial": "0FF22226", "mode": 1},
+        "/dev/b": {"serial": "AAAA0000", "mode": 1},
+        "/dev/c": {"serial": "DED2B22A", "mode": 5},
     }
+    usb, _ = _usb(stations)
+    path = tmp_path / "site.toml"
+    path.write_text('anchor = "door"\n')
+    monkeypatch.setattr(site_stations, "_transports", lambda via: [usb])
+    monkeypatch.setattr(site_stations, "_site_toml", lambda ctx: (path, {}))
+    result = CliRunner().invoke(
+        site_stations.stations, ["set", "DED2B22A", "7", "--via", "usb", "-y"]
+    )
+    assert result.exit_code == 0, result.output
+    assert stations["/dev/c"]["mode"] == 7
+    assert path.read_text() == 'anchor = "door"\n'
+    assert "channel 1 is held by 0FF22226 and AAAA0000" in result.output
+    assert "dotbot site stations assign" in result.output

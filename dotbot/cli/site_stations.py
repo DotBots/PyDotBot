@@ -8,6 +8,8 @@ other station holds and saves them; `set` puts one station on one channel.
 The channels reached are recorded in the site pack's `[stations]` table.
 """
 
+import functools
+
 import click
 
 from dotbot import stations as lh
@@ -117,62 +119,97 @@ def list_stations(ctx, via):
     _echo(found, registry)
 
 
-def _apply(ctx, found, used, moves, yes, dry_run):
+def _apply(ctx, found, used, moves, yes, dry_run, again):
+    """Write `moves`, then record the channels in the site. A failure records
+    nothing, names what moved and what is left, and how to finish (`again`)."""
     for serial, channel in moves.items():
         click.echo(f"  {serial}: channel {found[serial].channel} -> {channel}")
     if not moves:
-        click.echo("Every station already holds a channel of its own.")
-    elif dry_run:
+        click.echo(
+            "No station to move."
+            if lh.duplicates(found)
+            else "Every station already holds a channel of its own."
+        )
+    if dry_run:
         return
-    else:
-        if not yes:
-            click.confirm(
-                "Write these channels? A station on USB reboots, so a console open on it closes",
-                abort=True,
-            )
-        failed, usb, unapplied = None, None, []
-        for serial, channel in moves.items():
-            transport = used[serial]
-            try:
-                transport.write(serial, channel)
-                got = transport.confirm(serial)
-            except (LookupError, OSError, RuntimeError) as exc:
-                failed = f"{serial}: {exc}"
-                break
-            if got is not None:
-                found[serial].channel = got
-            if got != channel:
-                failed = f"{serial}: asked for channel {channel} over {transport.name}, reads {got}"
-                break
-            if transport.name == "ble":
-                usb = usb or _cabled()
-                try:
-                    got = _reboot_over_usb(serial, usb)
-                except OSError as exc:
-                    failed = f"{serial}: USB reboot failed: {exc}"
-                    break
-                if got is None:
-                    unapplied.append((serial, channel))
-                    got = channel
-                elif got != channel:
-                    found[serial].channel = got
-                    failed = f"{serial}: asked for channel {channel} over ble, reads {got} after a USB reboot"
-                    break
-            click.echo(f"  {serial}: on channel {got} (index {got - 1})")
-        for serial, channel in unapplied:
-            click.echo(f"reboot {serial} to apply channel {channel}")
-        # The stations already moved are recorded even when a later one fails.
-        _record(ctx, found)
+    if moves and not yes:
+        click.confirm(
+            "Write these channels? A station on USB reboots, so a console open on it closes",
+            abort=True,
+        )
+    before = {serial: found[serial].channel for serial in moves}
+    moved, failed = [], None
+    cabled, unapplied = functools.cache(_cabled), []
+    for serial, channel in moves.items():
+        failed = _move(found, used[serial], serial, channel, cabled, unapplied)
         if failed:
-            raise click.ClickException(failed)
-        return
-    if not dry_run:
-        _record(ctx, found)
+            break
+        moved.append(serial)
+    for serial, channel in unapplied:
+        click.echo(f"reboot {serial} to apply channel {channel}")
+    if failed:
+        left = [s for s in moves if s not in moved]
+        if moved:
+            click.echo(
+                "Moved: "
+                + ", ".join(f"{s} to channel {found[s].channel}" for s in moved)
+            )
+        click.echo(
+            "Still to move: "
+            + ", ".join(f"{s} from channel {before[s]} to {moves[s]}" for s in left)
+        )
+        click.echo(
+            "The site's [stations] table is left as it was"
+            + (", so it no longer matches the stations moved" if moved else "")
+            + f". `{again}` finishes and records them; "
+            "`dotbot site stations list` shows where the two disagree."
+        )
+        raise click.ClickException(failed)
+    _record(ctx, found)
+
+
+def _move(found, transport, serial, channel, cabled, unapplied):
+    """Write one channel and read it back: None, or why it failed."""
+    try:
+        transport.write(serial, channel)
+        got = transport.confirm(serial)
+    except (LookupError, OSError, RuntimeError) as exc:
+        return f"{serial}: {exc}"
+    if got is not None:
+        found[serial].channel = got
+    if got != channel:
+        return (
+            f"{serial}: asked for channel {channel} over {transport.name}, reads {got}"
+        )
+    if transport.name == "ble":
+        try:
+            got = _reboot_over_usb(serial, cabled())
+        except OSError as exc:
+            return f"{serial}: USB reboot failed: {exc}"
+        if got is None:
+            unapplied.append((serial, channel))
+            got = channel
+        elif got != channel:
+            found[serial].channel = got
+            return f"{serial}: asked for channel {channel} over ble, reads {got} after a USB reboot"
+    click.echo(f"  {serial}: on channel {got} (index {got - 1})")
+    return None
 
 
 def _record(ctx, found):
+    """Save the channels read in the site, unless two stations share one: the
+    site would then refuse to load."""
     path, registry = _site_toml(ctx)
     if path is None:
+        return
+    shared = lh.duplicates(found)
+    if shared:
+        for channel, serials in shared.items():
+            click.echo(
+                f"Not recorded in the site: channel {channel} is held by "
+                f"{' and '.join(serials)}. `dotbot site stations assign` gives "
+                "each its own channel and records them."
+            )
         return
     record = {
         serial: st.channel for serial, st in found.items() if st.channel is not None
@@ -206,7 +243,7 @@ def assign(ctx, via, dry_run, yes):
         moves = lh.plan({serial: st.channel for serial, st in found.items()})
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
-    _apply(ctx, found, used, moves, yes, dry_run)
+    _apply(ctx, found, used, moves, yes, dry_run, "dotbot site stations assign")
 
 
 @stations.command(name="set")
@@ -231,4 +268,5 @@ def set_station(ctx, serial, channel, via, yes):
     if others:
         raise click.ClickException(f"channel {channel} is held by {', '.join(others)}")
     moves = {} if found[serial].channel == channel else {serial: channel}
-    _apply(ctx, found, used, moves, yes, dry_run=False)
+    again = f"dotbot site stations set {serial} {channel}"
+    _apply(ctx, found, used, moves, yes, False, again)
