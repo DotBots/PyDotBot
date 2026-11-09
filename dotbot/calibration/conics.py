@@ -60,6 +60,9 @@ CLOSED_FORM_PAIRS_MAX = 400
 # Gate-and-refine rounds at most before the kept set must have settled.
 GATE_ROUNDS_MAX = 4
 
+# Subsets of tracks refined at most when looking for the ones to leave out.
+OUTLIER_SUBSETS_MAX = 64
+
 
 @dataclass(frozen=True)
 class CircleKey:
@@ -553,6 +556,36 @@ def health_gate(tracks: Sequence[Track], Hr: np.ndarray) -> dict[Track, str]:
     return why
 
 
+def _refine_without_outliers(tracks: Sequence[Track], Hr0: np.ndarray) -> np.ndarray:
+    """`refine` on every track or, if that leaves under `TRACKS_MIN` passing
+    the gate, on the subset leaving the fewest tracks out that does.
+
+    Refining on all tracks forces one radius on them, so a single circle of
+    the wrong size can bend the rectifier until none passes. Subsets are
+    tried by how many tracks they leave out, at most `OUTLIER_SUBSETS_MAX`
+    of them; among those leaving out as many, the one the most tracks pass
+    under wins, then the roundest.
+    """
+    Hr = refine(tracks, Hr0)
+    if len(tracks) - len(health_gate(tracks, Hr)) >= TRACKS_MIN:
+        return Hr
+    tried = 0
+    for left_out in range(1, len(tracks) - TRACKS_MIN + 1):
+        best, best_score = None, None
+        for kept in itertools.combinations(tracks, len(tracks) - left_out):
+            if tried == OUTLIER_SUBSETS_MAX:
+                break
+            tried += 1
+            H = refine(kept, Hr0)
+            passing = [t for t in tracks if t not in health_gate(tracks, H)]
+            score = (len(passing), np.mean([axis_ratio(t, H) for t in kept]))
+            if len(passing) >= TRACKS_MIN and (best is None or score > best_score):
+                best, best_score = H, score
+        if best is not None:
+            return best
+    return Hr
+
+
 def solve(tracks: Sequence[Track], margin_mm: float | None = None) -> ConicSolution:
     """Camera-to-site homography from circle tracks of known radius (free mode).
 
@@ -577,7 +610,7 @@ def solve(tracks: Sequence[Track], margin_mm: float | None = None) -> ConicSolut
         )
     Hr, e0 = closed_form(usable)
     if len(usable) - len(health_gate(usable, Hr)) < TRACKS_MIN:
-        Hr = refine(usable, Hr)
+        Hr = _refine_without_outliers(usable, Hr)
     fitted_on = None
     for _ in range(GATE_ROUNDS_MAX):
         gate = health_gate(usable, Hr)
