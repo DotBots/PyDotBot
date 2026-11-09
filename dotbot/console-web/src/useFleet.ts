@@ -252,6 +252,8 @@ export function useFleet(): {
       if (event.event === "robot_models") {
         shapesRef.current = (event.data as RobotShapes | null) ?? {};
         rebuildNextFrame();
+      } else if (event.event === "site" && event.data) {
+        setSite(event.data as Site);
       } else if (event.event === "calibration_session") {
         setSession((event.data as CalibrationSession | null) ?? null);
       } else if (event.event === "camera_detection" && event.data) {

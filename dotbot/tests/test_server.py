@@ -997,7 +997,6 @@ async def test_reverse_proxy_middleware_connect_error(monkeypatch):
 
     import dotbot.server as server_module
 
-    monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setattr(server_module.httpx, "AsyncClient", mock_async_client)
 
     client = TestClient(api)
@@ -1384,6 +1383,9 @@ async def test_get_controller_site():
         "field": "field",
         "calibration": None,
         "spin_radius_mm": None,
+        "walls": [],
+        "obstacles": [],
+        "objects": [],
     }
 
 
@@ -1411,6 +1413,8 @@ async def test_get_controller_site_carries_the_loaded_calibration_span():
         "id": calibration.id,
         "tag": "demo",
         "created_at": "2026-09-10T09:12:00Z",
+        "site": "c405-arena",
+        "anchor": "",
         "placements": [
             {
                 "points_mm": [[750, 750], [1250, 750], [750, 1250], [1250, 1250]],
@@ -1460,6 +1464,9 @@ async def test_get_controller_site_with_nothing_measured():
         "field": None,
         "calibration": None,
         "spin_radius_mm": None,
+        "walls": [],
+        "obstacles": [],
+        "objects": [],
     }
 
 
