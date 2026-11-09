@@ -125,11 +125,13 @@ def flash_over_air(client: Any, image: Path, devices: list[str]) -> list[str]:
 
 class SpinFlashError(click.ClickException):
     """A calibrate-spin flash that did not reach every robot; `flashed` are
-    the robots that may hold calibrate-spin anyway."""
+    the robots that may hold calibrate-spin anyway, `broken` those whose
+    flash stopped partway, leaving no working app."""
 
-    def __init__(self, message: str, flashed: list[str]):
+    def __init__(self, message: str, flashed: list[str], broken: Iterable[str] = ()):
         super().__init__(message)
         self.flashed = flashed
+        self.broken = list(broken)
 
 
 def flash_spin_app(
@@ -173,9 +175,11 @@ def flash_spin_app(
         flashed += [a for a in addrs if a not in missed]
     if failed:
         raise SpinFlashError(
-            "calibrate-spin did not reach " + ", ".join(failed) + "; leave them "
-            "out with `dotbot swarm -d <addresses> ...`, or retry.",
+            "calibrate-spin did not reach " + ", ".join(failed) + "; retry, or "
+            "flash their app back as above and leave them out with "
+            "`dotbot swarm -d <addresses> ...`.",
             sorted(flashed),
+            sorted(failed),
         )
 
 

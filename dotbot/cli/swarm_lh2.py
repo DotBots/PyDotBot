@@ -526,6 +526,12 @@ def _spin_ready(ctx, client, status, devices):
                 f"{SPIN_IMAGE} may now be on {', '.join(exc.flashed)}; to put "
                 "back their app:\n" + _restore_hint(",".join(exc.flashed), before)
             )
+        if exc.broken:
+            click.echo(
+                f"{', '.join(exc.broken)}: the flash stopped partway, so they have "
+                "no working app, though they still report their old one; to "
+                "flash it back:\n" + _restore_hint(",".join(exc.broken), before)
+            )
         raise
     click.echo("Reading device info...")
     fresh, pending = await_flashed(client, flashed, devices, digests=digests)

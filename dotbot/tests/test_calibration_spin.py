@@ -815,6 +815,24 @@ def test_a_partial_flash_gives_the_restore_line_for_the_robots_it_reached(
     assert f"-d {reached} flash -y -f bench remote-control" in result.output
 
 
+def test_a_robot_the_flash_stopped_partway_on_is_named_with_its_restore_line(
+    monkeypatch, lab, cache
+):
+    digest = _bench_cache(cache)
+    addrs, fleet = _app_fleet(digest)
+    fleet.missed = (addrs[0],)
+    result = _collect(monkeypatch, lab, fleet)
+    assert result.exit_code != 0
+    assert f"{addrs[0]}: the flash stopped partway" in result.output
+    assert "no working app" in result.output
+    assert f"-d {addrs[0]} flash -y -f bench remote-control" in result.output
+    assert (
+        result.output.rstrip()
+        .splitlines()[-1]
+        .startswith(f"Error: calibrate-spin did not reach {addrs[0]};")
+    )
+
+
 def test_a_failed_flash_gives_the_restore_line_for_the_robots_it_tried(
     monkeypatch, lab, cache
 ):
