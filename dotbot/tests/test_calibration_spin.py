@@ -234,6 +234,33 @@ def test_robots_without_the_spin_app_are_refused_with_the_flash_line():
     assert "dotbot swarm -d B flash -y calibrate-spin" in robots.refusal()
 
 
+def test_a_robot_is_on_the_spin_app_by_its_digest_whatever_its_name():
+    import hashlib
+
+    spin = hashlib.sha256(b"spin").hexdigest()
+    unnamed = _node(image="")
+    unnamed.info.image_digest = spin[:16]
+    other = _node(image="dotbot-sandbox-dotbot-v3.bin")
+    other.info.image_digest = hashlib.sha256(b"app").hexdigest()[:16]
+    robots = check_spin_robots({"A": unnamed, "B": other, "C": _node()}, {spin})
+    assert robots.ready == ["A", "C"]
+    assert list(robots.wrong_image) == ["B"]
+    assert check_spin_robots({"A": unnamed}).wrong_image == {"A": "unnamed image"}
+
+
+def test_robots_on_an_unnamed_spin_image_are_not_reflashed(monkeypatch, lab, cache):
+    import hashlib
+
+    _bench_cache(cache)
+    _, fleet = _app_fleet(hashlib.sha256(b"spin").hexdigest()[:16])
+    for node in fleet.nodes.values():
+        node.info.image_name = ""
+        node.status.name = "Bootloader"
+    result = _collect(monkeypatch, lab, fleet)
+    assert result.exit_code == 0, result.output
+    assert "flash" not in [c for c, _ in fleet.calls]
+
+
 def test_spins_end_to_end_into_a_self_defined_site(monkeypatch, lab):
     addrs, fleet = _fleet()
     result = _collect(monkeypatch, lab, fleet)
@@ -558,26 +585,44 @@ def test_collect_spin_refuses_an_island_until_it_is_dropped(monkeypatch, lab):
 
 
 class _FlashingFleet(_SpinFleet):
-    """A fleet that takes an OTA flash: the robots report the flashed image,
-    and stay `Programming` for the first `programming` status reads after."""
+    """A fleet that takes an OTA flash: the robots stay `Programming` for the
+    first `programming` status reads after, report their old image for the
+    first `stale` reads, never take it if in `missed`, and the flash ends in
+    an error event if `error` is set."""
 
     programming = 0
+    stale = 0
+    missed: tuple[str, ...] = ()
+    error = ""
 
     def flash(self, firmware, devices=None, image_name="", **_):
         import hashlib
 
         self.calls.append(("flash", devices))
+        self.taken = getattr(self, "taken", {})
         for addr in devices:
-            self.nodes[addr].info.image_name = image_name
-            self.nodes[addr].info.image_digest = hashlib.sha256(firmware).hexdigest()[
-                :16
-            ]
+            if self.error:
+                yield {"type": "error", "message": self.error}
+                return
+            if addr in self.missed:
+                yield {"type": "device_done", "addr": addr, "success": False}
+                continue
+            self.taken[addr] = SimpleNamespace(
+                image_name=image_name,
+                image_digest=hashlib.sha256(firmware).hexdigest()[:16],
+            )
             self.nodes[addr].status.name = "Bootloader"
             yield {"type": "device_done", "addr": addr, "success": True}
         self.busy_reads = self.programming
-        yield {"type": "complete", "all_success": True}
+        self.stale_reads = self.stale
+        yield {"type": "complete", "all_success": not self.missed}
 
     def status(self):
+        if getattr(self, "stale_reads", 0):
+            self.stale_reads -= 1
+        else:
+            for addr, info in getattr(self, "taken", {}).items():
+                self.nodes[addr].info = info
         out = super().status()
         if getattr(self, "busy_reads", 0):
             self.busy_reads -= 1
@@ -685,11 +730,180 @@ def test_await_flashed_gives_up_after_its_timeout():
     from dotbot.cli._spin_flash import await_flashed
 
     stuck = Stuck()
-    fresh = await_flashed(
+    fresh, pending = await_flashed(
         stuck, ["A"], None, timeout=5, clock=lambda: now[0], sleep=sleep
     )
     assert fresh["A"].status.name == "Programming"
+    assert pending == ["A"]
     assert stuck.reads == 6
+
+
+def test_the_spin_waits_for_device_info_to_show_the_flashed_image(
+    monkeypatch, lab, cache
+):
+    from dotbot.cli import _spin_flash
+
+    monkeypatch.setattr(_spin_flash.time, "sleep", lambda s: None)
+    digest = _bench_cache(cache)
+    _, fleet = _app_fleet(digest)
+    fleet.stale = 2
+    result = _collect(monkeypatch, lab, fleet)
+    assert result.exit_code == 0, result.output
+    assert [c for c, _ in fleet.calls].count("info") == 4
+
+
+def test_robots_that_never_report_the_flashed_image_are_named(monkeypatch, lab, cache):
+    from dotbot.cli import _spin_flash
+
+    now = [0.0]
+    monkeypatch.setattr(_spin_flash.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(
+        _spin_flash.time, "sleep", lambda s: now.__setitem__(0, now[0] + s)
+    )
+    digest = _bench_cache(cache)
+    addrs, fleet = _app_fleet(digest)
+    fleet.stale = 1000
+    result = _collect(monkeypatch, lab, fleet)
+    assert result.exit_code != 0
+    assert f"but {', '.join(sorted(addrs))} did not report it" in result.output
+    assert "Flash it with" not in result.output
+    assert f"-d {','.join(sorted(addrs))} flash -y -f bench remote-control" in (
+        result.output
+    )
+    assert "start" not in [c for c, _ in fleet.calls]
+
+
+def test_an_unanswered_robot_refuses_the_spin_before_any_flash(monkeypatch, lab, cache):
+    digest = _bench_cache(cache)
+    addrs, fleet = _app_fleet(digest)
+    fleet.nodes[addrs[0]].info = None
+    result = _collect(monkeypatch, lab, fleet)
+    assert result.exit_code != 0
+    assert "nothing flashed" in result.output
+    assert f"no device info, so their app cannot be checked: {addrs[0]}" in (
+        result.output
+    )
+    assert "Flash it with" not in result.output
+    assert f"onto the robots on another app: {', '.join(sorted(addrs[1:]))}" in (
+        result.output
+    )
+    assert [c for c, _ in fleet.calls] == ["info"]
+
+
+@pytest.mark.parametrize("image", ["dotbot-sandbox-dotbot-v3.bin", SPIN_BIN])
+def test_a_busy_robot_refuses_the_spin_before_any_flash(monkeypatch, lab, cache, image):
+    digest = _bench_cache(cache)
+    addrs, fleet = _app_fleet(digest)
+    fleet.nodes[addrs[0]].info.image_name = image
+    fleet.nodes[addrs[0]].status.name = "Programming"
+    result = _collect(monkeypatch, lab, fleet)
+    assert result.exit_code != 0
+    assert f"resetting or programming: {addrs[0]} (Programming)" in result.output
+    assert [c for c, _ in fleet.calls] == ["info"]
+
+
+def test_a_partial_flash_gives_the_restore_line_for_the_robots_it_reached(
+    monkeypatch, lab, cache
+):
+    digest = _bench_cache(cache)
+    addrs, fleet = _app_fleet(digest)
+    fleet.missed = (addrs[0],)
+    result = _collect(monkeypatch, lab, fleet)
+    assert result.exit_code != 0
+    assert f"calibrate-spin did not reach {addrs[0]};" in result.output
+    reached = ",".join(sorted(addrs[1:]))
+    assert f"-d {reached} flash -y -f bench remote-control" in result.output
+
+
+def test_a_robot_the_flash_stopped_partway_on_is_named_with_its_restore_line(
+    monkeypatch, lab, cache
+):
+    digest = _bench_cache(cache)
+    addrs, fleet = _app_fleet(digest)
+    fleet.missed = (addrs[0],)
+    result = _collect(monkeypatch, lab, fleet)
+    assert result.exit_code != 0
+    assert f"{addrs[0]}: the flash stopped partway" in result.output
+    assert "no working app" in result.output
+    assert f"-d {addrs[0]} flash -y -f bench remote-control" in result.output
+    assert (
+        result.output.rstrip()
+        .splitlines()[-1]
+        .startswith(f"Error: calibrate-spin did not reach {addrs[0]};")
+    )
+
+
+def test_a_failed_flash_gives_the_restore_line_for_the_robots_it_tried(
+    monkeypatch, lab, cache
+):
+    digest = _bench_cache(cache)
+    addrs, fleet = _app_fleet(digest)
+    fleet.error = "gateway gone"
+    result = _collect(monkeypatch, lab, fleet)
+    assert result.exit_code != 0
+    assert "flashing calibrate-spin failed: gateway gone" in result.output
+    tried = ",".join(sorted(addrs))
+    assert f"-d {tried} flash -y -f bench remote-control" in result.output
+
+
+class _FlashingFleetLosingEvents(_FlashingFleet):
+    def watch_log_events(self):
+        raise ConnectionError("broker said no")
+        yield  # pragma: no cover
+
+
+def test_a_capture_failure_after_the_flash_gives_the_restore_line(
+    monkeypatch, lab, cache
+):
+    import hashlib
+
+    digest = _bench_cache(cache)
+    addrs, fleet = _app_fleet(digest)
+    fleet.nodes[addrs[0]].info = SimpleNamespace(
+        image_name=SPIN_BIN, image_digest=hashlib.sha256(b"spin").hexdigest()[:16]
+    )
+    fleet.nodes[addrs[0]].status.name = "Bootloader"
+    fleet.__class__ = _FlashingFleetLosingEvents
+    result = _collect(monkeypatch, lab, fleet)
+    assert result.exit_code != 0
+    assert f"-d {','.join(sorted(addrs[1:]))} flash -y -f bench remote-control" in (
+        result.output
+    )
+    assert (
+        result.output.rstrip()
+        .splitlines()[-1]
+        .startswith("Error: lost the robots' log events")
+    )
+
+
+def test_a_solve_failure_after_the_flash_gives_the_restore_line(
+    monkeypatch, lab, cache
+):
+    monkeypatch.setattr(spin_module, "SPIN_QUIET_TIMEOUT", 0.2)
+    digest = _bench_cache(cache)
+    addrs, fleet = _app_fleet(digest)
+    for addr in addrs[2:]:
+        fleet.events[addr] = []
+    result = _collect(monkeypatch, lab, fleet)
+    assert result.exit_code != 0
+    assert f"-d {','.join(sorted(addrs))} flash -y -f bench remote-control" in (
+        result.output
+    )
+    assert (
+        result.output.rstrip()
+        .splitlines()[-1]
+        .startswith("Error: no calibration written")
+    )
+
+
+def test_a_failure_on_robots_already_on_the_spin_app_gives_no_restore_line(
+    monkeypatch, lab
+):
+    _, fleet = _fleet()
+    fleet.__class__ = _FailingEvents
+    result = _collect(monkeypatch, lab, fleet)
+    assert result.exit_code != 0
+    assert "remote-control" not in result.output
 
 
 def test_the_drive_hint_names_the_set_of_the_app_before_the_spin(

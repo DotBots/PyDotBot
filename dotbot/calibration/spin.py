@@ -174,21 +174,33 @@ class SpinRobots:
         return "\n".join(reasons)
 
 
-def check_spin_robots(status: Mapping[str, Any]) -> SpinRobots:
-    """Sort the robots of a swarmit `status()` mapping for a spin."""
+def on_spin_image(info: Any, spin_digests: Iterable[str] = ()) -> bool:
+    """Whether `info` reports a calibrate-spin image: its digest, the sha256
+    prefix a robot reports, starts one of `spin_digests`, or its name is."""
+    digest = (getattr(info, "image_digest", "") or "").lower()
+    if len(digest) >= 16 and any(d.startswith(digest) for d in spin_digests):
+        return True
+    return (getattr(info, "image_name", "") or "").startswith(SPIN_IMAGE)
+
+
+def check_spin_robots(
+    status: Mapping[str, Any], spin_digests: Iterable[str] = ()
+) -> SpinRobots:
+    """Sort the robots of a swarmit `status()` mapping for a spin;
+    `spin_digests` are the sha256 of the calibrate-spin images known."""
     out = SpinRobots()
+    spin_digests = list(spin_digests)
     for addr, node in sorted(status.items()):
         info = getattr(node, "info", None)
         if info is None:
             out.unanswered.append(addr)
             continue
         name = getattr(info, "image_name", "") or ""
-        if not name.startswith(SPIN_IMAGE):
-            out.wrong_image[addr] = name or "unnamed image"
-            continue
         state = getattr(getattr(node, "status", None), "name", "")
         if state in ("Resetting", "Programming"):
             out.busy[addr] = state
+        elif not on_spin_image(info, spin_digests):
+            out.wrong_image[addr] = name or "unnamed image"
         elif in_app(node):
             out.running.append(addr)
         else:
