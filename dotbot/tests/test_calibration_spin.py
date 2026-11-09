@@ -846,6 +846,66 @@ def test_a_failed_flash_gives_the_restore_line_for_the_robots_it_tried(
     assert f"-d {tried} flash -y -f bench remote-control" in result.output
 
 
+class _FlashingFleetLosingEvents(_FlashingFleet):
+    def watch_log_events(self):
+        raise ConnectionError("broker said no")
+        yield  # pragma: no cover
+
+
+def test_a_capture_failure_after_the_flash_gives_the_restore_line(
+    monkeypatch, lab, cache
+):
+    import hashlib
+
+    digest = _bench_cache(cache)
+    addrs, fleet = _app_fleet(digest)
+    fleet.nodes[addrs[0]].info = SimpleNamespace(
+        image_name=SPIN_BIN, image_digest=hashlib.sha256(b"spin").hexdigest()[:16]
+    )
+    fleet.nodes[addrs[0]].status.name = "Bootloader"
+    fleet.__class__ = _FlashingFleetLosingEvents
+    result = _collect(monkeypatch, lab, fleet)
+    assert result.exit_code != 0
+    assert f"-d {','.join(sorted(addrs[1:]))} flash -y -f bench remote-control" in (
+        result.output
+    )
+    assert (
+        result.output.rstrip()
+        .splitlines()[-1]
+        .startswith("Error: lost the robots' log events")
+    )
+
+
+def test_a_solve_failure_after_the_flash_gives_the_restore_line(
+    monkeypatch, lab, cache
+):
+    monkeypatch.setattr(spin_module, "SPIN_QUIET_TIMEOUT", 0.2)
+    digest = _bench_cache(cache)
+    addrs, fleet = _app_fleet(digest)
+    for addr in addrs[2:]:
+        fleet.events[addr] = []
+    result = _collect(monkeypatch, lab, fleet)
+    assert result.exit_code != 0
+    assert f"-d {','.join(sorted(addrs))} flash -y -f bench remote-control" in (
+        result.output
+    )
+    assert (
+        result.output.rstrip()
+        .splitlines()[-1]
+        .startswith("Error: no calibration written")
+    )
+
+
+def test_a_failure_on_robots_already_on_the_spin_app_gives_no_restore_line(
+    monkeypatch, lab
+):
+    _, fleet = _fleet()
+    fleet.__class__ = _FailingEvents
+    result = _collect(monkeypatch, lab, fleet)
+    assert result.exit_code != 0
+    assert "remote-control" not in result.output
+
+
 def test_the_drive_hint_names_the_set_of_the_app_before_the_spin(
     monkeypatch, lab, cache
 ):

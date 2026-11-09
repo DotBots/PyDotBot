@@ -34,6 +34,7 @@ traceback.
 import queue
 import sys
 import time
+from contextlib import contextmanager
 
 import click
 
@@ -481,8 +482,8 @@ def _collect(
 def _spin_ready(ctx, client, status, devices):
     """Sort the robots for a spin, flashing calibrate-spin onto those that
     run another app first. Returns the sorted robots and the sets their
-    images came from before any flash. Refuses before flashing anything
-    when a robot is unanswered or busy."""
+    images came from before any flash and the robots it flashed. Refuses
+    before flashing anything when a robot is unanswered or busy."""
     from dataclasses import replace
 
     from dotbot.calibration.push import stop_robots
@@ -502,7 +503,7 @@ def _spin_ready(ctx, client, status, devices):
     robots = check_spin_robots(status, digests)
     before = robots_sets(status, sorted(status), index)
     if not robots.wrong_image:
-        return robots, before
+        return robots, before, []
     flashed = sorted(robots.wrong_image)
     if robots.busy or robots.unanswered:
         raise click.ClickException(
@@ -545,7 +546,22 @@ def _spin_ready(ctx, client, status, devices):
             "in time; check `dotbot swarm status`, then retry."
         )
     status = {addr: fresh.get(addr, node) for addr, node in status.items()}
-    return check_spin_robots(status, digests), before
+    return check_spin_robots(status, digests), before, flashed
+
+
+@contextmanager
+def _restore_hint_on_failure(flashed: list[str], before: list):
+    """Print the restore line for `flashed` when the block fails, ahead of
+    the error itself."""
+    try:
+        yield
+    except BaseException:
+        if flashed:
+            click.echo(
+                "The robots flashed with calibrate-spin still hold it; to put "
+                "back their app:\n" + _restore_hint(",".join(flashed), before)
+            )
+        raise
 
 
 def _restore_hint(spun: str, sets: list) -> str:
@@ -641,93 +657,94 @@ def _collect_spin(
                     "not heard on the swarm: " + ", ".join(missing)
                 )
             status = {addr: node for addr, node in status.items() if addr in devices}
-        robots, before = _spin_ready(ctx, client, status, devices)
-        refusal = robots.refusal()
-        if refusal:
-            raise click.ClickException(f"spin refused:\n{refusal}")
-        if not robots.robots:
-            raise click.ClickException("no robot answered, so none can spin")
-        spinning = {address.upper(): address for address in robots.robots}
-        absent = [address for address, _ in anchors if address not in spinning]
-        if absent:
-            raise click.ClickException(
-                f"anchor robot(s) {', '.join(absent)} would not spin: they are "
-                "not among the robots ready for the spin"
-            )
-        click.echo(
-            f"Spin calibration in site {site.name} (from {site_source}): "
-            f"{len(robots.robots)} robot(s), spin radius {spin_radius:g} mm "
-            f"(from {radius_from}). The robots turn in place: keep their "
-            "footprint clear."
-        )
-        try:
-            spins = capture_spins(client, robots, echo=click.echo)
-        except RuntimeError as exc:
-            raise click.ClickException(str(exc)) from exc
-        anchored = [
-            Anchor(CircleKey(spinning[address], round_), point)
-            for address, point in anchors
-        ]
-        samples = list(earlier) + [
-            s for spin in spins.values() for s in spin.samples(spin_radius, round_)
-        ]
-        try:
-            calibration, joint, unsolved = solve_calibration(
-                samples,
-                site,
-                robot=ROBOT_DEFAULT,
-                tag=tag or "",
-                drop_stations=drop_stations,
-                anchors=anchored,
-            )
-        except ValueError as exc:
-            for line in spin_report(spins, robots.robots, {}, {}):
-                click.echo(line)
-            raise click.ClickException(f"no calibration written: {exc}") from exc
-        for line in spin_report(spins, robots.robots, joint.solutions, unsolved):
-            click.echo(line)
-        if len({s.station for s in samples}) > 1 or earlier or anchors:
-            click.echo("")
-            for line in multi_station_report(calibration, joint):
-                click.echo(line)
-        path = write_calibration(calibration)
-        width, height = joint.field_mm
-        if joint.anchored:
+        robots, before, flashed = _spin_ready(ctx, client, status, devices)
+        with _restore_hint_on_failure(flashed, before):
+            refusal = robots.refusal()
+            if refusal:
+                raise click.ClickException(f"spin refused:\n{refusal}")
+            if not robots.robots:
+                raise click.ClickException("no robot answered, so none can spin")
+            spinning = {address.upper(): address for address in robots.robots}
+            absent = [address for address, _ in anchors if address not in spinning]
+            if absent:
+                raise click.ClickException(
+                    f"anchor robot(s) {', '.join(absent)} would not spin: they are "
+                    "not among the robots ready for the spin"
+                )
             click.echo(
-                f"\nThe anchors put the calibration in site {site.name}'s own "
-                f"frame. Robots take fixes inside {list(calibration.valid_mm)}."
+                f"Spin calibration in site {site.name} (from {site_source}): "
+                f"{len(robots.robots)} robot(s), spin radius {spin_radius:g} mm "
+                f"(from {radius_from}). The robots turn in place: keep their "
+                "footprint clear."
             )
-        else:
+            try:
+                spins = capture_spins(client, robots, echo=click.echo)
+            except RuntimeError as exc:
+                raise click.ClickException(str(exc)) from exc
+            anchored = [
+                Anchor(CircleKey(spinning[address], round_), point)
+                for address, point in anchors
+            ]
+            samples = list(earlier) + [
+                s for spin in spins.values() for s in spin.samples(spin_radius, round_)
+            ]
+            try:
+                calibration, joint, unsolved = solve_calibration(
+                    samples,
+                    site,
+                    robot=ROBOT_DEFAULT,
+                    tag=tag or "",
+                    drop_stations=drop_stations,
+                    anchors=anchored,
+                )
+            except ValueError as exc:
+                for line in spin_report(spins, robots.robots, {}, {}):
+                    click.echo(line)
+                raise click.ClickException(f"no calibration written: {exc}") from exc
+            for line in spin_report(spins, robots.robots, joint.solutions, unsolved):
+                click.echo(line)
+            if len({s.station for s in samples}) > 1 or earlier or anchors:
+                click.echo("")
+                for line in multi_station_report(calibration, joint):
+                    click.echo(line)
+            path = write_calibration(calibration)
+            width, height = joint.field_mm
+            if joint.anchored:
+                click.echo(
+                    f"\nThe anchors put the calibration in site {site.name}'s own "
+                    f"frame. Robots take fixes inside {list(calibration.valid_mm)}."
+                )
+            else:
+                click.echo(
+                    f"\nThe robots' field is {width} x {height} mm: the calibration's "
+                    "frame is aligned to it, zero at its top-left, not at the site's "
+                    f"anchor. Robots take fixes inside {list(calibration.valid_mm)}."
+                )
+            click.echo(f"Calibration saved to {path}")
             click.echo(
-                f"\nThe robots' field is {width} x {height} mm: the calibration's "
-                "frame is aligned to it, zero at its top-left, not at the site's "
-                f"anchor. Robots take fixes inside {list(calibration.valid_mm)}."
+                f"Calibration id {calibration.id}, site {site.name}"
+                + (f", tag {calibration.tag!r}" if calibration.tag else "")
             )
-        click.echo(f"Calibration saved to {path}")
-        click.echo(
-            f"Calibration id {calibration.id}, site {site.name}"
-            + (f", tag {calibration.tag!r}" if calibration.tag else "")
-        )
-        spun = ",".join(robots.robots)
-        if push:
-            _gated_push(client, calibration, devices=robots.robots, stop=True)
-        click.echo(
-            (
-                "\n"
-                if joint.anchored
-                else "\nNext, make the field a site of its own (--size WxH "
-                "centres it in a bigger site):\n"
-                f"  dotbot site init <name> --from-calibration {calibration.id8}\n"
+            spun = ",".join(robots.robots)
+            if push:
+                _gated_push(client, calibration, devices=robots.robots, stop=True)
+            click.echo(
+                (
+                    "\n"
+                    if joint.anchored
+                    else "\nNext, make the field a site of its own (--size WxH "
+                    "centres it in a bigger site):\n"
+                    f"  dotbot site init <name> --from-calibration {calibration.id8}\n"
+                )
+                + (
+                    ""
+                    if push
+                    else "Or send it as it is:\n"
+                    f"  dotbot swarm -d {spun} calibrate-lh2 push {calibration.id8}\n"
+                )
+                + "The robots still hold the calibrate-spin app; before driving them:\n"
+                + _restore_hint(spun, before)
             )
-            + (
-                ""
-                if push
-                else "Or send it as it is:\n"
-                f"  dotbot swarm -d {spun} calibrate-lh2 push {calibration.id8}\n"
-            )
-            + "The robots still hold the calibrate-spin app; before driving them:\n"
-            + _restore_hint(spun, before)
-        )
 
 
 @cmd.command(
