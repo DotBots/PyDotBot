@@ -158,32 +158,81 @@ robots only.
 The corner method above stays the default and the reference. `collect --spin`
 is another way that needs no marks on the floor: each robot spins twice in
 place where it stands, and the circles its photodiode traces fix the floor up
-to a rotation and an origin; the spin radius sets the scale.
+to a rotation and an origin; the spin radius sets the scale. The
+[LH2 guide](../guides/lh2-calibration.md#spin-calibration-over-several-stations)
+walks through it end to end.
 
 ```bash
-dotbot swarm -d <addresses> flash -y calibrate-spin
 dotbot swarm -d <addresses> calibrate-lh2 collect --spin
-dotbot site init <name> --from-calibration <id>
-dotbot swarm -d <addresses> calibrate-lh2 push <new id> --site <name> --site-changed
-dotbot swarm -d <addresses> flash -y remote-control
+dotbot swarm calibrate-lh2 show <id> --next-round 4
+dotbot swarm -d <addresses> calibrate-lh2 collect --spin --append <id>
+dotbot site init <name> --from-calibration <new id>
+dotbot swarm -d <addresses> calibrate-lh2 push <id in the new site> --site <name> --site-changed
 ```
 
-`collect --spin` checks that every robot holds the `calibrate-spin` app and
-refuses before anything moves if one does not, printing the `flash` line for
-it. It then starts the app, collects each robot's reads, stops the robots
-again, and prints the commands that follow.
+`collect --spin` reads every robot's device info before it moves anything.
+It refuses, with nothing flashed, when a robot gives no device info or is
+resetting or programming;
+otherwise it flashes the `calibrate-spin` app onto the robots on another app,
+from the firmware set their app came from (`-f` picks another set), and waits
+until each one reports the new image's digest. It then spins the robots,
+solves, saves, and prints the commands that follow, ending with the line that
+puts the robots' own app back, such as
+`dotbot swarm -d <addresses> flash -y -f <set> remote-control`. When anything
+fails after the flash, it prints that line before the error.
 Without `-d` it spins every robot of the swarm. `--tag` and `--push` work as
-for the corner method; `--device`, `--points`, `--over`, `--square`,
-`--reads`, `--timeout` and `--retries` do not apply.
+for the corner method; `--points`, `--over` and `--square` do not apply.
 
-Spread the robots about 250 mm apart over the area to calibrate; at least 3
-circles must pass the health check (round, and the size of their peers) and 8
-or more hold the frame better. The robots define a **field**: the
-minimum-area rectangle around their spin centres, grown by what a spinning
-robot sweeps. The calibration's frame is aligned to that field, zero at its
-top-left and +y along the robots' starting heading (along the field's long side
-when the robots started facing different ways), not to the site's anchor, so
-`dotbot site init` turns it into a site of its own.
+Spread the robots about 250 mm apart over the area to calibrate. Each station
+needs at least 3 circles that pass the health check (round, and the size of
+their peers), and 8 or more hold its frame better; a circle of the wrong size
+that keeps the rest from solving is left out and reported as dropped. The
+robots define a **field**: the minimum-area rectangle around their spin
+centres, grown by what a spinning robot sweeps. The calibration's frame is
+aligned to that field, zero at its top-left and +y along the robots' starting
+heading (along the field's long side when the robots started facing different
+ways), not to the site's anchor, so `dotbot site init` turns it into a site of
+its own.
+
+**Several stations** are solved together. A circle two stations both see
+**ties** them; a tie needs 2 or more shared circles at least 300 mm apart, and
+4 or more over 600 mm are advised. The report lists each station's circles,
+residual and rectangle (the area where its fixes are accepted), each tie's
+strength, and a predicted error map. A station tied to no other stops the
+solve: spin more robots where it and a tied station both see them, or leave
+it out with `--drop-station N` (N is the index, channel minus 1).
+
+**Rounds.** `--append <id>` collects another round onto a saved spin
+calibration and solves every round together, saving a new file and keeping
+the old one. `show <id>` prints a calibration's stations, ties and error map
+from the file alone, and `show <id> --next-round N` says where N robots should
+spin next to strengthen the weakest ties and the worst predicted error, in
+that calibration's frame. A round is appended to the free-mode calibration
+itself, never to one made from it by `site init` or `place`; `--append` on
+those names the one to use.
+
+**Anchors.** `--anchor ADDRESS=X,Y`, given for two or more robots, says that
+robot spins with its pivot on the known site point X,Y mm. The calibration is
+then in the site's own frame and needs no `site init`. Spread the anchors
+across the site: anchors bunched together leave the far end's yaw loose.
+
+**Placing.** `place <id> --to-calibration <other>` moves a free-mode spin
+calibration onto the site and frame of another calibration through a station
+both solved, prints the fitted turn, shift and residual, and saves the result
+in that site. `--station INDEX` picks the station when they share several.
+
+**Pushing.** A calibration goes to the robots one message per station,
+keyed by a 16-bit station mask, so stations on any channels (say 3 and 9) are
+pushed as they are, each with its own rectangle. `push --dry-run` prints those
+messages and sends nothing.
+
+| Flag (with `--spin`) | Meaning |
+|---|---|
+| `--spin-radius MM` | Radius of the photodiode's circle, which sets every distance. Default: the site's `spin_radius_mm`, else the robot model's value. |
+| `--drop-station N` | Leave station N out of the solve; repeatable. |
+| `-f`, `--fw-version` | The dotbot-firmware set `calibrate-spin` is flashed from: a release tag, `latest`, a set built by `dotbot fw build`, or a directory. Default: the set each robot's app came from, else the pinned release. |
+| `--append ID` | Collect another round onto this spin calibration (a path, its tag or its id prefix). |
+| `--anchor ADDRESS=X,Y` | This robot spins on the known site point X,Y mm; two or more. |
 
 Every distance scales with the radius of the photodiode's circle, 51.4 mm by
 default on a DotBot v3, not the 53.5 mm from photodiode to axle midpoint: a
@@ -191,8 +240,10 @@ robot spinning in place does not pivot exactly on the axle, since the caster
 drags and moves the turning point toward the photodiode (measured on carpet
 against a camera registered to floor markers). That depends on the robot and the
 floor, so on a different surface measure it once (camera or tape) and pass
-`--spin-radius MM`; a single robot whose caster binds differently fails the
-peer-size check and is left out.
+`--spin-radius MM`, or set `spin_radius_mm` in the site's
+[`site.toml`](../reference/configuration.md#sites); `site init` writes the
+calibration's radius there. A single robot whose caster binds differently
+fails the peer-size check and is left out.
 
 ## Two web servers - don't mix them up
 
