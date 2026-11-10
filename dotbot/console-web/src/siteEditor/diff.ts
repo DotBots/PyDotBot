@@ -3,6 +3,12 @@
 
 export type DiffLine = { op: " " | "-" | "+"; text: string } | { op: "…"; text: "" };
 
+/** Every line of `after`, with the lines `before` had and it lost, marked. */
+export function fullDiff(before: string, after: string): { op: " " | "-" | "+"; text: string }[] {
+  return lineDiff(before, after, -1) as { op: " " | "-" | "+"; text: string }[];
+}
+
+/** The changed lines with `context` lines around each; -1 keeps every line. */
 export function lineDiff(before: string, after: string, context = 2): DiffLine[] {
   const a = before.split("\n");
   const b = after.split("\n");
@@ -25,6 +31,7 @@ export function lineDiff(before: string, after: string, context = 2): DiffLine[]
       all.push({ op: "+", text: b[j++] });
     }
   }
+  if (context < 0) return all;
   const near = all.map((_, k) =>
     all.slice(Math.max(0, k - context), k + context + 1).some((l) => l.op !== " "),
   );

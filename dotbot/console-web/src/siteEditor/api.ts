@@ -1,4 +1,4 @@
-import type { EditorContext, Library, SitePayload } from "./types";
+import type { EditorContext, EditorSite, Library, SitePayload } from "./types";
 
 // Every route is relative to the page: the controller serves the editor at
 // /controller/site-editor/ and `dotbot site edit` at its own root.
@@ -36,7 +36,11 @@ const post = (body: unknown): RequestInit => ({
 export const fetchContext = () => json<EditorContext>("api/context");
 export const fetchSite = () => json<SitePayload>("api/site");
 export const fetchLibrary = () => json<Library>("api/calibrations?scope=site");
-export const previewSite = (site: unknown) => json<{ text: string; changed: boolean }>("api/preview", post(site));
+export const previewSite = (site: unknown, text: string | null = null) =>
+  json<{ text: string; changed: boolean }>("api/preview", post({ site, text }));
+export const parseSite = (text: string) => json<{ site: EditorSite }>("api/parse", post({ text }));
+export const fetchRevision = () => json<{ revision: string }>("api/revision");
+export const openInEditor = () => json<{ command: string; path: string }>("api/open", post({}));
 
 export interface ApplyStep {
   step: "site.toml" | "calibration";
@@ -47,8 +51,8 @@ export interface ApplyStep {
   push?: string;
 }
 
-export const applySave = (revision: string, site: unknown) =>
-  json<SitePayload & { ok: boolean; steps: ApplyStep[] }>("api/apply", post({ revision, site }));
+export const applySave = (revision: string, site: unknown, text: string | null = null) =>
+  json<SitePayload & { ok: boolean; steps: ApplyStep[] }>("api/apply", post({ revision, site, text }));
 
 export interface Version {
   id: string;

@@ -81,6 +81,8 @@ export interface SitePayload {
   name: string;
   path: string;
   revision: string;
+  /** The path with the home folder as ~. */
+  shown_path?: string;
   /** site.toml as it is on disk. */
   text?: string;
   site: EditorSite;

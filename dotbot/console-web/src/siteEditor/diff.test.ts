@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { lineDiff } from "./diff";
+import { fullDiff, lineDiff } from "./diff";
 
 describe("the review's diff", () => {
   it("shows the changed lines with their context and elides the rest", () => {
@@ -17,5 +17,12 @@ describe("the review's diff", () => {
 
   it("is empty for the same text", () => {
     expect(lineDiff("x\ny", "x\ny")).toEqual([]);
+  });
+});
+
+describe("the full diff", () => {
+  it("keeps every line, marked", () => {
+    expect(fullDiff("a\nb\nc", "a\nB\nc").map((l) => `${l.op}${l.text}`)).toEqual([" a", "-b", "+B", " c"]);
+    expect(fullDiff("a\nb", "a\nb")).toHaveLength(2);
   });
 });
