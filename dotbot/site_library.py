@@ -12,7 +12,7 @@ import hashlib
 from collections.abc import Iterable
 from pathlib import Path
 
-from dotbot.calibration import lighthouse2, station_rule
+from dotbot.calibration import lighthouse2, station_geometry, station_rule
 from dotbot.calibration.station_boxes import frame_refusal
 from dotbot.site import Site
 
@@ -75,6 +75,7 @@ def _row(path: Path) -> dict | None:
             for st in sorted(cal.stations, key=lambda s: s.index)
         ],
         "reading": station_rule.reading(boxes),
+        "geometry": station_geometry.geometry(cal),
     }
     _ROWS[path] = (key, row)
     return row

@@ -11,6 +11,7 @@ under a new id in the site's calibration folder.
 
 from __future__ import annotations
 
+import json
 import tomllib
 from collections.abc import Callable
 from pathlib import Path
@@ -18,7 +19,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from dotbot import site_library, site_toml
+from dotbot import site_coverage, site_library, site_toml
 from dotbot.calibration import lighthouse2, site_turn, station_rule
 from dotbot.calibration.placement import (
     FREE_SOLVERS,
@@ -168,6 +169,24 @@ def create_router(
         except HTTPException as exc:
             refusal = exc.detail
         return {**overlay(cal), "path": str(cal.path), "frame_refusal": refusal}
+
+    @router.get("/api/calibrations/{spec}/coverage")
+    def coverage(spec: str, boxes: str | None = None, robots: int = 4):
+        """Who gives the fix and the predicted error for `boxes` (JSON,
+        station index to [x_min, y_min, x_max, y_max]), the file's own when
+        absent."""
+        cal = resolve(spec)
+        rects = None
+        if boxes:
+            try:
+                rects = {int(k): [int(v) for v in r] for k, r in json.loads(boxes).items()}
+            except (ValueError, TypeError, AttributeError) as exc:
+                raise HTTPException(
+                    422, "boxes is JSON: station index to [x0, y0, x1, y1]"
+                ) from exc
+            if any(len(r) != 4 or r[2] <= r[0] or r[3] <= r[1] for r in rects.values()):
+                raise HTTPException(422, "each box is [x0, y0, x1, y1] with x1 > x0, y1 > y0")
+        return site_coverage.coverage(cal, current_site(), rects, max(0, min(robots, 8)))
 
     @router.post("/api/calibrations/{spec}/place")
     def place(spec: str, request: PlaceRequest):

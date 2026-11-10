@@ -270,3 +270,44 @@ def test_a_standalone_editor_has_no_served_calibration(client):
     body = client.get("/api/context").json()
     assert body["mode"] == "standalone" and body["served"] is None
     assert body["site"] == "arena"
+
+
+@pytest.fixture
+def two_station_spin(home):
+    from dotbot.calibration import multi_station as ms
+    from dotbot.tests import lh2_multi_fixture as F
+    from dotbot.tests.test_calibration_multi_station import floor_grid, two_stations
+
+    a, b = two_stations()
+    samples = F.samples(F.spins([a, b], floor_grid([a, b]), noise=0.5, seed=5))
+    calibration, _, _ = conics.solve_calibration(samples, Site(name="lab"), tag="two")
+    write_calibration(calibration)
+    return calibration, ms
+
+
+def test_coverage_prints_the_show_headline_and_follows_new_boxes(client, two_station_spin):
+    calibration, ms = two_station_spin
+    body = client.get(f"/api/calibrations/{calibration.id8}/coverage").json()
+    expected = ms.error_map_from_calibration(calibration)
+    assert body["headline"]["worst_mm"] == pytest.approx(expected.worst_mm, abs=1e-3)
+    assert body["headline"]["bound"] == expected.worst_is_bound
+    assert body["limit_mm"] == 2.0
+    fog = body["fog"]
+    assert len(fog["sigma"]) == fog["rows"] * fog["cols"]
+    assert set(fog["own"]) == {"0", "1"}
+    assert set(body["geometry"]["stations"]) == {"0", "1"}
+    x0, y0, x1, y1 = calibration.valid_mm
+    mid = (x0 + x1) // 2
+    split = {"0": [x0, y0, mid + 100, y1], "1": [mid - 100, y0, x1, y1]}
+    import json
+
+    other = client.get(
+        f"/api/calibrations/{calibration.id8}/coverage",
+        params={"boxes": json.dumps(split)},
+    ).json()
+    assert other["headline"]["bound"] is False
+    refused = client.get(
+        f"/api/calibrations/{calibration.id8}/coverage",
+        params={"boxes": json.dumps({"0": [10, 0, 5, 5]})},
+    )
+    assert refused.status_code == 422
