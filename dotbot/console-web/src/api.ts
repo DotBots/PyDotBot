@@ -9,6 +9,7 @@ import {
   RegisteredCamera,
   RgbLed,
   Site,
+  SpinRun,
   SwarmitNode,
   Waypoint,
 } from "./types";
@@ -226,6 +227,22 @@ export async function pushCalibration(devices: string[] = []): Promise<Calibrati
 /** Push a saved calibration file, by id, tag or path, to exactly `devices`. */
 export async function pushCalibrationFile(calibration: string, devices: string[]): Promise<CalibrationPushed> {
   return controllerJson(`${CONTROLLER}/calibration/push`, { method: "POST", body: { calibration, devices } });
+}
+
+const SPIN = `${CONTROLLER}/calibration/spin`;
+
+export async function fetchSpin(): Promise<SpinRun | null> {
+  return controllerJson(SPIN);
+}
+
+/** Spin `devices` (none: every robot that can spin), adding a round to
+ * `append` when given; resolves once the robots are checked. */
+export async function startSpin(devices: string[], tag = "", append: string | null = null): Promise<SpinRun> {
+  return controllerJson(SPIN, { method: "POST", body: { devices, tag, append } });
+}
+
+export async function dismissSpin(): Promise<void> {
+  await controllerJson(SPIN, { method: "DELETE" });
 }
 
 export async function abandonCalibration(): Promise<void> {

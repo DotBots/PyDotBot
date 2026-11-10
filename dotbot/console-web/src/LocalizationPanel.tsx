@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 import { PushSheet } from "./shared/PushSheet";
+import { SpinCard } from "./SpinCard";
 import {
   calibrationCoverage,
   camerasSummary,
@@ -17,6 +18,7 @@ import type {
   CameraDetection,
   RegisteredCamera,
   Site,
+  SpinRun,
   UnifiedBot,
 } from "./types";
 
@@ -85,6 +87,10 @@ interface LocalizationPanelProps {
   onPush: (stale?: string[]) => void;
   /** A calibration to open the push sheet on, as the site editor's link names it. */
   pushOnOpen?: string | null;
+  /** The spin run the controller reports, if any. */
+  spin?: SpinRun | null;
+  /** Opened from the site editor's "Spin robots" link. */
+  spinOnOpen?: boolean;
 }
 
 const TARGETS: { value: PushTarget; text: string; title: string }[] = [
@@ -160,8 +166,14 @@ export const LocalizationPanel: React.FC<LocalizationPanelProps> = ({
   selection,
   onPush,
   pushOnOpen = null,
+  spin = null,
+  spinOnOpen = false,
 }) => {
   const [pushing, setPushing] = useState<string | null>(pushOnOpen);
+  const spinRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (spinOnOpen) spinRef.current?.scrollIntoView?.({ block: "start" });
+  }, [spinOnOpen]);
   // The fleet is compared with what the controller serves, or with what
   // this session saved, which is what a push would send.
   const served = site?.calibration ?? null;
@@ -267,6 +279,12 @@ export const LocalizationPanel: React.FC<LocalizationPanelProps> = ({
             </div>
           </Section>
         )}
+
+        <div ref={spinRef}>
+          <Section title="Spin robots, no marks">
+            <SpinCard spin={spin} bots={bots} selection={selection} />
+          </Section>
+        </div>
 
         <Section title="Stations">
           <div style={{ fontSize: 13 }}>{stationsSummary(session, served)}</div>

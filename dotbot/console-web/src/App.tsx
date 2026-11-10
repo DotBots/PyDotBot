@@ -137,7 +137,7 @@ function robotsNotice(ids: string[], what: string): string {
 }
 
 export const App: React.FC = () => {
-  const { bots, site, cameras, cameraDetections, session, setSession, viewport, wsUp } =
+  const { bots, site, cameras, cameraDetections, session, setSession, spin, viewport, wsUp } =
     useFleet();
   // ?theme=dark|light presets the theme (handy for dev/screenshots).
   const [theme, setTheme] = useState<"dark" | "light">(() =>
@@ -1045,6 +1045,7 @@ export const App: React.FC = () => {
           onClearWaypoints={onClearWaypoints}
           site={site}
           session={session}
+          spin={spin}
           cameras={cameras}
           cameraDetections={cameraDetections}
           calibrationBusy={calibration.busy}

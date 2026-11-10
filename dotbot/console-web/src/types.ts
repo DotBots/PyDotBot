@@ -233,6 +233,33 @@ export interface CalibrationSession {
   error: string;
 }
 
+// A spin calibration run by the controller: robots turn in place, the
+// circles their sensors trace are solved into a calibration in its own frame.
+export interface SpinRun {
+  id: string;
+  site: string;
+  robots: string[];
+  radius_mm: number;
+  tag: string;
+  append: string | null;
+  round: number;
+  phase: "spinning" | "solving" | "saved" | "failed";
+  // Per robot: chunks received, chunks the spin has
+  progress: Record<string, [number, number]>;
+  error: string;
+  result: {
+    id?: string;
+    id8?: string;
+    path?: string;
+    field_mm?: [number, number];
+    stations?: { index: number; residual_mm: number; kept: number }[];
+    left_out?: { station: number; robot: string; why: string }[];
+    missing?: string[];
+    report: string[];
+  } | null;
+  started_at: number;
+}
+
 // What a session over one points specification would open on, resolved by the
 // controller without opening one.
 export interface CalibrationPreview {
