@@ -46,10 +46,10 @@ export function coverageText(reading: string): string {
   return reading;
 }
 
-/** A group's heading: one measurement, how many box layouts. */
+/** A group's heading: one measurement, how many coverage layouts. */
 export function groupTitle(group: Library["groups"][number]): string {
   const n = group.rows.length;
-  return `Spin of ${when(group.created_at)} · ${n} box layout${n === 1 ? "" : "s"}`;
+  return `Measured ${shortWhen(group.created_at) || when(group.created_at)} · ${n} coverage layout${n === 1 ? "" : "s"}`;
 }
 
 /** The residuals of a row's stations, "1.10 / 1.13 mm". */

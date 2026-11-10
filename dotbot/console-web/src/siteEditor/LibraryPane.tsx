@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Badge } from "../shared/Badge";
 import { FixThumb } from "./FixThumb";
 import { Icon } from "./icons";
-import { filtered, groupTitle, residuals, when } from "./library";
+import { coverageText, filtered, groupTitle, nameOf, residuals, when } from "./library";
 import type { Library, LibraryRow, Rect } from "./types";
 
 export type LibraryAction = "preview" | "serve" | "push" | "compare" | "archive" | "restore" | "place";
@@ -18,10 +18,12 @@ const Row: React.FC<{
   held: number | null;
   live: boolean;
   archived?: boolean;
+  /** Show the date on the row: for rows outside a dated group. */
+  dated?: boolean;
   onPick: (row: LibraryRow, additive: boolean) => void;
   onAction: (action: LibraryAction, row: LibraryRow) => void;
   onRename: (row: LibraryRow, tag: string) => Promise<void>;
-}> = ({ row, extent, shown, picked, held, live, archived, onPick, onAction, onRename }) => {
+}> = ({ row, extent, shown, picked, held, live, archived, dated, onPick, onAction, onRename }) => {
   const boxes = Object.fromEntries(row.stations.map((s) => [s.index, s.box])) as Record<number, Rect>;
   const own: [number, number] = row.in_frame ? extent : [row.fence[2], row.fence[3]];
   const [menu, setMenu] = useState<{ top?: number; bottom?: number; left: number } | null>(null);
@@ -59,6 +61,7 @@ const Row: React.FC<{
       setProblem((e as Error).message.replace(/^\d+: /, ""));
     }
   };
+  const meta = [dated ? `measured ${when(row.created_at)}` : "", `fit ${residuals(row)}`, held !== null && held > 0 ? `on ${held} robot${held === 1 ? "" : "s"}` : ""].filter(Boolean).join(" · ");
   return (
     <div
       role="button"
@@ -77,17 +80,19 @@ const Row: React.FC<{
         }
       }}
     >
-      <FixThumb boxes={boxes} extent={own} />
+      <FixThumb boxes={boxes} extent={own} size={54} />
       <div className="ci">
         <div className="a">
-          <span className="id">{row.id8}</span>
           {renaming === null ? (
-            <span className="tg">{row.tag || "no tag"}</span>
+            <span className="tg nm" title={row.id}>
+              {nameOf(row)}
+            </span>
           ) : (
             <input
               ref={input}
-              aria-label={`Tag of ${row.id8}`}
+              aria-label={`Name of ${row.id8}`}
               value={renaming}
+              placeholder={`spin of ${when(row.created_at)}`}
               onClick={(e) => e.stopPropagation()}
               onChange={(e) => setRenaming(e.target.value)}
               onBlur={rename}
@@ -100,13 +105,13 @@ const Row: React.FC<{
             />
           )}
           <span className="sp" />
-          {row.served && <Badge tone="ok">serving</Badge>}
-          {shown && !row.served && <Badge>previewing</Badge>}
+          {row.served && <Badge tone="ok">in use</Badge>}
+          {shown && !row.served && <Badge>looking at</Badge>}
           {archived && <Badge>archived</Badge>}
           <button
             type="button"
             className="btn xs ghost"
-            aria-label={`Actions for ${row.id8}`}
+            aria-label={`Actions for ${nameOf(row)}`}
             aria-expanded={!!menu}
             onClick={(e) => {
               e.stopPropagation();
@@ -120,10 +125,10 @@ const Row: React.FC<{
             <Icon name="more" size={13} />
           </button>
         </div>
-        <div className="b">{row.in_frame ? row.reading : `own frame · ${row.fence[2]} × ${row.fence[3]} mm`}</div>
+        <div className="b">{row.in_frame ? coverageText(row.reading) : `not in this room yet · ${row.fence[2]} × ${row.fence[3]} mm`}</div>
         <div className="c">
-          measured {when(row.created_at)} UTC · residual {residuals(row)}
-          {held !== null && ` · held by ${held}`}
+          {meta}
+          <span className="id">{row.id8}</span>
         </div>
         {problem && <div className="fld-err">{problem}</div>}
       </div>
@@ -135,14 +140,14 @@ const Row: React.FC<{
               item("restore", "restore", "Bring back from the archive")
             ) : (
               <>
-                {row.free && !row.in_frame && item("place", "pin", "Place in this room…")}
-                {item("preview", "view", "Preview on the plan")}
-                {live && item("serve", "served", row.served ? "Served now" : "Serve on this controller…", row.served || !row.in_frame, row.in_frame ? undefined : "Not placed in this room")}
-                {live && item("push", "ext", "Push in the console ↗", !row.in_frame)}
+                {row.free && !row.in_frame && item("place", "pin", "Put in this room…")}
+                {item("preview", "view", "Look at it on the plan")}
+                {live && item("serve", "served", row.served ? "In use now" : "Use…", row.served || !row.in_frame, row.in_frame ? undefined : "Not in this room yet")}
+                {live && item("push", "ext", "Send to robots…", !row.in_frame)}
                 {item("compare", "compare", "Compare with the shown file")}
-                {item("rename", "tag", "Rename the tag")}
-                {item("archive", "archive", "Archive", row.served, row.served ? "The served file stays in the list" : undefined)}
-                <div className="mtx">The tag is outside the id: renaming keeps the id, the file name and every robot holding it. Archiving moves the file into archived/, never deletes it.</div>
+                {item("rename", "tag", "Rename")}
+                {item("archive", "archive", "Archive", row.served, row.served ? "The file in use stays in the list" : undefined)}
+                <div className="mtx">Renaming keeps the id, the file name and every robot holding it. Archiving moves the file into archived/, never deletes it.</div>
               </>
             )}
           </div>
@@ -152,8 +157,8 @@ const Row: React.FC<{
   );
 };
 
-/** The Calibrations tab: this site's folder, the served file first, then the
- * files in this room's frame by spin, then the spins not placed yet. */
+/** The Calibrations tab: this site's folder, the file in use first, then the
+ * files in this room by measurement, then the spins not placed yet. */
 export const LibraryPane: React.FC<{
   library: Library | null;
   error: string;
@@ -190,7 +195,7 @@ export const LibraryPane: React.FC<{
   const view = filtered(library, query);
   const archived = (library.archived ?? []).filter((r) => !query || [r.id, r.tag, r.reading].some((f) => f.toLowerCase().includes(query.trim().toLowerCase())));
   const floor: [number, number] = extent ?? [1000, 1000];
-  const row = (r: LibraryRow, isArchived = false) => (
+  const row = (r: LibraryRow, isArchived = false, dated = false) => (
     <Row
       key={r.path}
       row={r}
@@ -200,6 +205,7 @@ export const LibraryPane: React.FC<{
       held={heldCount ? heldCount(r.id) : null}
       live={live}
       archived={isArchived}
+      dated={dated}
       onPick={onPick}
       onAction={onAction}
       onRename={onRename}
@@ -208,14 +214,14 @@ export const LibraryPane: React.FC<{
   const inRoom = view.groups.reduce((n, g) => n + g.rows.length, 0);
   const filters: { key: Filter; text: string }[] = [
     { key: "room", text: `This room ${inRoom}` },
-    { key: "free", text: `Not placed yet ${view.not_placed.length}` },
+    { key: "free", text: `Not in this room yet ${view.not_placed.length}` },
     { key: "archived", text: `Archived ${library.archived?.length ?? 0}` },
   ];
   return (
     <div data-testid="library">
       <label className="search">
         <Icon name="search" size={14} />
-        <input aria-label="Search calibrations" placeholder="id, tag or what the boxes do" value={query} onChange={(e) => setQuery(e.target.value)} />
+        <input aria-label="Search calibrations" placeholder="name, id or coverage" value={query} onChange={(e) => setQuery(e.target.value)} />
         {query && (
           <button type="button" className="btn xs ghost" onClick={() => setQuery("")} aria-label="Clear the search">
             <Icon name="x" size={11} />
@@ -231,22 +237,22 @@ export const LibraryPane: React.FC<{
       </div>
       {library.count === 0 && filter !== "archived" && (
         <div className="callout" style={{ marginTop: 12 }}>
-          <div className="h">No calibration for this site yet</div>
-          Spin robots in the console's Calibrate tab to measure the stations; the files it saves appear here.
+          <div className="h">No calibration for this room yet</div>
+          Spin robots in the console's Localization tab to measure the stations; the files it saves appear here.
         </div>
       )}
       {filter === "room" && (
         <>
           {live && !library.serving && inRoom > 0 && !query && (
             <div className="callout" style={{ marginTop: 12 }} data-testid="library-serve-hint">
-              <div className="h">Nothing is served</div>
-              Click a file to preview it on the plan, then Serve this… in the bar above the plan.
+              <div className="h">None in use</div>
+              Click a file to look at it on the plan, then Use this… in the top bar.
             </div>
           )}
           {library.serving && !query && (
             <>
-              <div className="grp">Serving now</div>
-              {row(library.serving)}
+              <div className="grp">In use</div>
+              {row(library.serving, false, true)}
             </>
           )}
           {view.groups.map((g) => (
@@ -254,33 +260,33 @@ export const LibraryPane: React.FC<{
               <div data-testid="library-group" className="grp">
                 {groupTitle(g)}
               </div>
-              {g.rows.length > 1 && <div className="grpnote">One measurement, so the stations are where they were; the files differ only in where each station is trusted.</div>}
+              {g.rows.length > 1 && <div className="grpnote">One measurement: the stations are where they were. The layouts differ only in where each station is used.</div>}
               {g.rows.filter((r) => query || !r.served).map((r) => row(r))}
             </React.Fragment>
           ))}
-          {view.groups.length === 0 && library.count > 0 && <div className="note" style={{ marginTop: 12 }}>{query ? `Nothing in this room matches "${query}".` : "No file in this room's frame yet."}</div>}
+          {view.groups.length === 0 && library.count > 0 && <div className="note" style={{ marginTop: 12 }}>{query ? `Nothing in this room matches "${query}".` : "No file in this room yet."}</div>}
         </>
       )}
       {filter === "free" && (
         <>
           <div data-testid="library-not-placed" className="grp">
-            Not placed in this room yet · {view.not_placed.length} spin{view.not_placed.length === 1 ? "" : "s"}
+            Not in this room yet · {view.not_placed.length} spin{view.not_placed.length === 1 ? "" : "s"}
           </div>
-          <div className="grpnote">Each in its own frame, measured before this room's zero was set; place one in the room to use it.</div>
-          {view.not_placed.map((r) => row(r))}
+          <div className="grpnote">Each was measured before this room's origin was set: put one in the room to use it.</div>
+          {view.not_placed.map((r) => row(r, false, true))}
         </>
       )}
       {filter === "archived" && (
         <>
           <div className="grp">Archived · {archived.length}</div>
           <div className="grpnote">Out of the lists, still found by their full id or path; nothing is deleted.</div>
-          {archived.map((r) => row(r, true))}
+          {archived.map((r) => row(r, true, true))}
           {archived.length === 0 && <div className="note">Nothing archived.</div>}
         </>
       )}
       <div className="note" style={{ marginTop: 14 }}>
-        Click a file to preview it on the plan; the served one stays named in the top bar. Shift-click two to compare them. Thumbnails show who gives the fix: a station's
-        colour where its box decides, grey where the boxes do not.
+        Click a file to look at it on the plan; the one in use stays named in the top bar. Shift-click two to compare them. Thumbnails show coverage: a station's colour
+        where it is used, grey where both could be.
       </div>
     </div>
   );

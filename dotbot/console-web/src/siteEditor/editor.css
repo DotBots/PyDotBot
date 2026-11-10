@@ -672,6 +672,19 @@ body {
 .se .crow .ci .a .id {
   font: 600 12px var(--font-mono);
 }
+.se .crow .ci .a .tg.nm {
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.se .crow .ci .c .id {
+  margin-left: 6px;
+  font-family: var(--font-mono);
+  opacity: 0.7;
+}
 .se .crow .ci .a .tg {
   overflow: hidden;
   text-overflow: ellipsis;

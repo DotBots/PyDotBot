@@ -65,12 +65,12 @@ export const OutlinePane: React.FC<{
   kind: EditKind;
   selected: string[];
   boxes: { index: number; rect: Rect }[];
-  shownId8: string | null;
+  shownName: string | null;
   robots: UnifiedBot[];
   servedId: string | null;
   live: boolean;
   onPick: (key: string, kind: EditKind, additive: boolean) => void;
-}> = ({ doc, kind, selected, boxes, shownId8, robots, servedId, live, onPick }) => {
+}> = ({ doc, kind, selected, boxes, shownName, robots, servedId, live, onPick }) => {
   const on = (k: string) => selected.includes(k);
   const barriers = [...doc.walls, ...doc.obstacles];
   return (
@@ -120,7 +120,7 @@ export const OutlinePane: React.FC<{
           </Row>
         ))}
       </Group>
-      <Group title={`Stations${shownId8 ? ` · ${shownId8}` : ""}`} icon="stations" count={boxes.length} kindKey={KIND_KEY.stations} active={kind === "stations"}>
+      <Group title={`Stations${shownName ? ` · ${shownName}` : ""}`} icon="stations" count={boxes.length} kindKey={KIND_KEY.stations} active={kind === "stations"}>
         {boxes.length === 0 && empty("No calibration shown: pick one in Calibrations.")}
         {boxes.map((b) => (
           <Row key={b.index} testid={`outline-box:${b.index}`} on={on(`box:${b.index}`)} onPick={() => onPick(`box:${b.index}`, "stations", false)}>
@@ -148,7 +148,7 @@ export const OutlinePane: React.FC<{
             >
               <span className="dot" style={{ background: r.state ? `var(--s-${r.state})` : "var(--s-Inactive)" }} />
               <span className="mono">{tail(r.id)}</span>
-              {held.kind === "served" && <span className="tg" title="Holds the served calibration">holds it</span>}
+              {held.kind === "served" && <span className="tg" title="Has the calibration in use">has it</span>}
               {held.kind === "other" && (
                 <span className="tg" style={{ color: "var(--warn)" }} title={`Holds ${held.id8}`}>
                   {held.id8}

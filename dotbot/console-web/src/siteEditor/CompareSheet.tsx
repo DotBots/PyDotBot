@@ -2,7 +2,7 @@ import React, { useEffect } from "react";
 
 import { FixThumb } from "./FixThumb";
 import { Icon } from "./icons";
-import { residuals, when } from "./library";
+import { coverageText, nameOf, residuals, when } from "./library";
 import { moved } from "./coverage";
 import type { LibraryRow, Rect } from "./types";
 
@@ -41,37 +41,34 @@ export const CompareSheet: React.FC<{ a: LibraryRow; b: LibraryRow; extent: [num
           <Icon name="x" size={14} />
         </button>
         <h2>
-          <Icon name="compare" size={16} /> Compare {a.id8} and {b.id8}
+          <Icon name="compare" size={16} /> Compare {nameOf(a)} and {nameOf(b)}
         </h2>
         <div className="sub">
           {sameSpin
-            ? "One measurement: the same homographies, so the stations are where they were. Only where each station is trusted differs."
-            : "Two spins: their frames differ, so positions are not compared; the stations' heights and distance apart do not depend on the frame, and a moved tripod would change them."}
+            ? "One measurement: the stations are where they were. Only the coverage differs."
+            : "Two measurements: their origins may differ, so positions are not compared; the stations' heights and distance apart do not depend on the origin, and a moved tripod would change them."}
         </div>
         <table className="ft">
           <thead>
             <tr>
               <th />
               {[a, b].map((r) => (
-                <th key={r.id}>
-                  <span className="mono" style={{ color: "var(--text)" }}>
-                    {r.id8}
-                  </span>{" "}
-                  {r.tag || "no tag"}
+                <th key={r.id} title={r.id}>
+                  <span style={{ color: "var(--text)" }}>{nameOf(r)}</span> <span className="mono">{r.id8}</span>
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td>Who gives the fix</td>
+              <td>Coverage map</td>
               <td>{thumb(a)}</td>
               <td>{thumb(b)}</td>
             </tr>
             <tr>
-              <td>Reading</td>
-              <td>{a.in_frame ? a.reading : "own frame"}</td>
-              <td>{b.in_frame ? b.reading : "own frame"}</td>
+              <td>Coverage</td>
+              <td>{a.in_frame ? coverageText(a.reading) : "not in this room yet"}</td>
+              <td>{b.in_frame ? coverageText(b.reading) : "not in this room yet"}</td>
             </tr>
             <tr>
               <td>Measured</td>
@@ -79,7 +76,7 @@ export const CompareSheet: React.FC<{ a: LibraryRow; b: LibraryRow; extent: [num
               <td className="m">{when(b.created_at)}</td>
             </tr>
             <tr>
-              <td>Residuals</td>
+              <td>Fit</td>
               <td className="m">{residuals(a)}</td>
               <td className="m">{residuals(b)}</td>
             </tr>
@@ -108,15 +105,15 @@ export const CompareSheet: React.FC<{ a: LibraryRow; b: LibraryRow; extent: [num
         </table>
         <div className={`callout ${verdict.verdict === "moved?" ? "warn" : "ok"}`} style={{ marginTop: 12 }}>
           <div className="h">Moved? {verdict.verdict === "moved?" ? "maybe: a station's shape differs by more than 250 mm" : sameSpin ? "no: the same spin" : "no sign"}</div>
-          A moved tripod would show here; a nudge of a few centimetres would not. These are estimates from the homographies, not tape measurements.
+          A moved tripod would show here; a nudge of a few centimetres would not. These are estimates from the calibration, not tape measurements.
         </div>
         <footer>
           <span className="sp" style={{ flex: 1 }} />
           <button type="button" className="btn" onClick={() => onPreview(a)}>
-            Preview {a.id8}
+            Look at {nameOf(a)}
           </button>
           <button type="button" className="btn" onClick={() => onPreview(b)}>
-            Preview {b.id8}
+            Look at {nameOf(b)}
           </button>
           <button type="button" className="btn primary" onClick={onClose}>
             Close

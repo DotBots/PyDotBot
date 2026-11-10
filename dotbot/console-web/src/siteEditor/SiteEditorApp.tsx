@@ -45,7 +45,7 @@ import { Icon, type IconName } from "./icons";
 import { Inspector } from "./Inspector";
 import { EDITOR_SHORTCUTS, KIND_KEY, KIND_LABEL, keyAction, SHARED_KEY, TOOL_ICON, TOOL_LABEL, TOOLS, type EditKind, type Tool } from "./keys";
 import { LibraryPane, type LibraryAction } from "./LibraryPane";
-import { coverageText, residuals, when } from "./library";
+import { coverageText, nameOf, residuals, when } from "./library";
 import { docFromPayload, docFromSite, type Doc, type Point } from "./model";
 import { statusOf, statusText } from "./status";
 import { StatusLine } from "./StatusLine";
@@ -518,7 +518,7 @@ export const SiteEditorApp: React.FC = () => {
           if (!live) return;
           setCoverage(c);
           setCoverageStale(false);
-          setCoverageError(c.headline ? "" : `${shown.id8} has no spin to compute a predicted error from (its stations were solved from corners or placements).`);
+          setCoverageError(c.headline ? "" : `${nameOf(shown)} was not measured by spinning (its stations were solved from corners or placements), so there is no accuracy to predict.`);
         },
         (e: Error) => {
           if (!live) return;
@@ -569,11 +569,11 @@ export const SiteEditorApp: React.FC = () => {
           loadLibrary();
           if (action === "archive" && previewId === row.id) setPreviewId(null);
           setToast({
-            text: action === "archive" ? `Archived ${row.id8}: moved into archived/, found by its full id, never deleted.` : `${row.id8} is back in the list.`,
+            text: action === "archive" ? `Archived ${nameOf(row)}: moved into archived/, found by its full id, never deleted.` : `${nameOf(row)} is back in the list.`,
             undo: action === "archive" ? () => patchCalibration(row.id, { archived: false }).then(loadLibrary) : undefined,
           });
         },
-        (e: Error) => setNotice({ tone: "err", text: `${row.id8}: ${e.message.replace(/^\d+: /, "")}` }),
+        (e: Error) => setNotice({ tone: "err", text: `${nameOf(row)}: ${e.message.replace(/^\d+: /, "")}` }),
       );
     }
   };
@@ -796,7 +796,7 @@ export const SiteEditorApp: React.FC = () => {
             kind={kind}
             selected={selected}
             boxes={boxes}
-            shownId8={shown?.id8 ?? null}
+            shownName={shown ? nameOf(shown) : null}
             robots={bots}
             servedId={servedId}
             live={live}
@@ -835,7 +835,7 @@ export const SiteEditorApp: React.FC = () => {
             onRename={async (row, tag) => {
               await patchCalibration(row.id, { tag });
               loadLibrary();
-              setToast({ text: `Renamed ${row.id8} to "${tag || "no tag"}": its id, file name and every robot holding it are unchanged.` });
+              setToast({ text: `Renamed ${row.id8} to "${tag || "no name"}": its id, file name and every robot holding it are unchanged.` });
             }}
           />
         )}
@@ -1462,7 +1462,7 @@ export const SiteEditorApp: React.FC = () => {
             setPreviewId(null);
             loadLibrary();
             setToast({
-              text: `Serving ${serving.id8}${persist ? ", also at the next start" : ", this run only"}. Robots still hold what they hold.`,
+              text: `Now using ${nameOf(serving)}${persist ? ", kept for the next start" : ", until the controller restarts"}. Robots still have what they had.`,
               push: serving.id,
             });
           }}

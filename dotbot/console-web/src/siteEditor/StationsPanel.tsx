@@ -6,6 +6,7 @@ import { fixtureAgreement, handover, moved, share, splitFloor, type Boxes, type 
 import { KV, NumField, Sec } from "./fields";
 import { Icon } from "./icons";
 import { Inset } from "./Inset";
+import { nameOf } from "./library";
 import type { LibraryRow, Rect } from "./types";
 
 // The right pane in the Stations kind: the station strip, the rule, the
@@ -100,9 +101,9 @@ export const StationsPanel: React.FC<StationsPanelProps> = (props) => {
     return (
       <div className="callout warn" style={{ marginTop: 12 }}>
         <div className="h">
-          <Icon name="warn" size={14} /> {shown.id8} is not placed in this room
+          <Icon name="warn" size={14} /> {nameOf(shown)} is not in this room yet
         </div>
-        It was measured in its own frame, so its boxes mean nothing on this floor. Reframe it into this room first.
+        It was measured before this room's origin was set, so its coverage means nothing on this floor. Put it in the room first.
       </div>
     );
   }
@@ -200,7 +201,7 @@ export const StationsPanel: React.FC<StationsPanelProps> = (props) => {
         </span>
         <span className="sp" />
         <Badge tone={shown.served ? "ok" : "plain"}>
-          {shown.id8} · {props.drafted ? "draft" : shown.served ? "serving" : "previewing"}
+          <span title={shown.id}>{nameOf(shown)}</span> · {props.drafted ? "edited" : shown.served ? "in use" : "looking at"}
         </Badge>
       </div>
       <div className="seg" style={{ display: "inline-flex", marginTop: 8 }} role="tablist" aria-label="Show">

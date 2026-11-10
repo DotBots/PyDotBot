@@ -113,7 +113,7 @@ function stubFetch(overrides: Record<string, (init?: RequestInit) => Response> =
 
 describe("the library", () => {
   it("titles a spin's group by its box layouts and searches the readings", () => {
-    expect(groupTitle(LIBRARY.groups[0])).toBe("Spin of 2026-11-09 08:12 · 7 box layouts");
+    expect(groupTitle(LIBRARY.groups[0])).toBe("Measured 9 Nov 08:12 · 7 coverage layouts");
     const found = filtered(LIBRARY, "handover");
     expect(found.groups[0].rows.map((r) => r.id8)).toEqual(["a1b41f12"]);
     expect(found.not_placed).toEqual([]);
@@ -127,8 +127,8 @@ describe("the editor page", () => {
     await waitFor(() => expect(screen.getByRole("tab", { name: /Calibrations/ })).toBeTruthy());
     fireEvent.click(screen.getByRole("tab", { name: /Calibrations/ }));
     await waitFor(() => expect(screen.getAllByTestId("library-group")).toHaveLength(1));
-    expect(screen.getByTestId("library-group").textContent).toBe("Spin of 2026-11-09 08:12 · 7 box layouts");
-    expect(screen.getByRole("tab", { name: "Not placed yet 5" })).toBeTruthy();
+    expect(screen.getByTestId("library-group").textContent).toBe("Measured 9 Nov 08:12 · 7 coverage layouts");
+    expect(screen.getByRole("tab", { name: "Not in this room yet 5" })).toBeTruthy();
     expect(screen.getByTestId("status-line").textContent).toContain("Using inria-hil-r3-inria-2lh");
     expect(screen.getByTestId("serving-card").textContent).toContain("from its command line");
     fireEvent.click(screen.getByTestId("library-row-a1b41f12"));
@@ -136,7 +136,7 @@ describe("the editor page", () => {
     expect(screen.getByTestId("status-line").textContent).toContain("Using inria-hil-r3-inria-2lh");
     fireEvent.click(screen.getByLabelText("Back to the calibration in use"));
     expect(screen.queryByTestId("status-side")).toBeNull();
-    fireEvent.click(screen.getByRole("tab", { name: "Not placed yet 5" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Not in this room yet 5" }));
     expect(screen.getByTestId("library-not-placed").textContent).toContain("5 spins");
   });
 });
@@ -239,7 +239,7 @@ describe("capturing zero", () => {
     await waitFor(() => expect(screen.getByTestId("frame-serve-step").textContent).toBe("Pick one…"));
     fireEvent.click(screen.getByTestId("frame-serve-step"));
     expect(screen.getByRole("tab", { name: /Calibrations/ }).getAttribute("aria-selected")).toBe("true");
-    expect(screen.getByTestId("library-serve-hint").textContent).toContain("Serve this…");
+    expect(screen.getByTestId("library-serve-hint").textContent).toContain("Use this…");
   });
 
   it("shows the capture panel even when the new room sheet was open", async () => {
