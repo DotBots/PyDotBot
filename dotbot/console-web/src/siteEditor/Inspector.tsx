@@ -89,7 +89,7 @@ const ProblemCard: React.FC<{ p: Problem; editable: boolean; onEdit: (doc: Doc) 
             {f.label}
           </button>
         ))}
-        <span className="note">Offered, not applied.{p.fixes.map((f) => (f.note ? ` ${f.label}: ${f.note}.` : "")).join("")}</span>
+        <span className="note">Offered, not applied. {[...new Set(p.fixes.map((f) => f.note).filter(Boolean))].join(" ")}</span>
       </div>
     )}
   </div>

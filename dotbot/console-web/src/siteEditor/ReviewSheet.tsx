@@ -52,6 +52,7 @@ export const ReviewSheet: React.FC<ReviewSheetProps> = (props) => {
   const [phase, setPhase] = useState<Phase>({ kind: "review" });
   const [undone, setUndone] = useState("");
   const saveRef = useRef<HTMLButtonElement | null>(null);
+  const sheetRef = useRef<HTMLDivElement | null>(null);
   const blockers = props.problems.filter((p) => p.blocking);
 
   useEffect(() => {
@@ -66,8 +67,21 @@ export const ReviewSheet: React.FC<ReviewSheetProps> = (props) => {
   }, [doc, props.text]);
 
   useEffect(() => {
-    saveRef.current?.focus();
+    if (saveRef.current && !saveRef.current.disabled) saveRef.current.focus();
+    else sheetRef.current?.focus();
   }, []);
+
+  // Esc closes the sheet wherever the focus is, unless a write is running
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || phase.kind === "saving") return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      onClose();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [phase.kind, onClose]);
 
   const save = async () => {
     setPhase({ kind: "saving" });
@@ -105,17 +119,13 @@ export const ReviewSheet: React.FC<ReviewSheetProps> = (props) => {
     <>
       <div className="scrim" onClick={busy ? undefined : onClose} />
       <div
+        ref={sheetRef}
+        tabIndex={-1}
         className="sheet wide"
         role="dialog"
         aria-modal="true"
         aria-label="Review and save"
         data-testid="review"
-        onKeyDown={(e) => {
-          if (e.key === "Escape" && !busy) {
-            e.stopPropagation();
-            onClose();
-          }
-        }}
       >
         <button type="button" className="btn icon ghost x" aria-label="Close" onClick={onClose} disabled={busy}>
           <Icon name="x" size={14} />

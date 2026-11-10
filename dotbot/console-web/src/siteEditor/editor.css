@@ -1787,3 +1787,9 @@ body {
     --right: 288px;
   }
 }
+
+/* The console's Stop, without its "Testbed · whole fleet" label when the bar is
+   short; the confirm prompt still shows */
+.se [data-compact] [role="status"]:not(:has([data-testid="testbed-confirm"])) {
+  display: none;
+}

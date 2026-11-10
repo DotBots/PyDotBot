@@ -12,7 +12,7 @@ export const roleOf = (a: Pick<DocArea, "name" | "role">): Role | null => a.role
 
 export interface Fix {
   label: string;
-  /** What else the fix changes, in a sentence. */
+  /** What else the fix changes, as a sentence. */
   note?: string;
   doc: Doc;
 }
@@ -44,7 +44,7 @@ function splitFixes(doc: Doc, field: DocArea, staging: DocArea): Fix[] {
   const fixes: Fix[] = [];
   const spansWidth = staging.x <= field.x && staging.x + staging.w >= field.x + field.w;
   const spansHeight = staging.y <= field.y && staging.y + staging.h >= field.y + field.h;
-  const scripts = `scripts that use --area ${field.name} see its new size`;
+  const scripts = `Shrinking it changes what scripts using --area ${field.name} get.`;
   if (spansWidth && staging.y > field.y) {
     const h = staging.y - field.y;
     fixes.push({ label: `Shrink the field to ${field.w} × ${h}`, note: scripts, doc: withArea(doc, field.key, { h }) });
@@ -68,7 +68,7 @@ function splitFixes(doc: Doc, field: DocArea, staging: DocArea): Fix[] {
       const grow = Math.max(0, y + staging.h - ext[1]);
       fixes.push({
         label: grow ? `Grow the floor by ${grow} mm, staging below` : "Move the staging below the field",
-        note: grow ? "robots there have no fix until the station boxes are grown to match" : undefined,
+        note: grow ? "Robots in the new strip have no fix until the station boxes grow too." : undefined,
         doc: { ...withArea(doc, staging.key, { y }), extent_mm: [ext[0], ext[1] + grow] },
       });
     } else if (!vertical && nearRight) {
@@ -76,7 +76,7 @@ function splitFixes(doc: Doc, field: DocArea, staging: DocArea): Fix[] {
       const grow = Math.max(0, x + staging.w - ext[0]);
       fixes.push({
         label: grow ? `Grow the floor by ${grow} mm, staging to the right` : "Move the staging right of the field",
-        note: grow ? "robots there have no fix until the station boxes are grown to match" : undefined,
+        note: grow ? "Robots in the new strip have no fix until the station boxes grow too." : undefined,
         doc: { ...withArea(doc, staging.key, { x }), extent_mm: [ext[0] + grow, ext[1]] },
       });
     }

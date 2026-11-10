@@ -143,6 +143,11 @@ export function freshKey(doc: Doc, kind: Kind): string {
   }
 }
 
+/** The first of `stem-1`, `stem-2`, ... no entity in `taken` has. */
+export function numberedName(stem: string, taken: string[]): string {
+  for (let n = 1; ; n++) if (!taken.includes(`${stem}-${n}`)) return `${stem}-${n}`;
+}
+
 /** A name like `stem`, `stem-2`, ... no entity in `taken` has. */
 export function freshName(stem: string, taken: string[]): string {
   if (!taken.includes(stem)) return stem;

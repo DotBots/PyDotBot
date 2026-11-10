@@ -27,7 +27,7 @@ import {
 } from "../zoom";
 import { Icon } from "./icons";
 import type { EditKind, Tool } from "./keys";
-import { freshKey, freshName, type Doc, type DocObject, type ObjectKind, type Point } from "./model";
+import { freshKey, freshName, numberedName, type Doc, type DocObject, type ObjectKind, type Point } from "./model";
 import {
   canvasToMm,
   coincident,
@@ -252,7 +252,7 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
 
   const placeObject = (at: Point, k: ObjectKind) => {
     const key = freshKey(doc, "object");
-    const name = freshName(`${k}-1`, doc.objects.map((o) => o.name));
+    const name = numberedName(k, doc.objects.map((o) => o.name));
     const obj: DocObject = { key, name, kind: k, x: at[0], y: at[1], heading_deg: 0, comment: null, was: null };
     props.onEdit({ ...doc, objects: [...doc.objects, obj] });
     props.onSelect([key]);
@@ -288,6 +288,12 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
     if (e.button !== 0 || tool !== "select") return;
     e.stopPropagation();
     capture(e);
+    // Shift-drag over a thing of another kind still selects a rectangle
+    if (e.shiftKey && kind !== "view" && kindOfKey(key) !== kind) {
+      const p = rawMm(e);
+      setDrag({ type: "marquee", from: p, to: p, base: selected });
+      return;
+    }
     props.onEdge(null);
     if (e.shiftKey) {
       props.onSelect(sel(key) ? selected.filter((k) => k !== key) : [...selected.filter((k) => kindOfKey(k) === kindOfKey(key)), key]);

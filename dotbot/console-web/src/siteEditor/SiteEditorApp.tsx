@@ -210,24 +210,28 @@ export const SiteEditorApp: React.FC = () => {
   }, [unsaved]);
 
   // site.toml changed on disk: reload it and put the draft back on top
+  const draftRef = useRef<Draft | null>(null);
+  draftRef.current = draft;
   const onStale = useCallback(async () => {
     const p = await fetchSite();
+    const d = draftRef.current;
+    const fresh = docFromPayload(p);
     setPayload(p);
-    setDraft((d) => {
-      const fresh = docFromPayload(p);
-      if (!d) return newDraft(p.name, p.revision, null, fresh);
-      const { doc, conflicts: c } = reapply(d.base, d.doc, fresh);
-      setConflicts(c);
-      const first: Snap = { doc: fresh, text: null, boxes: null };
-      const next: Draft = { ...newDraft(p.name, p.revision, d.calibration, fresh), doc, boxes: d.boxes, past: [first] };
-      const n = pending(next);
-      setNotice({
-        tone: c.length || d.text !== null ? "warn" : "info",
-        text: `site.toml changed on disk, so the page reloaded it${n ? ` and re-applied your ${n} change${n === 1 ? "" : "s"}` : ""}${
-          c.length ? `; ${c.map((x) => x.label).join(", ")} kept the file's version` : ""
-        }${d.text !== null ? "; your edits to the old text were dropped" : ""}.`,
-      });
-      return next;
+    if (!d) {
+      setDraft(newDraft(p.name, p.revision, null, fresh));
+      return;
+    }
+    const { doc, conflicts: c } = reapply(d.base, d.doc, fresh);
+    const first: Snap = { doc: fresh, text: null, boxes: null };
+    const next: Draft = { ...newDraft(p.name, p.revision, d.calibration, fresh), doc, boxes: d.boxes, past: [first] };
+    setConflicts(c);
+    setDraft(next);
+    const n = pending(next);
+    setNotice({
+      tone: c.length || d.text !== null ? "warn" : "info",
+      text: `site.toml changed on disk, so the page reloaded it${n ? ` and re-applied your ${n} change${n === 1 ? "" : "s"}` : ""}${
+        c.length ? `; ${c.map((x) => x.label).join(", ")} kept the file's version` : ""
+      }${d.text !== null ? "; your edits to the old text were dropped" : ""}.`,
     });
   }, []);
 
@@ -548,7 +552,7 @@ export const SiteEditorApp: React.FC = () => {
           Save{unsaved ? ` · ${unsaved}` : ""} {width >= 1200 && <span className="kbd">⌘S</span>}
         </button>
         {live && <EditorFleet onBots={setBots} onSite={setFleetSite} compact={narrow} />}
-        {width >= LEFT_FOLD_PX && (
+        {width >= 1360 && (
           <Tabs<"dark" | "light">
             label="Theme"
             value={theme}
@@ -573,7 +577,7 @@ export const SiteEditorApp: React.FC = () => {
         <>
           <div style={{ position: "fixed", inset: 0, zIndex: 40 }} onClick={() => setMenu(false)} />
           <div className="pop menu" role="menu" style={{ right: 10, top: 48 }} data-testid="more-menu">
-            {width < LEFT_FOLD_PX && (
+            {width < 1360 && (
               <button type="button" className="mi" role="menuitem" onClick={() => (setTheme(theme === "dark" ? "light" : "dark"), setMenu(false))}>
                 <Icon name="view" /> {theme === "dark" ? "Light theme" : "Dark theme"}
               </button>
