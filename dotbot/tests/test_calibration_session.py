@@ -435,6 +435,20 @@ async def test_push_sends_the_float32_messages_and_returns_the_stale_worklist(
 
 
 @pytest.mark.asyncio
+async def test_a_push_reports_what_each_robot_holds(monkeypatch, tmp_path):
+    monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
+    driver, _, _ = _driver()
+    reported: list = []
+    driver._on_held = reported.append
+    await driver.start(["arena:corners"])
+    await _walk(driver)
+    await driver.save()
+    await driver.push()
+    (held,) = reported
+    assert held and set(held.values()) == {driver.session.saved_id}
+
+
+@pytest.mark.asyncio
 async def test_a_console_push_to_a_robot_of_another_site_is_refused(
     monkeypatch, tmp_path
 ):

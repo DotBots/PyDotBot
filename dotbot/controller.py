@@ -18,7 +18,7 @@ import socket
 import time
 import webbrowser
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Mapping, Optional, Tuple, Union
 
 import serial
 import uvicorn
@@ -427,6 +427,10 @@ class Controller:
                 "Pass --lh2-calibration <path|id> or set [run.controller] lh2_calibration."
             )
         self._solved_stations = {station.index for station in self.lh2_calibration}
+        # The calibration id each robot reported holding through swarmit's
+        # device info, "" for none; robots never read are absent
+        self.held_calibrations: Dict[str, str] = {}
+        self._held_warned: set[str] = set()
         # The stations each robot holds that the calibration does not solve
         self._unsolved_held: Dict[str, frozenset[int]] = {}
         self._unsolved_warned: frozenset[int] = frozenset()
@@ -441,6 +445,7 @@ class Controller:
             client_factory=self._swarmit_client,
             notify=self._notify_calibration_session,
             site=self.site,
+            on_held=self.note_held_calibrations,
         )
         self.api = api
         if settings.csv_data_output is not None:
@@ -451,6 +456,32 @@ class Controller:
         self._dotbot_twins: Dict[str, DotBotTwin] = {}
         self._dotbot_twin_timestamps: Dict[str, float] = {}
         api.controller = self
+
+    def note_held_calibrations(self, held: Mapping[str, str]) -> None:
+        """Record the calibration ids robots report holding, by address."""
+        for address, calibration_id in held.items():
+            self.held_calibrations[address.upper()] = calibration_id
+            self._held_warned.discard(address.upper())
+
+    def _sends_homographies(self, address: str) -> bool:
+        """Whether a robot missing a served station gets the served homographies.
+
+        Only one that reports no calibration id, or was never read: a robot
+        reporting an id holds that whole calibration, boxes included, and
+        homographies alone would leave it holding a mix of two.
+        """
+        held = self.held_calibrations.get(address.upper(), "")
+        if not held:
+            return True
+        if held != self.calibration.id and address.upper() not in self._held_warned:
+            self._held_warned.add(address.upper())
+            self.logger.warning(
+                "Robot holds another calibration; push the served one to it",
+                source=address,
+                held=held[:8],
+                served=self.calibration.id[:8],
+            )
+        return False
 
     def _warn_calibration_age(self, max_age_days: int) -> None:
         """Warn when the calibration is older than `max_age_days` (0: never)."""
@@ -939,7 +970,11 @@ class Controller:
                 dotbot.calibrated >> station.index & 0x01
                 for station in self.lh2_calibration
             )
-            if is_fully_calibrated is False and self.lh2_calibration:
+            if (
+                is_fully_calibrated is False
+                and self.lh2_calibration
+                and self._sends_homographies(source)
+            ):
                 # Send calibration to new dotbot if the localization system is calibrated
                 self.logger.info("Send calibration data", payload=self.lh2_calibration)
                 for station in self.lh2_calibration:

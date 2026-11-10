@@ -45,9 +45,11 @@ class SessionDriver:
         notify: Callable[[dict | None], Any],
         site: Site | None = None,
         stream_factory: Callable[[Any, Callable], Any] | None = None,
+        on_held: Callable[[dict[str, str]], None] | None = None,
     ):
         self._client_factory = client_factory
         self._notify = notify
+        self._on_held = on_held
         self._stream_factory = stream_factory or _default_stream
         self.site = site or Site()
         self.session: CalibrationSession | None = None
@@ -158,6 +160,12 @@ class SessionDriver:
                     check.addresses,
                     check.info_gens,
                 )
+                if self._on_held is not None:
+                    held = dict(check.held)
+                    for addr in check.targets:
+                        if addr not in stale:
+                            held[addr] = session.saved_id
+                    self._on_held(held)
             finally:
                 await asyncio.to_thread(self._listen_for_buttons)
             await self._emit()
