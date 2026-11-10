@@ -147,6 +147,30 @@ dotbot device info --probe 77
 Reports the chip id and network identity. It never fails on a blank board - it
 says *not provisioned* and how to fix it.
 
+## Recover a locked board
+
+An nRF5340 with access-port protection enabled refuses to be programmed until
+both cores are recovered (a full erase). [Flashing a role](#flash-a-role)
+already does this with `nrfjprog --recover`, so a locked board usually only
+needs `dotbot device flash swarmit-sandbox`.
+
+If you recover with `nrfutil` instead, recent `nrfutil-device` releases
+(2.10.0 and 2.23.0 have been seen to fail) cannot recover the network core
+through the DotBot v3's on-board J-Link OB and stop with *AP-Protect is still
+enabled after retrying CTRL-AP.ERASEALL 3 times*. Recover with `nrfjprog`, or
+pin the last release known to work:
+
+```bash
+nrfjprog -f NRF53 --recover --coprocessor CP_NETWORK
+nrfjprog -f NRF53 --recover --coprocessor CP_APPLICATION
+# or
+nrfutil install device=2.5.4 --force
+nrfutil device recover --core Network
+nrfutil device recover --core Application
+```
+
+Recover the network core before the application core.
+
 ## Flash the programmer
 
 `flash programmer` re-flashes the on-board debug chip's own firmware (J-Link
