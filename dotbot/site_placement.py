@@ -216,6 +216,11 @@ def create_router(
 
     @router.post("/api/calibrations/{spec}/boxes")
     def boxes(spec: str, request: BoxesRequest, dry_run: bool = False):
+        return save_boxes(spec, request, dry_run)
+
+    def save_boxes(spec: str, request: BoxesRequest, dry_run: bool = False) -> dict:
+        """Save `spec` with the requested boxes, or with `dry_run` say what
+        that would write; HTTPException when refused."""
         source = resolve(spec)
         text = site_text()
         if (
@@ -267,6 +272,8 @@ def create_router(
             "push": push_line(boxed),
             "warnings": coverage_warnings(boxed),
         }
+
+    router.save_boxes = save_boxes  # type: ignore[attr-defined]
 
     @router.get("/api/turn")
     def turn_info():

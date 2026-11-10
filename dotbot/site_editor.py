@@ -25,7 +25,7 @@ from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from dotbot import site_backdrops, site_placement, site_toml
+from dotbot import site_backdrops, site_history, site_placement, site_toml
 from dotbot.config import ObjectKind
 from dotbot.same_origin import cross_site_refusal
 from dotbot.site import PACK_CALIBRATIONS
@@ -79,6 +79,22 @@ class SiteModel(BaseModel):
 class SaveRequest(BaseModel):
     revision: str
     site: SiteModel
+
+
+class ApplyRequest(BaseModel):
+    """One Save: site.toml first, then a calibration's new boxes against the
+    revision that write leaves."""
+
+    revision: str
+    site: SiteModel | None = None
+    # The calibration to save with new boxes, and the boxes
+    boxes_of: str | None = None
+    boxes: site_placement.BoxesRequest | None = None
+
+
+class RestoreRequest(BaseModel):
+    version: str
+    revision: str
 
 
 @dataclass
@@ -228,23 +244,95 @@ def create_app(
         result = patched(text, model)
         return {"text": result, "changed": result != text}
 
+    def keep_and_write(old: bytes, text: str) -> None:
+        site_history.snapshot(state.name, old)
+        _write_atomic(state.path, text)
+        if on_saved is not None:
+            on_saved()
+
+    def write_model(revision: str, model: SiteModel) -> tuple[bytes, str, bool]:
+        with saving:
+            data, text = read()
+            if site_toml.revision(data) != revision:
+                raise HTTPException(
+                    409, f"{state.path} changed on disk since the page loaded it"
+                )
+            result = patched(text, model)
+            if result == text:
+                return data, text, False
+            keep_and_write(data, result)
+            return result.encode("utf-8"), result, True
+
     @app.put("/api/site")
     def save(request: SaveRequest):
+        data, text, written = write_model(request.revision, request.site)
+        return {**body(data, text), "written": written}
+
+    @app.post("/api/apply")
+    def apply(request: ApplyRequest):
+        steps = []
+        revision = request.revision
+        if request.site is not None:
+            data, text, written = write_model(revision, request.site)
+            revision = site_toml.revision(data)
+            steps.append(
+                {
+                    "step": "site.toml",
+                    "status": "written" if written else "unchanged",
+                    "detail": str(state.path),
+                    "revision": revision,
+                }
+            )
+        if request.boxes is not None and request.boxes_of:
+            boxes = request.boxes.model_copy(update={"revision": revision})
+            try:
+                saved = placement.save_boxes(request.boxes_of, boxes)
+                steps.append(
+                    {
+                        "step": "calibration",
+                        "status": "written",
+                        "detail": saved["path"],
+                        "id": saved["id"],
+                        "push": saved["push"],
+                        "warnings": saved["warnings"],
+                    }
+                )
+            except HTTPException as exc:
+                steps.append(
+                    {"step": "calibration", "status": "refused", "detail": exc.detail}
+                )
+        data, text = read()
+        return {
+            **body(data, text),
+            "ok": all(s["status"] != "refused" for s in steps),
+            "steps": steps,
+        }
+
+    @app.get("/api/history")
+    def history():
+        return site_history.versions(state.name)
+
+    @app.post("/api/restore")
+    def restore(request: RestoreRequest):
+        try:
+            kept = site_history.read_version(state.name, request.version)
+        except KeyError as exc:
+            raise HTTPException(404, f"no kept version {request.version}") from exc
+        try:
+            kept_text = kept.decode("utf-8")
+            site_toml.site_model(site_toml.parse(kept_text))
+        except (UnicodeDecodeError, site_toml.SiteTomlError) as exc:
+            raise HTTPException(422, f"{request.version} does not read: {exc}") from exc
         with saving:
             data, text = read()
             if site_toml.revision(data) != request.revision:
                 raise HTTPException(
                     409, f"{state.path} changed on disk since the page loaded it"
                 )
-            result = patched(text, request.site)
-            written = result != text
-            if written:
-                _write_atomic(state.path, result)
-                data = result.encode("utf-8")
-                text = result
-                if on_saved is not None:
-                    on_saved()
-        return {**body(data, text), "written": written}
+            if kept_text != text:
+                keep_and_write(data, kept_text)
+        data, text = read()
+        return {**body(data, text), "restored": request.version}
 
     def opened_by() -> dict:
         return context() if context is not None else {"mode": "standalone"}
@@ -276,15 +364,12 @@ def create_app(
                 raise HTTPException(
                     409, f"{state.path} changed on disk since the page loaded it"
                 )
-            _write_atomic(state.path, text)
-            if on_saved is not None:
-                on_saved()
+            keep_and_write(data, text)
 
-    app.include_router(
-        site_placement.create_router(
-            state.name, state.pack, lambda: read()[1], write_site, served_id
-        )
+    placement = site_placement.create_router(
+        state.name, state.pack, lambda: read()[1], write_site, served_id
     )
+    app.include_router(placement)
     app.include_router(
         site_backdrops.create_router(
             state.name,
