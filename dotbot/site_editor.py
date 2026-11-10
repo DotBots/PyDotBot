@@ -27,6 +27,7 @@ from pydantic import BaseModel, Field
 
 from dotbot import site_backdrops, site_placement, site_toml
 from dotbot.config import ObjectKind
+from dotbot.same_origin import cross_site_refusal
 from dotbot.site import PACK_CALIBRATIONS
 from dotbot.site_packs import PACK_FILE
 
@@ -128,10 +129,7 @@ def _refusal(scope) -> str | None:
     host = headers.get("host", "")
     if urlsplit(f"//{host}").hostname not in ("127.0.0.1", "localhost", "::1"):
         return "the site editor answers 127.0.0.1 and localhost only"
-    if headers.get("sec-fetch-site", "same-origin") not in ("same-origin", "none"):
-        return "the site editor answers its own page only"
-    origin = headers.get("origin")
-    if origin is not None and urlsplit(origin).netloc != host:
+    if cross_site_refusal(headers) is not None:
         return "the site editor answers its own page only"
     return None
 

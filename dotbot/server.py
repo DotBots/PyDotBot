@@ -11,6 +11,7 @@ from typing import Annotated, Callable, Dict, List, Optional
 
 import httpx
 from fastapi import (
+    Depends,
     FastAPI,
     HTTPException,
     Path,
@@ -30,6 +31,7 @@ from dotbot import pydotbot_version
 from dotbot.build import build_info
 from dotbot.camera.service import STREAM_MEDIA_TYPE
 from dotbot.logger import LOGGER
+from dotbot.same_origin import same_origin
 from dotbot.models import (
     MAX_TRAIL_SIZE,
     DotBotBackgroundMapModel,
@@ -632,6 +634,7 @@ async def camera_stream(area: str):
 
 @api.post(
     path="/controller/calibration/session",
+    dependencies=[Depends(same_origin)],
     response_model=DotBotCalibrationSessionModel,
     summary="Open a calibration session over a set of resolved points",
     tags=["calibration"],
@@ -647,6 +650,7 @@ async def calibration_session_start(request: DotBotCalibrationStartModel):
 
 @api.get(
     path="/controller/calibration/session/preview",
+    dependencies=[Depends(same_origin)],
     response_model=DotBotCalibrationPreviewModel,
     summary="Resolve a set of points without opening a session over them",
     tags=["calibration"],
@@ -661,6 +665,7 @@ async def calibration_session_preview(points: Annotated[List[str], Query()]):
 
 @api.get(
     path="/controller/calibration/session/state",
+    dependencies=[Depends(same_origin)],
     response_model=Optional[DotBotCalibrationSessionModel],
     summary="Return the calibration session, or null when there is none",
     tags=["calibration"],
@@ -672,6 +677,7 @@ async def calibration_session_state():
 
 @api.post(
     path="/controller/calibration/session/redo",
+    dependencies=[Depends(same_origin)],
     response_model=DotBotCalibrationSessionModel,
     summary="Discard the last captured point's reads and re-open it",
     tags=["calibration"],
@@ -683,6 +689,7 @@ async def calibration_session_redo():
 
 @api.post(
     path="/controller/calibration/session/save",
+    dependencies=[Depends(same_origin)],
     response_model=DotBotCalibrationSavedModel,
     summary="Solve the session and write its schema 3 calibration file",
     tags=["calibration"],
@@ -694,6 +701,7 @@ async def calibration_session_save(request: DotBotCalibrationSaveModel):
 
 @api.post(
     path="/controller/calibration/session/push",
+    dependencies=[Depends(same_origin)],
     response_model=DotBotCalibrationPushedModel,
     summary="Send the saved calibration to the robots over the air",
     tags=["calibration"],
@@ -708,6 +716,7 @@ async def calibration_session_push(
 
 @api.delete(
     path="/controller/calibration/session",
+    dependencies=[Depends(same_origin)],
     summary="Abandon the calibration session without writing anything",
     tags=["calibration"],
 )

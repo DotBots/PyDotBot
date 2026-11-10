@@ -667,6 +667,45 @@ async def test_the_routes_walk_a_session_from_start_to_push(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "method, path",
+    [
+        ("post", "/controller/calibration/session/push"),
+        ("post", "/controller/calibration/session"),
+        ("get", "/controller/calibration/session/state"),
+        ("delete", "/controller/calibration/session"),
+    ],
+)
+@pytest.mark.parametrize(
+    "headers",
+    [{"Origin": "http://example.org"}, {"Sec-Fetch-Site": "cross-site"}],
+)
+async def test_another_sites_page_cannot_reach_the_session(rest, method, path, headers):
+    http, _, client = rest
+    response = await getattr(http, method)(path, headers=headers)
+    assert response.status_code == 403
+    assert client.pushed == []
+
+
+@pytest.mark.asyncio
+async def test_a_console_off_loopback_reaches_the_session(rest):
+    from httpx import ASGITransport, AsyncClient
+
+    from dotbot.server import api
+
+    lan = AsyncClient(
+        transport=ASGITransport(app=api, client=("192.168.1.30", 51000)),
+        base_url="http://bench-host:8000",
+    )
+    response = await lan.post(
+        "/controller/calibration/session/push",
+        headers={"Origin": "http://bench-host:8000", "Sec-Fetch-Site": "same-origin"},
+    )
+    # Past the guard: refused by the session itself, which has nothing saved
+    assert response.status_code == 409
+
+
+@pytest.mark.asyncio
 async def test_a_start_with_no_points_opens_on_the_sites_field(rest):
     http, _, _ = rest
     body = (await http.post("/controller/calibration/session", json={})).json()
