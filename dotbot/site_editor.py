@@ -224,6 +224,7 @@ def create_app(
             "name": state.name,
             "path": str(state.path),
             "revision": site_toml.revision(data),
+            "text": text,
             "site": site,
             "calibrations": state.calibrations(),
         }

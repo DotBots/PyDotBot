@@ -93,3 +93,10 @@ def test_the_history_keeps_the_last_twenty(home):  # noqa: F811
     kept = site_history.versions("arena")
     assert len(kept) == site_history.KEEP
     assert site_history.read_version("arena", kept[0]["id"]) == b"v24"
+
+
+def test_the_site_payload_carries_the_file_text_for_the_review_diff(client):  # noqa: F811
+    loaded = client.get("/api/site").json()
+    from dotbot.tests.test_site_toml import ARENA
+
+    assert loaded["text"] == ARENA
