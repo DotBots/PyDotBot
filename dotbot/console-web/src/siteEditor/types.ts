@@ -81,5 +81,7 @@ export interface SitePayload {
   name: string;
   path: string;
   revision: string;
+  /** site.toml as it is on disk. */
+  text?: string;
   site: EditorSite;
 }
