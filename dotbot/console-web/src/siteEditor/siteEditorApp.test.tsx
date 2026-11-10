@@ -156,7 +156,7 @@ describe("the editor page", () => {
     fireEvent.click(screen.getByRole("tab", { name: /Calibrations/ }));
     await waitFor(() => expect(screen.getAllByTestId("library-group")).toHaveLength(1));
     expect(screen.getByTestId("library-group").textContent).toBe("Spin of 2026-11-09 08:12 · 7 box layouts");
-    expect(screen.getByTestId("library-not-placed").textContent).toContain("5 spins");
+    expect(screen.getByRole("tab", { name: "Not placed yet 5" })).toBeTruthy();
     expect(screen.getByTestId("calibration-chip").textContent).toContain("SERVING4640cfde");
     expect(screen.getByTestId("serving-card").textContent).toContain("named on the controller's command line");
     fireEvent.click(screen.getByTestId("library-row-a1b41f12"));
@@ -164,6 +164,8 @@ describe("the editor page", () => {
     expect(screen.getByTestId("calibration-chip").textContent).toContain("4640cfde");
     fireEvent.click(screen.getByLabelText("Back to the served calibration"));
     expect(screen.queryByTestId("calibration-chip-side")).toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: "Not placed yet 5" }));
+    expect(screen.getByTestId("library-not-placed").textContent).toContain("5 spins");
   });
 });
 

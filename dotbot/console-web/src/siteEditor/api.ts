@@ -90,3 +90,15 @@ export interface DryRun {
 /** What saving `id` with `boxes` would write, without writing it. */
 export const dryRunBoxes = (id: string, boxes: Record<number, Rect>, revision: string, tag: string | null) =>
   json<DryRun>(`api/calibrations/${encodeURIComponent(id)}/boxes?dry_run=1`, post({ stations: boxes, revision, tag }));
+
+/** Serve `spec` on the controller that opened the editor; `persist` also at its next start. */
+export const putServed = (spec: string, persist: boolean) =>
+  json<EditorContext>("api/served", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ spec, persist }) });
+
+/** Rename a file's tag, or move it into or out of archived/. */
+export const patchCalibration = (id: string, change: { tag?: string; archived?: boolean }) =>
+  json<{ id: string; id8: string; tag: string; path: string }>(`api/calibrations/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(change),
+  });

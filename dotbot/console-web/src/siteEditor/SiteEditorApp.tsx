@@ -10,7 +10,10 @@ import { Tabs } from "../shared/Tabs";
 import { TitleBar } from "../shared/TitleBar";
 import { holds, typingIn } from "../shortcuts";
 import type { Site, UnifiedBot } from "../types";
-import { dryRunBoxes, fetchContext, fetchCoverage, fetchLibrary, fetchRevision, fetchSite, type DryRun } from "./api";
+import { dryRunBoxes, fetchContext, fetchCoverage, fetchLibrary, fetchRevision, fetchSite, patchCalibration, type DryRun } from "./api";
+import { CompareSheet } from "./CompareSheet";
+import { ServeSheet } from "./ServeSheet";
+import { heldCalibrationId } from "../botFacts";
 import type { Coverage } from "./coverage";
 import { forget, newDraft, pending, persist, reapply, redo, restore, step, undo, type Change, type Draft, type KeyValue, type Snap } from "./draft";
 import "./editor.css";
@@ -20,7 +23,7 @@ import { FileView } from "./FileView";
 import { Icon, type IconName } from "./icons";
 import { Inspector } from "./Inspector";
 import { EDITOR_SHORTCUTS, KIND_KEY, KIND_LABEL, keyAction, SHARED_KEY, TOOL_ICON, TOOL_LABEL, TOOLS, type EditKind, type Tool } from "./keys";
-import { LibraryPane } from "./LibraryPane";
+import { LibraryPane, type LibraryAction } from "./LibraryPane";
 import { residuals, when } from "./library";
 import { docFromPayload, docFromSite, type Doc, type Point } from "./model";
 import { OutlinePane } from "./OutlinePane";
@@ -40,7 +43,15 @@ export function editorChip(context: EditorContext | null, shown: LibraryRow | nu
       ? servedChip(context.served)
       : configuredChip(context?.configured?.id8 ? { ...context.configured, spec: context.configured.spec } : null);
   if (shown && shown.id8 !== base.id8) return { ...base, side: { kind: "preview", id8: shown.id8 } };
+  if (context?.mode === "controller" && context.served?.source.endsWith("for this run")) return { ...base, side: { kind: "run-only", restart: restartOf(context) } };
   return base;
+}
+
+/** What a restart of the controller serves, in a word: an id, or "none". */
+export function restartOf(context: EditorContext): string {
+  const started = context.started_with;
+  if (started?.source === "the command line") return started.spec;
+  return context.next_start?.spec ?? started?.spec ?? "none";
 }
 
 /** Where the served calibration came from, in words. */
@@ -54,6 +65,10 @@ export function servedReason(context: EditorContext): string {
   }
   const s = context.served;
   if (!s) return "The controller serves no calibration: robots keep whatever they hold.";
+  if (s.source.startsWith("the site editor"))
+    return s.source.endsWith("for this run")
+      ? `Served from the site editor for this run; a restart serves ${restartOf(context)}.`
+      : `Served from the site editor, and written to the config for the next start (${context.next_start?.source ?? "the config"}).`;
   const from = s.source === "the command line" ? "named on the controller's command line" : `named in ${s.source}`;
   const next = context.next_start;
   const restart = !next
@@ -173,6 +188,15 @@ export const SiteEditorApp: React.FC = () => {
   const [showNext, setShowNext] = useState(true);
   const [probe, setProbe] = useState<{ at: Point; px: Point } | null>(null);
   const [dry, setDry] = useState<DryRun | null>(null);
+  const [picked, setPicked] = useState<string[]>([]);
+  const [serving, setServing] = useState<LibraryRow | null>(null);
+  const [comparing, setComparing] = useState<[LibraryRow, LibraryRow] | null>(null);
+  const [toast, setToast] = useState<{ text: string; push?: string; undo?: () => void } | null>(null);
+  useEffect(() => {
+    if (!toast) return;
+    const t = window.setTimeout(() => setToast(null), 9000);
+    return () => window.clearTimeout(t);
+  }, [toast]);
 
   const load = useCallback((p: SitePayload) => {
     setPayload(p);
@@ -339,6 +363,28 @@ export const SiteEditorApp: React.FC = () => {
       window.clearTimeout(t);
     };
   }, [boxesKey, boxDraft?.tag, draft?.revision]);
+
+  const libraryAction = (action: LibraryAction, row: LibraryRow) => {
+    if (action === "preview") setPreviewId(row.id === servedId ? null : row.id);
+    else if (action === "serve") setServing(row);
+    else if (action === "push") window.open(`/console?push=${row.id8}`, "_blank", "noopener");
+    else if (action === "compare") {
+      const other = shown && shown.id !== row.id ? shown : rows.find((r) => r.served && r.id !== row.id);
+      if (other) setComparing([other, row]);
+    } else if (action === "archive" || action === "restore") {
+      patchCalibration(row.id, { archived: action === "archive" }).then(
+        () => {
+          loadLibrary();
+          if (action === "archive" && previewId === row.id) setPreviewId(null);
+          setToast({
+            text: action === "archive" ? `Archived ${row.id8}: moved into archived/, found by its full id, never deleted.` : `${row.id8} is back in the list.`,
+            undo: action === "archive" ? () => patchCalibration(row.id, { archived: false }).then(loadLibrary) : undefined,
+          });
+        },
+        (e: Error) => setNotice({ tone: "err", text: `${row.id8}: ${e.message.replace(/^\d+: /, "")}` }),
+      );
+    }
+  };
 
   const editBoxes = useCallback(
     (next: Record<number, Rect>) => {
@@ -534,8 +580,30 @@ export const SiteEditorApp: React.FC = () => {
             error={libraryError}
             extent={draft.doc.extent_mm}
             shownId={shownId}
+            picked={picked}
+            live={live}
+            heldCount={live ? (id) => bots.filter((b) => heldCalibrationId(b).toLowerCase() === id.toLowerCase()).length : undefined}
             onRetry={loadLibrary}
-            onPick={(row) => setPreviewId(row.id === servedId ? null : row.id)}
+            onPick={(row, additive) => {
+              if (!additive) {
+                setPicked([]);
+                setPreviewId(row.id === servedId ? null : row.id);
+                return;
+              }
+              const next = picked.includes(row.id) ? picked.filter((x) => x !== row.id) : [...picked, row.id].slice(-2);
+              setPicked(next);
+              if (next.length === 2) {
+                const a = rows.find((x) => x.id === next[0]);
+                const b = rows.find((x) => x.id === next[1]);
+                if (a && b) setComparing([a, b]);
+              }
+            }}
+            onAction={libraryAction}
+            onRename={async (row, tag) => {
+              await patchCalibration(row.id, { tag });
+              loadLibrary();
+              setToast({ text: `Renamed ${row.id8} to "${tag || "no tag"}": its id, file name and every robot holding it are unchanged.` });
+            }}
           />
         )}
       </div>
@@ -781,6 +849,22 @@ export const SiteEditorApp: React.FC = () => {
                     area={draft.doc.areas.find((a) => probe.at[0] >= a.x && probe.at[0] <= a.x + a.w && probe.at[1] >= a.y && probe.at[1] <= a.y + a.h)?.name ?? null}
                   />
                 )}
+                {previewId && !boxDraft && shown && (
+                  <div className="float banner prev" data-testid="preview-banner" style={{ left: tools.length ? 62 : 12 }}>
+                    <Icon name="view" size={15} />
+                    <span className="tx">
+                      <b>Previewing {shown.id8}</b> {shown.tag ? `"${shown.tag}"` : ""}: the plan, the strip and the inspector follow it. The controller still serves {chip.id8 || "nothing"}.
+                    </span>
+                    {live && shown.in_frame && (
+                      <button type="button" className="btn sm primary" onClick={() => setServing(shown)} data-testid="serve-this">
+                        Serve this…
+                      </button>
+                    )}
+                    <button type="button" className="btn sm" onClick={() => setPreviewId(null)}>
+                      Back to served
+                    </button>
+                  </div>
+                )}
                 {boxDraft && (
                   <div className={`float banner ${dry?.existing ? "same" : "draft"}`} data-testid="box-banner" style={{ left: tools.length ? 62 : 12 }}>
                     <Icon name={dry?.existing ? "check" : "pin"} size={15} />
@@ -970,6 +1054,57 @@ export const SiteEditorApp: React.FC = () => {
             setFitSignal((n) => n + 1);
           }}
         />
+      )}
+      {serving && context && (
+        <ServeSheet
+          row={serving}
+          served={rows.find((r) => r.id === servedId) ?? null}
+          context={context}
+          bots={bots}
+          onClose={() => setServing(null)}
+          onServed={(ctx, persist) => {
+            setContext({ ...context, ...ctx });
+            setServing(null);
+            setPreviewId(null);
+            loadLibrary();
+            setToast({
+              text: `Serving ${serving.id8}${persist ? ", also at the next start" : ", this run only"}. Robots still hold what they hold.`,
+              push: serving.id8,
+            });
+          }}
+        />
+      )}
+      {comparing && (
+        <CompareSheet
+          a={comparing[0]}
+          b={comparing[1]}
+          extent={draft?.doc.extent_mm ?? [1000, 1000]}
+          onClose={() => (setComparing(null), setPicked([]))}
+          onPreview={(row) => {
+            setComparing(null);
+            setPicked([]);
+            setPreviewId(row.id === servedId ? null : row.id);
+          }}
+        />
+      )}
+      {toast && (
+        <div className="toast" role="status" data-testid="toast">
+          <Icon name={toast.push ? "served" : "check"} size={15} />
+          <span>{toast.text}</span>
+          {toast.push && (
+            <a className="btn sm primary" href={`/console?push=${toast.push}`} target="_blank" rel="noreferrer">
+              Push in the console ↗
+            </a>
+          )}
+          {toast.undo && (
+            <button type="button" className="btn sm" onClick={() => (toast.undo?.(), setToast(null))}>
+              Undo
+            </button>
+          )}
+          <button type="button" className="btn icon ghost" aria-label="Dismiss" onClick={() => setToast(null)}>
+            <Icon name="x" size={12} />
+          </button>
+        </div>
       )}
       <ShortcutsPanel open={shortcuts} onClose={() => setShortcuts(false)} groups={EDITOR_SHORTCUTS} />
     </div>

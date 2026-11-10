@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 import { Badge } from "../shared/Badge";
 import { FixThumb } from "./FixThumb";
@@ -6,15 +6,59 @@ import { Icon } from "./icons";
 import { filtered, groupTitle, residuals, when } from "./library";
 import type { Library, LibraryRow, Rect } from "./types";
 
+export type LibraryAction = "preview" | "serve" | "push" | "compare" | "archive" | "restore";
+
+type Filter = "room" | "free" | "archived";
+
 const Row: React.FC<{
   row: LibraryRow;
   extent: [number, number];
   shown: boolean;
   picked: boolean;
+  held: number | null;
+  live: boolean;
+  archived?: boolean;
   onPick: (row: LibraryRow, additive: boolean) => void;
-}> = ({ row, extent, shown, picked, onPick }) => {
+  onAction: (action: LibraryAction, row: LibraryRow) => void;
+  onRename: (row: LibraryRow, tag: string) => Promise<void>;
+}> = ({ row, extent, shown, picked, held, live, archived, onPick, onAction, onRename }) => {
   const boxes = Object.fromEntries(row.stations.map((s) => [s.index, s.box])) as Record<number, Rect>;
   const own: [number, number] = row.in_frame ? extent : [row.fence[2], row.fence[3]];
+  const [menu, setMenu] = useState(false);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [problem, setProblem] = useState("");
+  const input = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (renaming !== null) input.current?.focus();
+  }, [renaming !== null]);
+  const item = (action: LibraryAction | "rename", icon: Parameters<typeof Icon>[0]["name"], text: string, disabled = false, title?: string) => (
+    <button
+      type="button"
+      role="menuitem"
+      className="mi"
+      disabled={disabled}
+      title={title}
+      onClick={(e) => {
+        e.stopPropagation();
+        setMenu(false);
+        if (action === "rename") setRenaming(row.tag);
+        else onAction(action, row);
+      }}
+    >
+      <Icon name={icon} /> {text}
+    </button>
+  );
+  const rename = async () => {
+    if (renaming === null) return;
+    if (renaming.trim() === row.tag) return setRenaming(null);
+    try {
+      await onRename(row, renaming.trim());
+      setRenaming(null);
+      setProblem("");
+    } catch (e) {
+      setProblem((e as Error).message.replace(/^\d+: /, ""));
+    }
+  };
   return (
     <div
       role="button"
@@ -23,11 +67,13 @@ const Row: React.FC<{
       aria-current={shown}
       className={`crow${picked ? " pick" : shown ? " cur" : ""}`}
       title={`${row.id}\n${row.path}`}
-      onClick={(e) => onPick(row, e.shiftKey)}
+      style={{ opacity: archived ? 0.75 : 1 }}
+      onClick={(e) => renaming === null && (archived ? undefined : onPick(row, e.shiftKey))}
       onKeyDown={(e) => {
+        if (renaming !== null) return;
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          onPick(row, e.shiftKey);
+          if (!archived) onPick(row, e.shiftKey);
         }
       }}
     >
@@ -35,16 +81,68 @@ const Row: React.FC<{
       <div className="ci">
         <div className="a">
           <span className="id">{row.id8}</span>
-          <span className="tg">{row.tag || "no tag"}</span>
+          {renaming === null ? (
+            <span className="tg">{row.tag || "no tag"}</span>
+          ) : (
+            <input
+              ref={input}
+              aria-label={`Tag of ${row.id8}`}
+              value={renaming}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => setRenaming(e.target.value)}
+              onBlur={rename}
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                if (e.key === "Enter") rename();
+                if (e.key === "Escape") setRenaming(null);
+              }}
+              style={{ flex: 1, minWidth: 0, font: "12px var(--font-ui)", background: "var(--canvas)", border: "1px solid var(--accent)", borderRadius: 5, padding: "1px 5px", color: "var(--text)" }}
+            />
+          )}
           <span className="sp" />
           {row.served && <Badge tone="ok">serving</Badge>}
           {shown && !row.served && <Badge>previewing</Badge>}
+          {archived && <Badge>archived</Badge>}
+          <button
+            type="button"
+            className="btn xs ghost"
+            aria-label={`Actions for ${row.id8}`}
+            aria-expanded={menu}
+            onClick={(e) => {
+              e.stopPropagation();
+              setMenu((m) => !m);
+            }}
+          >
+            <Icon name="more" size={13} />
+          </button>
         </div>
         <div className="b">{row.in_frame ? row.reading : `own frame · ${row.fence[2]} × ${row.fence[3]} mm`}</div>
         <div className="c">
           measured {when(row.created_at)} UTC · residual {residuals(row)}
+          {held !== null && ` · held by ${held}`}
         </div>
+        {problem && <div className="fld-err">{problem}</div>}
       </div>
+      {menu && (
+        <>
+          <div style={{ position: "fixed", inset: 0, zIndex: 40 }} onClick={(e) => (e.stopPropagation(), setMenu(false))} />
+          <div className="pop menu" role="menu" style={{ position: "absolute", right: 6, top: 30, zIndex: 41, minWidth: 230 }} onClick={(e) => e.stopPropagation()}>
+            {archived ? (
+              item("restore", "restore", "Bring back from the archive")
+            ) : (
+              <>
+                {item("preview", "view", "Preview on the plan")}
+                {live && item("serve", "served", row.served ? "Served now" : "Serve on this controller…", row.served || !row.in_frame, row.in_frame ? undefined : "Not placed in this room")}
+                {live && item("push", "ext", "Push in the console ↗", !row.in_frame)}
+                {item("compare", "compare", "Compare with the shown file")}
+                {item("rename", "tag", "Rename the tag")}
+                {item("archive", "archive", "Archive", row.served, row.served ? "The served file stays in the list" : undefined)}
+                <div className="mtx">The tag is outside the id: renaming keeps the id, the file name and every robot holding it. Archiving moves the file into archived/, never deletes it.</div>
+              </>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 };
@@ -57,10 +155,16 @@ export const LibraryPane: React.FC<{
   extent: [number, number] | null;
   shownId: string | null;
   picked?: string[];
+  live: boolean;
+  /** How many robots report holding each id. */
+  heldCount?: (id: string) => number | null;
   onPick: (row: LibraryRow, additive: boolean) => void;
+  onAction: (action: LibraryAction, row: LibraryRow) => void;
+  onRename: (row: LibraryRow, tag: string) => Promise<void>;
   onRetry?: () => void;
-}> = ({ library, error, extent, shownId, picked = [], onPick, onRetry }) => {
+}> = ({ library, error, extent, shownId, picked = [], live, heldCount, onPick, onAction, onRename, onRetry }) => {
   const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<Filter>("room");
   if (error)
     return (
       <div className="callout err" style={{ marginTop: 12 }} role="alert">
@@ -79,11 +183,29 @@ export const LibraryPane: React.FC<{
     );
   if (!library) return <div className="note" style={{ marginTop: 12 }}>Reading the calibrations…</div>;
   const view = filtered(library, query);
+  const archived = (library.archived ?? []).filter((r) => !query || [r.id, r.tag, r.reading].some((f) => f.toLowerCase().includes(query.trim().toLowerCase())));
   const floor: [number, number] = extent ?? [1000, 1000];
-  const row = (r: LibraryRow) => (
-    <Row key={r.path} row={r} extent={floor} shown={r.id === shownId} picked={picked.includes(r.id)} onPick={onPick} />
+  const row = (r: LibraryRow, isArchived = false) => (
+    <Row
+      key={r.path}
+      row={r}
+      extent={floor}
+      shown={r.id === shownId}
+      picked={picked.includes(r.id)}
+      held={heldCount ? heldCount(r.id) : null}
+      live={live}
+      archived={isArchived}
+      onPick={onPick}
+      onAction={onAction}
+      onRename={onRename}
+    />
   );
-  const nothing = view.groups.length === 0 && view.not_placed.length === 0;
+  const inRoom = view.groups.reduce((n, g) => n + g.rows.length, 0);
+  const filters: { key: Filter; text: string }[] = [
+    { key: "room", text: `This room ${inRoom}` },
+    { key: "free", text: `Not placed yet ${view.not_placed.length}` },
+    { key: "archived", text: `Archived ${library.archived?.length ?? 0}` },
+  ];
   return (
     <div data-testid="library">
       <label className="search">
@@ -95,42 +217,59 @@ export const LibraryPane: React.FC<{
           </button>
         )}
       </label>
-      {library.count === 0 && (
+      <div className="seg" style={{ display: "flex", marginTop: 8 }} role="tablist" aria-label="Which files">
+        {filters.map((f) => (
+          <button key={f.key} type="button" role="tab" aria-selected={filter === f.key} className={filter === f.key ? "on" : undefined} onClick={() => setFilter(f.key)} style={{ flex: 1, justifyContent: "center", padding: "4px 6px", fontSize: 11 }}>
+            {f.text}
+          </button>
+        ))}
+      </div>
+      {library.count === 0 && filter !== "archived" && (
         <div className="callout" style={{ marginTop: 12 }}>
           <div className="h">No calibration for this site yet</div>
           Spin robots in the console's Calibrate tab to measure the stations; the files it saves appear here.
         </div>
       )}
-      {library.serving && !query && (
+      {filter === "room" && (
         <>
-          <div className="grp">Serving now</div>
-          {row(library.serving)}
+          {library.serving && !query && (
+            <>
+              <div className="grp">Serving now</div>
+              {row(library.serving)}
+            </>
+          )}
+          {view.groups.map((g) => (
+            <React.Fragment key={g.spin}>
+              <div data-testid="library-group" className="grp">
+                {groupTitle(g)}
+              </div>
+              {g.rows.length > 1 && <div className="grpnote">One measurement, so the stations are where they were; the files differ only in where each station is trusted.</div>}
+              {g.rows.filter((r) => query || !r.served).map((r) => row(r))}
+            </React.Fragment>
+          ))}
+          {view.groups.length === 0 && library.count > 0 && <div className="note" style={{ marginTop: 12 }}>{query ? `Nothing in this room matches "${query}".` : "No file in this room's frame yet."}</div>}
         </>
       )}
-      {view.groups.map((g) => (
-        <React.Fragment key={g.spin}>
-          <div data-testid="library-group" className="grp">
-            {groupTitle(g)}
-          </div>
-          {g.rows.length > 1 && (
-            <div className="grpnote">One measurement, so the stations are where they were; the files differ only in where each station is trusted.</div>
-          )}
-          {g.rows.filter((r) => query || !r.served).map(row)}
-        </React.Fragment>
-      ))}
-      {view.not_placed.length > 0 && (
+      {filter === "free" && (
         <>
           <div data-testid="library-not-placed" className="grp">
             Not placed in this room yet · {view.not_placed.length} spin{view.not_placed.length === 1 ? "" : "s"}
           </div>
-          <div className="grpnote">Each in its own frame, measured before this room's zero was set; reframe one into this room to use it.</div>
-          {view.not_placed.map(row)}
+          <div className="grpnote">Each in its own frame, measured before this room's zero was set; place one in the room to use it.</div>
+          {view.not_placed.map((r) => row(r))}
         </>
       )}
-      {nothing && library.count > 0 && <div className="note" style={{ marginTop: 12 }}>Nothing matches "{query}".</div>}
+      {filter === "archived" && (
+        <>
+          <div className="grp">Archived · {archived.length}</div>
+          <div className="grpnote">Out of the lists, still found by their full id or path; nothing is deleted.</div>
+          {archived.map((r) => row(r, true))}
+          {archived.length === 0 && <div className="note">Nothing archived.</div>}
+        </>
+      )}
       <div className="note" style={{ marginTop: 14 }}>
-        Click a file to preview it on the plan; the served one stays named in the top bar. Thumbnails show who gives the fix: a
-        station's colour where its box decides, grey where the boxes do not.
+        Click a file to preview it on the plan; the served one stays named in the top bar. Shift-click two to compare them. Thumbnails show who gives the fix: a station's
+        colour where its box decides, grey where the boxes do not.
       </div>
     </div>
   );

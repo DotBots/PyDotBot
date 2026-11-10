@@ -19,6 +19,10 @@ export interface EditorContext {
   served: ServedCalibration | null;
   /** What the controller serves after a restart, from its config. */
   next_start: { spec: string; source: string } | null;
+  /** What this run started serving, and from where. */
+  started_with?: { spec: string; source: string } | null;
+  /** The file "also at the next start" writes to. */
+  persist_path?: string | null;
   /** Standalone: what the config names for this site. */
   configured: { spec: string; source: string; id?: string; id8?: string; tag?: string; error?: string } | null;
   controller?: { version: string; port: number };
@@ -61,6 +65,7 @@ export interface Library {
   count: number;
   groups: { spin: string; created_at: string; rows: LibraryRow[] }[];
   not_placed: LibraryRow[];
+  archived?: LibraryRow[];
 }
 
 export interface EditorArea {
