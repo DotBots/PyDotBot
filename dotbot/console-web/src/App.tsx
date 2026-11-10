@@ -62,6 +62,8 @@ import {
 import { ShortcutsPanel } from "./ShortcutsPanel";
 import { StepCard } from "./StepCard";
 import { TestbedControls } from "./TestbedControls";
+import { CalibrationChip } from "./shared/CalibrationChip";
+import { servedChip } from "./shared/served";
 import { TestbedAction, targetsOf } from "./testbed";
 import { useTestbedConfirm } from "./testbedConfirm";
 import { DoneMission, TestbedRail } from "./TestbedRail";
@@ -181,7 +183,11 @@ export const App: React.FC = () => {
   const calibration = useCalibration(setSession, selection);
   // What the list and grid compare each robot against; `now` follows the fleet's updates.
   const fleetCtx = useMemo<FleetContext>(
-    () => ({ calibrationId: session?.saved_id ?? "", site, now: Date.now() / 1000 }),
+    () => ({
+      calibrationId: session?.saved_id || site?.calibration?.id || "",
+      site,
+      now: Date.now() / 1000,
+    }),
     [session?.saved_id, site, bots],
   );
   const preselRef = useRef(false);
@@ -924,6 +930,7 @@ export const App: React.FC = () => {
         <div style={{ fontWeight: 700, letterSpacing: ".3px", fontSize: 15 }}>DotBots</div>
         <div style={{ width: 1, height: 20, background: "var(--hairline)" }} />
         <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--muted)" }}>{window.location.host}</span>
+        <CalibrationChip chip={servedChip(site?.calibration)} compact />
         {conn && (
           <>
             <div style={{ width: 1, height: 20, background: "var(--hairline)" }} />

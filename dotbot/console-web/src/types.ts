@@ -486,6 +486,18 @@ export interface SiteCalibration {
   site?: string;
   anchor?: string;
   placements: { points_mm: [number, number][]; points_from: PointsFrom | null }[];
+  /** Each station's fit and box, frame mm. */
+  stations?: { index: number; residual_mm: number | null; box: [number, number, number, number] }[];
+  /** Where robots spun to measure the stations, one per station that saw it. */
+  circles?: SpinCircle[];
+}
+
+export interface SpinCircle {
+  station: number;
+  name: string;
+  x: number;
+  y: number;
+  radius_mm: number;
 }
 
 // GET /controller/cameras - one registered camera, one area. `width` and

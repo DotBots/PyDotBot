@@ -19,6 +19,7 @@ import type { DrawMode, RobotDrawing } from "./robotDrawing";
 import { SetupCard } from "./SetupCard";
 import { StepCard } from "./StepCard";
 import type { Layers } from "./MapView";
+import { SiteCard } from "./SiteCard";
 import type {
   CalibrationSession,
   CameraDetection,
@@ -639,6 +640,7 @@ export const RightPane: React.FC<RightPaneProps> = (props) => {
 
         {props.tab === "layers" && (
           <div style={{ padding: 12 }}>
+            <SiteCard site={props.site} />
             <div style={{ ...label10, marginBottom: 4 }}>Robots</div>
             {props.layerRows.map((row) => (
               <CheckRow
@@ -709,13 +711,14 @@ export const RightPane: React.FC<RightPaneProps> = (props) => {
               <>
                 <div style={{ ...label10, margin: "14px 0 4px" }}>Calibration</div>
                 <CheckRow
-                  label="Calibrated span"
+                  label={(props.site.calibration.circles ?? []).length > 0 ? "Spin circles" : "Calibrated span"}
                   on={props.layers.calibratedSpan}
                   onToggle={() => props.onLayerToggle("calibratedSpan")}
                 />
                 <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 6, lineHeight: 1.5 }}>
-                  Outlined where the loaded LH2 calibration was fitted; positions
-                  in the hatched rest of the site are extrapolated.
+                  {(props.site.calibration.circles ?? []).length > 0
+                    ? "Where robots spun to measure the stations, ringed in each station's colour."
+                    : "Outlined where the loaded LH2 calibration was fitted; positions in the hatched rest of the site are extrapolated."}
                 </div>
               </>
             )}
