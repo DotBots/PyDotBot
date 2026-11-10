@@ -672,7 +672,13 @@ def create_app(
             keep_and_write(data, text)
 
     placement = site_placement.create_router(
-        state.name, state.pack, lambda: read()[1], write_site, served_id, serve
+        state.name,
+        state.pack,
+        lambda: read()[1],
+        write_site,
+        served_id,
+        serve,
+        context=opened_by,
     )
     app.include_router(placement)
     app.include_router(

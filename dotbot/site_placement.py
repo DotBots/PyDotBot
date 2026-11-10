@@ -19,7 +19,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from dotbot import site_coverage, site_library, site_toml
+from dotbot import site_coverage, site_history, site_library, site_toml
 from dotbot.calibration import lighthouse2, site_frame, site_turn, station_rule
 from dotbot.calibration.placement import (
     FREE_SOLVERS,
@@ -73,6 +73,9 @@ class LibraryRequest(BaseModel):
     tag: str | None = None
     # True moves it into archived/, False moves it back
     archived: bool | None = None
+    # Go ahead although a config or a snapshot names the file; a served
+    # file is still not archived
+    force: bool = False
 
 
 class BoxesRequest(BaseModel):
@@ -128,10 +131,12 @@ def create_router(
     write_site: Callable[[str, str], None] | None = None,
     served_id: Callable[[], str | None] | None = None,
     serve: Callable[[str, bool], dict] | None = None,
+    context: Callable[[], dict] | None = None,
 ) -> APIRouter:
     """Routes for the site `name` in `pack`; `site_text` reads its site.toml,
     `write_site(revision, text)` writes it over that revision, `served_id`
-    names the calibration a controller serves."""
+    names the calibration a controller serves, `context` says what the
+    controller's configs name (`next_start`, `started_with`, `configured`)."""
     router = APIRouter()
 
     def resolve(spec: str) -> lighthouse2.Calibration:
@@ -289,12 +294,91 @@ def create_router(
             "ok": all(s["status"] != "refused" for s in steps),
         }
 
+    def tag_holder(tag: str, own_id: str) -> str | None:
+        """The id8 of another file of this site carrying `tag`."""
+        for m in map(_metadata, _files(pack)):
+            if (
+                m
+                and m["site"] == name
+                and m["id"] != own_id
+                and str(m["tag"]).lower() == tag.lower()
+            ):
+                return m["id8"]
+        return None
+
+    def named_by(cal: lighthouse2.Calibration, by_tag_only: bool) -> list[str]:
+        """What names `cal`: the controller's configs by id, id prefix or
+        tag (by tag alone with `by_tag_only`), and the site's snapshots."""
+        found = context() if context is not None else {}
+        out = []
+        for key in ("next_start", "started_with", "configured"):
+            entry = found.get(key) or {}
+            spec = str(entry.get("spec") or "").strip().lower()
+            if not spec:
+                continue
+            by_tag = bool(cal.tag) and spec == cal.tag.lower()
+            by_id = cal.id.lower().startswith(spec)
+            if by_tag or (by_id and not by_tag_only):
+                out.append(
+                    f"named for the next start: {entry['spec']} in "
+                    f"{entry.get('source') or 'unknown'}"
+                )
+        if not by_tag_only:
+            for point in site_history.points(name):
+                if point.get("served") == cal.id:
+                    out.append(f"kept in snapshot {point['name']}")
+        return out
+
     @router.patch("/api/calibrations/{spec}")
     def change(spec: str, request: LibraryRequest):
         """Rename a file's tag or archive it; only files under
-        ~/.dotbot/calibrations, never a pack's tracked ones."""
-        path = Path(resolve(spec).path)
+        ~/.dotbot/calibrations, never a pack's tracked ones. A file a
+        config or a snapshot names is refused with what names it, unless
+        forced; a served file is never archived."""
+        cal = resolve(spec)
+        path = Path(cal.path)
         home = lighthouse2.calibration_root()
+        if request.tag is not None:
+            tag = request.tag.strip()
+            if not tag:
+                raise HTTPException(
+                    422, "a tag cannot be empty: archive the file to hide it instead"
+                )
+            holder = tag_holder(tag, cal.id)
+            if holder is not None:
+                raise HTTPException(422, f'tag "{tag}" is already {holder}\'s')
+            dependents = named_by(cal, by_tag_only=True)
+            if dependents and not request.force:
+                raise HTTPException(
+                    409,
+                    {
+                        "message": f"{cal.id8} is {'; '.join(dependents)}",
+                        "dependents": dependents,
+                    },
+                )
+        if request.archived is True:
+            served = served_id() if served_id is not None else None
+            dependents = named_by(cal, by_tag_only=False)
+            if served == cal.id:
+                dependents.insert(0, "in use by this controller")
+                raise HTTPException(
+                    409,
+                    {
+                        "message": (
+                            f"{cal.id8} is in use by this controller: serve "
+                            "another calibration before archiving it"
+                        ),
+                        "dependents": dependents,
+                    },
+                )
+            if dependents and not request.force:
+                raise HTTPException(
+                    409,
+                    {
+                        "message": f"{cal.id8} is {'; '.join(dependents)}",
+                        "dependents": dependents,
+                    },
+                )
         try:
             if request.tag is not None:
                 path = site_library.rename_tag(path, request.tag, home)

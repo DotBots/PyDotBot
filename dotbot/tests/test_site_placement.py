@@ -350,3 +350,116 @@ def test_a_pack_s_calibration_is_not_renamed(client, tmp_path, spun):
     refused = client.patch(f"/api/calibrations/{spun.id8}", json={"tag": "x"})
     assert refused.status_code == 422
     assert "tracked with the pack" in refused.json()["detail"]
+
+
+def test_an_empty_tag_is_refused(client, spun):
+    refused = client.patch(f"/api/calibrations/{spun.id8}", json={"tag": "  "})
+    assert refused.status_code == 422
+    assert refused.json()["detail"] == (
+        "a tag cannot be empty: archive the file to hide it instead"
+    )
+    assert 'tag = "spin"' in spun.path.read_text()
+
+
+def test_a_tag_another_file_of_the_site_carries_is_refused(client, placed):
+    boxed = client.post(
+        f"/api/calibrations/{placed.id}/boxes",
+        json={"stations": {"0": [0, 0, 1000, 2000]}},
+    ).json()
+    refused = client.patch(
+        f"/api/calibrations/{boxed['id']}", json={"tag": "Spin-Arena"}
+    )
+    assert refused.status_code == 422
+    assert refused.json()["detail"] == f'tag "Spin-Arena" is already {placed.id8}\'s'
+    # Its own tag, and a tag only another site's file carries, are fine
+    assert (
+        client.patch(
+            f"/api/calibrations/{boxed['id']}", json={"tag": boxed["tag"]}
+        ).status_code
+        == 200
+    )
+    assert (
+        client.patch(
+            f"/api/calibrations/{boxed['id']}", json={"tag": "spin"}
+        ).status_code
+        == 200
+    )
+
+
+@pytest.fixture
+def opened(client, tmp_path, home):
+    """An editor on the same pack, opened by a controller whose context is
+    the returned dict, changed by a test as it goes."""
+    found = {"mode": "controller", "served": None, "next_start": None}
+    app = create_app(
+        EditorState("arena", tmp_path / "arena", [home / "arena"]),
+        tmp_path / "dist",
+        context=lambda: found,
+    )
+    return local_client(app), found
+
+
+def test_archiving_a_file_the_next_start_names_is_refused_unless_forced(opened, placed):
+    client, found = opened
+    found["next_start"] = {"spec": placed.id8, "source": "dotbot.local.toml"}
+    refused = client.patch(f"/api/calibrations/{placed.id}", json={"archived": True})
+    assert refused.status_code == 409
+    detail = refused.json()["detail"]
+    assert detail["dependents"] == [
+        f"named for the next start: {placed.id8} in dotbot.local.toml"
+    ]
+    assert detail["message"] == (
+        f"{placed.id8} is named for the next start: {placed.id8} in dotbot.local.toml"
+    )
+    assert placed.path.exists()
+    forced = client.patch(
+        f"/api/calibrations/{placed.id}", json={"archived": True, "force": True}
+    )
+    assert forced.status_code == 200, forced.text
+    assert "archived" in Path(forced.json()["path"]).parts
+    assert not placed.path.exists()
+
+
+def test_archiving_a_file_a_snapshot_kept_is_refused(opened, placed):
+    from dotbot import site_history
+
+    client, _ = opened
+    site_history.save_point("arena", "Monday class", b"", placed.id)
+    refused = client.patch(f"/api/calibrations/{placed.id}", json={"archived": True})
+    assert refused.status_code == 409
+    assert refused.json()["detail"]["dependents"] == ["kept in snapshot Monday class"]
+
+
+def test_archiving_the_served_file_is_refused_even_forced(opened, placed):
+    client, found = opened
+    found["served"] = {"id": placed.id, "id8": placed.id8}
+    refused = client.patch(
+        f"/api/calibrations/{placed.id}", json={"archived": True, "force": True}
+    )
+    assert refused.status_code == 409
+    detail = refused.json()["detail"]
+    assert detail["dependents"] == ["in use by this controller"]
+    assert "serve another calibration" in detail["message"]
+    assert placed.path.exists()
+
+
+def test_a_rename_breaks_only_a_config_naming_the_file_by_tag(opened, placed):
+    client, found = opened
+    found["configured"] = {"spec": placed.id8, "source": "dotbot.toml"}
+    assert (
+        client.patch(
+            f"/api/calibrations/{placed.id}", json={"tag": "monday"}
+        ).status_code
+        == 200
+    )
+    found["started_with"] = {"spec": "monday", "source": "the command line"}
+    refused = client.patch(f"/api/calibrations/{placed.id}", json={"tag": "tuesday"})
+    assert refused.status_code == 409
+    assert refused.json()["detail"]["dependents"] == [
+        "named for the next start: monday in the command line"
+    ]
+    assert 'tag = "monday"' in placed.path.read_text()
+    forced = client.patch(
+        f"/api/calibrations/{placed.id}", json={"tag": "tuesday", "force": True}
+    )
+    assert forced.status_code == 200 and forced.json()["tag"] == "tuesday"
