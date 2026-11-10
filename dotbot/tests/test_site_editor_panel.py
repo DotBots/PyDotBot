@@ -312,3 +312,22 @@ async def test_a_live_controller_keeps_its_calibration_when_the_note_changes(ser
     assert s.controller.site.anchor == "the door corner, under the clock"
     assert s.controller.site.frame is not None
     check_calibration_site(s.controller.calibration.site, s.controller.site, None)
+
+
+@pytest.mark.asyncio
+async def test_a_frame_change_is_named_until_robots_hold_it(served):
+    s, local, pack, cal = served
+    await local.put("/controller/site-editor/api/served", json={"spec": cal.id8})
+    revision = (await local.get("/controller/site-editor/api/site")).json()["revision"]
+    body = (
+        await local.post(
+            "/controller/site-editor/api/frame",
+            json={"calibration": cal.id8, "theta_deg": 0, "dx_mm": -20, "dy_mm": -20, "revision": revision},
+        )
+    ).json()
+    assert body["ok"] is True, body
+    await asyncio.sleep(0.05)
+    context = (await local.get("/controller/site-editor/api/context")).json()
+    assert context["served"]["id"] == body["calibration"]["id"]
+    assert context["frame_change"]["to_frame"] == body["frame"]
+    assert context["frame_change"]["from_id"] == cal.id

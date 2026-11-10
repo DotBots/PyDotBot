@@ -496,6 +496,7 @@ class Controller:
             "served": served,
             "next_start": next_start,
             "started_with": getattr(self, "_started_with", None),
+            "frame_change": getattr(self, "_frame_change", None),
             "persist_path": settings.lh2_calibration_persist_path,
             "controller": {
                 "version": pydotbot_version(),
@@ -512,6 +513,17 @@ class Controller:
         calibration = load_calibration(spec, site=self.site)
         check_calibration_site(calibration.site, self.site, calibration.path)
         before = self.calibration.id[:8] if self.calibration is not None else None
+        if (
+            self.calibration is not None
+            and calibration.site.frame_id != self.calibration.site.frame_id
+        ):
+            # Robots hold the old frame until a push: say so until then
+            self._frame_change = {
+                "from_id": self.calibration.id,
+                "to_id": calibration.id,
+                "from_frame": self.calibration.site.frame_id,
+                "to_frame": calibration.site.frame_id,
+            }
         settings = self.settings
         if persist:
             if not settings.lh2_calibration_persist_path:
