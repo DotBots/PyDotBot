@@ -254,6 +254,8 @@ class SiteSection(_Strict):
     stations: dict[str, int] = Field(default_factory=dict)
     # The photodiode's circle when a robot spins in place on this floor
     spin_radius_mm: float | None = Field(default=None, ge=1.0, le=200.0)
+    # The predicted LH2 error a calibration must stay under, mm
+    lh2_error_limit_mm: float | None = Field(default=None, gt=0.0, le=1000.0)
     walls: list[WallSection] = Field(default_factory=list)
     obstacles: list[ObstacleSection] = Field(default_factory=list)
     objects: dict[str, ObjectSection] = Field(default_factory=dict)

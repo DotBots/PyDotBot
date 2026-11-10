@@ -434,3 +434,14 @@ def test_add_refuses_git_transports_that_run_commands(runner, tmp_path, home):
     )
     assert result.exit_code != 0 and "git clone" in result.output
     assert not marker.exists()
+
+
+def test_a_site_reads_its_lh2_error_limit_and_defaults_to_2mm():
+    from dotbot.config import SiteSection
+    from dotbot.site import site_from_table
+
+    assert site_from_table("hall", SiteSection()).error_limit_mm == 2.0
+    table = SiteSection(lh2_error_limit_mm=1.5)
+    assert site_from_table("hall", table).error_limit_mm == 1.5
+    with pytest.raises(ValueError):
+        SiteSection(lh2_error_limit_mm=0)

@@ -28,6 +28,9 @@ SITE_NAME = re.compile(r"[A-Za-z0-9_-]+")
 # The side of the square, at the frame origin, a site that declares nothing
 # works in.
 FIELD_FALLBACK_MM = 2000
+# The predicted LH2 error a calibration must stay under when the site says
+# nothing, mm
+LH2_ERROR_LIMIT_DEFAULT_MM = 2.0
 # A site pack's folder of calibration files
 PACK_CALIBRATIONS = "calibrations"
 # The starter site's geometry, all derived from the field: a margin of floor
@@ -84,9 +87,17 @@ class Site:
     pack: Path | None = None
     # A spin's photodiode radius measured on this floor, if one was
     spin_radius_mm: float | None = None
+    lh2_error_limit_mm: float | None = None
     walls: list[Wall] = field(default_factory=list)
     obstacles: list[Obstacle] = field(default_factory=list)
     objects: dict[str, SiteObject] = field(default_factory=dict)
+
+    @property
+    def error_limit_mm(self) -> float:
+        """The predicted LH2 error a calibration must stay under, mm."""
+        if self.lh2_error_limit_mm is None:
+            return LH2_ERROR_LIMIT_DEFAULT_MM
+        return float(self.lh2_error_limit_mm)
 
     @property
     def extent(self) -> Area | None:
@@ -201,6 +212,7 @@ def site_from_table(name: str, table: Any, pack: Path | None = None) -> Site:
         anchor=getattr(table, "anchor", None) or "",
         extent_mm=(int(extent[0]), int(extent[1])) if extent else None,
         spin_radius_mm=getattr(table, "spin_radius_mm", None),
+        lh2_error_limit_mm=getattr(table, "lh2_error_limit_mm", None),
         areas={
             area_name: Area(
                 x=area.x,

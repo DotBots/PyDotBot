@@ -285,6 +285,7 @@ class DotBotSiteModel(BaseModel):
     field: Optional[str] = None
     calibration: Optional[DotBotCalibrationSpanModel] = None
     spin_radius_mm: Optional[float] = None
+    lh2_error_limit_mm: Optional[float] = None
     walls: List[DotBotBarrierModel] = []
     obstacles: List[DotBotBarrierModel] = []
     objects: List[DotBotSiteObjectModel] = []
@@ -299,6 +300,7 @@ class DotBotSiteModel(BaseModel):
             areas=[DotBotAreaModel(**a.as_dict()) for a in site.areas.values()],
             field=field.name if field is not None else None,
             spin_radius_mm=site.spin_radius_mm,
+            lh2_error_limit_mm=site.lh2_error_limit_mm,
             walls=[
                 DotBotBarrierModel(name=w.name, points=[list(p) for p in w.points])
                 for w in site.walls
@@ -331,6 +333,7 @@ class DotBotSiteModel(BaseModel):
                 a.name: Area(a.x, a.y, a.w, a.h, a.name, a.role) for a in self.areas
             },
             spin_radius_mm=self.spin_radius_mm,
+            lh2_error_limit_mm=self.lh2_error_limit_mm,
             walls=[Wall(tuple(tuple(p) for p in w.points), w.name) for w in self.walls],
             obstacles=[
                 Obstacle(tuple(tuple(p) for p in o.points), o.name)

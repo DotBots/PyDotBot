@@ -141,6 +141,7 @@ def test_a_site_request_replies_with_the_whole_site(site_client):
         "field": "arena",
         "calibration": None,
         "spin_radius_mm": None,
+        "lh2_error_limit_mm": None,
         "walls": [],
         "obstacles": [],
         "objects": [],
