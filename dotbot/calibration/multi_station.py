@@ -634,10 +634,15 @@ def _error_map(
     x: np.ndarray,
     rectangles: Mapping[int, Sequence[int]],
     cell_mm: float = ERROR_MAP_CELL_MM,
+    cov: np.ndarray | None = None,
+    region: Sequence[float] | None = None,
 ) -> ErrorMap:
-    cov = _covariance(problem, x)
+    """The map over the rectangles' union, or over `region` when given;
+    `cov` is the problem's covariance when already computed."""
+    if cov is None:
+        cov = _covariance(problem, x)
     H, _ = problem.unpack(x)
-    x0, y0, x1, y1 = union_rect(rectangles.values())
+    x0, y0, x1, y1 = region if region is not None else union_rect(rectangles.values())
     cols = max(1, int(math.ceil((x1 - x0) / cell_mm)))
     rows = max(1, int(math.ceil((y1 - y0) / cell_mm)))
     gx = x0 + (np.arange(cols) + 0.5) * cell_mm
@@ -1073,14 +1078,32 @@ def _anchored(
     )
 
 
-def _map_from(
-    H: Mapping[int, np.ndarray],
-    kept: Mapping[int, Sequence[Track]],
-    rectangles: Mapping[int, Sequence[int]],
-    cell_mm: float = ERROR_MAP_CELL_MM,
-) -> ErrorMap:
-    """The error map of homographies `H` over the kept tracks, every circle
-    seen by several stations tying them."""
+@dataclass
+class CoverageModel:
+    """A spin calibration's solve, kept so its error map can be drawn for
+    any boxes without solving again."""
+
+    problem: _Problem
+    x: np.ndarray
+    cov: np.ndarray
+
+    @property
+    def stations(self) -> list[int]:
+        return list(self.problem.stations)
+
+    def error_map(
+        self,
+        rectangles: Mapping[int, Sequence[int]],
+        cell_mm: float = ERROR_MAP_CELL_MM,
+        region: Sequence[float] | None = None,
+    ) -> ErrorMap:
+        kept = {s: r for s, r in rectangles.items() if s in self.problem.s_col}
+        return _error_map(self.problem, self.x, kept, cell_mm, self.cov, region)
+
+
+def _problem_from(
+    H: Mapping[int, np.ndarray], kept: Mapping[int, Sequence[Track]]
+) -> tuple[_Problem, np.ndarray]:
     world = {
         s: {t.key: _circle_fit(apply(H[s], t.points))[0] for t in kept[s]} for s in kept
     }
@@ -1089,7 +1112,18 @@ def _map_from(
         for k in centres:
             tied.setdefault(k, set()).add(s)
     root = min(kept, key=lambda s: (-len(kept[s]), s))
-    problem, x = _build_problem(kept, world, tied, dict(H), root)
+    return _build_problem(kept, world, tied, dict(H), root)
+
+
+def _map_from(
+    H: Mapping[int, np.ndarray],
+    kept: Mapping[int, Sequence[Track]],
+    rectangles: Mapping[int, Sequence[int]],
+    cell_mm: float = ERROR_MAP_CELL_MM,
+) -> ErrorMap:
+    """The error map of homographies `H` over the kept tracks, every circle
+    seen by several stations tying them."""
+    problem, x = _problem_from(H, kept)
     return _error_map(problem, x, rectangles, cell_mm)
 
 
@@ -1174,6 +1208,29 @@ def tracks_by_station(samples: Sequence[TrackSample]) -> dict[int, list[Track]]:
             )
         )
     return by_station
+
+
+def coverage_model(calibration: Calibration) -> CoverageModel | None:
+    """A spin calibration's solve, from its file alone, as
+    `error_map_from_calibration` makes it; None when the file holds no
+    spin-solved station."""
+    stations = {
+        st.index: st
+        for st in calibration.stations
+        if st.solved_from.startswith("conics")
+    }
+    by_station = {
+        s: t for s, t in tracks_by_station(calibration.tracks).items() if s in stations
+    }
+    kept = {}
+    for s, tracks in by_station.items():
+        gate = health_gate(tracks, stations[s].matrix)
+        kept[s] = [t for t in tracks if t not in gate and len(t.points) >= 6]
+    kept = {s: t for s, t in kept.items() if t}
+    if not kept:
+        return None
+    problem, x = _problem_from({s: stations[s].matrix for s in kept}, kept)
+    return CoverageModel(problem, x, _covariance(problem, x))
 
 
 def error_map_from_calibration(
