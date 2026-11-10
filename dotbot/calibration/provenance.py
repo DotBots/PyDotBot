@@ -11,7 +11,8 @@ from datetime import datetime, timezone
 from dotbot.calibration import station_rule
 from dotbot.calibration.lighthouse2 import Calibration
 from dotbot.calibration.multi_station import ErrorMap
-from dotbot.site import Site, derived_frame_id
+from dotbot.calibration.checks import check_line
+from dotbot.site import Site
 
 
 def fix_lines(calibration: Calibration) -> list[str]:
@@ -44,13 +45,14 @@ def provenance_lines(
     error_map: ErrorMap | None,
     served: str | None = None,
     now: datetime | None = None,
+    check: dict | None = None,
 ) -> list[str]:
     """The block to copy into an experiment log."""
     now = now or datetime.now(timezone.utc)
     name = calibration.site.name
     lines = [
         "provenance:",
-        f"  site {name}, frame {derived_frame_id(name, calibration.site.anchor)}",
+        f"  site {name}, frame {calibration.site.frame_id}",
         f"  calibration {calibration.id}"
         + (f" {calibration.tag!r}" if calibration.tag else "")
         + f", measured {calibration.created_at or 'at an unknown time'}",
@@ -74,6 +76,6 @@ def provenance_lines(
             f"  predicted error, station kept: worst {error_map.worst_mm:.1f} mm"
             f"{bound}, {verdict} the {limit:.1f} mm limit"
         )
-    lines.append("  checked on a mark: not recorded")
+    lines.append(f"  {check_line(check)}")
     lines.append(f"  printed {now.strftime('%Y-%m-%dT%H:%M:%SZ')}")
     return lines

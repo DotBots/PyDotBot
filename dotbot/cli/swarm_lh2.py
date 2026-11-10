@@ -975,7 +975,11 @@ def _show(ctx, calibration, site_name, next_robots):
         error_map = error_map_from_calibration(loaded)
     except (ValueError, np.linalg.LinAlgError):
         error_map = None
-    for line in provenance_lines(loaded, site, error_map):
+    from dotbot.calibration.checks import last_check
+
+    for line in provenance_lines(
+        loaded, site, error_map, check=last_check(loaded.site.name, loaded.id)
+    ):
         click.echo(line)
     click.echo(f"Calibration {loaded.id}, site {loaded.site.name}, {path}")
     click.echo(

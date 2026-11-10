@@ -52,3 +52,10 @@ def test_the_provenance_names_the_frame_the_error_and_its_limit():
     assert "(a bound), over the 0.0 mm limit" in text
     assert "checked on a mark: not recorded" in text
     assert lines[-1] == "  printed 2026-11-10T00:00:00Z"
+
+
+def test_the_provenance_names_the_last_check_on_a_mark():
+    calibration = _calibration(shared_box=True)
+    check = {"error_mm": 3.06, "mark_mm": [500.0, 600.0], "robot": "222A34F9458E8AAD", "at": "2026-11-09T21:48:00Z"}
+    lines = provenance_lines(calibration, Site(name="arena", anchor="the door"), None, check=check)
+    assert "  checked on a mark: 3.1 mm at (500, 600) by …8E8AAD, 2026-11-09T21:48:00Z" in lines
