@@ -65,3 +65,56 @@ def read_version(site: str, version: str) -> bytes:
         if v["id"] == version:
             return Path(v["path"]).read_bytes()
     raise KeyError(version)
+
+
+# --- Restore points: a named site.toml with the calibration served then ----
+
+_POINTS = "points.json"
+
+
+def points(site: str) -> list[dict]:
+    """The named restore points, newest first."""
+    import json
+
+    index = history_dir(site) / _POINTS
+    try:
+        listed = json.loads(index.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    return sorted(
+        (p for p in listed if (history_dir(site) / f"{p['id']}.toml").is_file()),
+        key=lambda p: p["at"],
+        reverse=True,
+    )
+
+
+def save_point(
+    site: str, name: str, data: bytes, served: str | None, now: datetime | None = None
+) -> dict:
+    """Keep `data` and the served calibration's id under `name`; points are
+    never pruned."""
+    import json
+
+    now = now or datetime.now(timezone.utc)
+    folder = history_dir(site)
+    folder.mkdir(parents=True, exist_ok=True)
+    point = {
+        "id": f"point-{now.strftime('%Y%m%dT%H%M%S%fZ')}",
+        "name": name.strip() or now.strftime("%Y-%m-%d %H:%M"),
+        "at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "served": served,
+        "revision": site_toml.revision(data),
+    }
+    (folder / f"{point['id']}.toml").write_bytes(data)
+    index = folder / _POINTS
+    listed = points(site)
+    index.write_text(json.dumps([*listed, point], indent=1), encoding="utf-8")
+    return point
+
+
+def read_point(site: str, point: str) -> tuple[dict, bytes]:
+    """A restore point and its site.toml bytes; KeyError when there is none."""
+    for p in points(site):
+        if p["id"] == point:
+            return p, (history_dir(site) / f"{p['id']}.toml").read_bytes()
+    raise KeyError(point)
