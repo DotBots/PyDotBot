@@ -957,6 +957,23 @@ async def root():
     return RedirectResponse(url="/console/")
 
 
+def _on_loop(loop, fn, *args):
+    """`fn(*args)` run on the controller's loop from a worker thread, its
+    result or its exception handed back."""
+    import concurrent.futures
+
+    done: concurrent.futures.Future = concurrent.futures.Future()
+
+    def call():
+        try:
+            done.set_result(fn(*args))
+        except Exception as exc:  # noqa: BLE001
+            done.set_exception(exc)
+
+    loop.call_soon_threadsafe(call)
+    return done.result(timeout=10)
+
+
 class SiteEditorMount:
     """The site editor's JSON routes over the controller's site pack, for the
     console's panel: built on first use, and only for a site read from a pack."""
@@ -994,6 +1011,7 @@ class SiteEditorMount:
                 page_dir=EDITOR_DIR,
                 on_saved=lambda: loop.call_soon_threadsafe(controller.reload_site),
                 context=controller.editor_context,
+                serve=lambda spec, persist: _on_loop(loop, controller.serve, spec, persist),
             )
             self._key = (id(controller), pack)
         await self._app(scope, receive, send)

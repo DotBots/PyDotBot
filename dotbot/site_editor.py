@@ -103,6 +103,13 @@ class ApplyRequest(BaseModel):
     boxes: site_placement.BoxesRequest | None = None
 
 
+class ServeRequest(BaseModel):
+    # A calibration id, tag or path, resolved under the site
+    spec: str
+    # Also at the next start: written to the controller's config
+    persist: bool = False
+
+
 class RestoreRequest(BaseModel):
     version: str
     revision: str
@@ -226,10 +233,12 @@ def create_app(
     on_done: Callable[[], None] | None = None,
     on_saved: Callable[[], None] | None = None,
     context: Callable[[], dict] | None = None,
+    serve: Callable[[str, bool], dict] | None = None,
 ) -> FastAPI:
     """The editor's app for `state`; `on_done` runs when the page says Done,
     `on_saved` after a save wrote the file, `context` says who opened it
-    (`GET api/context`). Without `page_dir` it serves the JSON routes only."""
+    (`GET api/context`), `serve(spec, persist)` switches the calibration a
+    controller serves. Without `page_dir` it serves the JSON routes only."""
     app = FastAPI(title="DotBot site editor", docs_url=None, redoc_url=None)
     app.add_middleware(LocalOnly)
 
@@ -427,6 +436,20 @@ def create_app(
             "site": state.name,
             "path": str(state.path),
         }
+
+    @app.put("/api/served")
+    def put_served(request: ServeRequest):
+        if serve is None:
+            raise HTTPException(
+                405, "no controller opened this editor, so nothing is served here"
+            )
+        from dotbot.cli._config_write import WriteError
+
+        try:
+            served = serve(request.spec, request.persist)
+        except (ValueError, OSError, WriteError) as exc:
+            raise HTTPException(422, str(exc)) from exc
+        return {**served, "site": state.name, "path": str(state.path)}
 
     def served_id() -> str | None:
         served = opened_by().get("served")

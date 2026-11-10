@@ -229,3 +229,64 @@ def test_the_context_names_the_served_calibration_and_its_source():
     assert body["served"]["id"] == cal.id
     assert body["served"]["source"] == "the command line"
     assert body["next_start"] == {"spec": "a1b41f12", "source": "dotbot.local.toml"}
+
+
+@pytest_asyncio.fixture
+async def served(scenario, tmp_path, monkeypatch):
+    from dotbot.calibration import conics, lighthouse2
+    from dotbot.site import Site
+    from dotbot.tests import lh2_multi_fixture as F
+    from dotbot.tests.test_calibration_multi_station import floor_grid, two_stations
+
+    monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path / "home")
+    a, b = two_stations()
+    samples = F.samples(F.spins([a, b], floor_grid([a, b]), noise=0.5, seed=5))
+    import dataclasses
+
+    cal, _, _ = conics.solve_calibration(samples, Site(name="lab"))
+    # Placed in the lab's frame: the anchor is outside the id
+    cal = dataclasses.replace(cal, site=Site(name="lab", anchor="the door corner"))
+    lighthouse2.write_calibration(cal)
+    return (*scenario, cal)
+
+
+@pytest.mark.asyncio
+async def test_serve_switches_the_controller_for_this_run_only(served):
+    s, local, _, cal = served
+    response = await local.put(
+        "/controller/site-editor/api/served", json={"spec": cal.id8}
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["served"]["id"] == cal.id
+    assert body["served"]["source"] == "the site editor, for this run"
+    assert (await local.get("/controller/site")).json()["calibration"]["id"] == cal.id
+    assert s.controller.settings.lh2_calibration_next is None
+
+
+@pytest.mark.asyncio
+async def test_serve_at_the_next_start_writes_the_config(served, tmp_path):
+    s, local, _, cal = served
+    config = tmp_path / "dotbot.local.toml"
+    s.controller.settings.lh2_calibration_persist_path = str(config)
+    response = await local.put(
+        "/controller/site-editor/api/served", json={"spec": cal.id8, "persist": True}
+    )
+    assert response.status_code == 200, response.text
+    assert f'lh2_calibration = "{cal.id8}"' in config.read_text()
+    assert response.json()["next_start"]["spec"] == cal.id8
+
+
+@pytest.mark.asyncio
+async def test_serve_refuses_an_unknown_id_and_a_remote_peer(served):
+    s, local, _, cal = served
+    unknown = await local.put("/controller/site-editor/api/served", json={"spec": "deadbeef"})
+    assert unknown.status_code == 422
+    remote = httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=api, client=("192.168.1.30", 5000)),
+        base_url="http://192.168.1.10",
+    )
+    refused = await remote.put("/controller/site-editor/api/served", json={"spec": cal.id8})
+    await remote.aclose()
+    assert refused.status_code == 403
+    assert s.controller.calibration is None or s.controller.calibration.id != cal.id
