@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 340" width="860" height="340" role="img" aria-labelledby="t d">
+<title id="t">Wiring a DotBot v3 for flashing</title>
+<desc id="d">Top view of a DotBot v3. A power supply connects to the barrel jack (J4)
+and a computer connects to the USB-C port (J2), both on the right edge of the
+board. The ON/OFF switch (SW3) on the left wing is set to ON. A dimmed, dashed
+nRF DK wired to the programmer's SWD header (J3) is used for recovery only.</desc>
+<style>
+  .card    { fill: #ffffff; stroke: #d0d7de; stroke-width: 1; }
+  .txt     { fill: #1f2328; font: 14px -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
+  .bold    { font-weight: 600; }
+  .muted   { fill: #57606a; font-size: 13px; }
+  .box     { fill: #f6f8fa; stroke: #57606a; stroke-width: 1.2; }
+  .pcb     { fill: #ddebe2; stroke: #2f6b52; stroke-width: 0.8; stroke-linejoin: round; }
+  .tyre    { fill: #363c41; stroke: #1e2327; stroke-width: 0.6; }
+  .ball    { fill: #c9d1d9; stroke: #4c5763; stroke-width: 0.8; }
+  .sensor-dot { fill: #1f6feb; stroke: #ffffff; stroke-width: 0.5; }
+  .port    { fill: #24292f; }
+  .sw-body { fill: #ffffff; stroke: #24292f; stroke-width: 0.5; }
+  .sw-knob { fill: #1a7f37; }
+  .usb     { stroke: #0969da; stroke-width: 3; fill: none; stroke-linejoin: round; stroke-linecap: round; }
+  .usb-t   { fill: #0969da; }
+  .pwr     { stroke: #bf8700; stroke-width: 3; fill: none; stroke-linejoin: round; stroke-linecap: round; }
+  .pwr-t   { fill: #9a6700; }
+  .rec     { stroke: #8c959f; stroke-width: 2; stroke-dasharray: 6 4; fill: none; stroke-linejoin: round; }
+  .rec-box { fill: none; stroke: #8c959f; stroke-width: 1.2; stroke-dasharray: 6 4; }
+  .rec-t   { fill: #6e7781; }
+  .on      { fill: #1a7f37; }
+  .leader  { stroke: #57606a; stroke-width: 1; fill: none; }
+  @media (prefers-color-scheme: dark) {
+    .card    { fill: #1c2128; stroke: #444c56; }
+    .txt     { fill: #e6edf3; }
+    .muted   { fill: #9da7b3; }
+    .box     { fill: #22272e; stroke: #9da7b3; }
+    .pcb     { fill: #24392d; stroke: #57ab7f; }
+    .tyre    { fill: #545d68; stroke: #768390; }
+    .ball    { fill: #768390; stroke: #adbac7; }
+    .sensor-dot { fill: #539bf5; stroke: #1c2128; }
+    .port    { fill: #cdd9e5; }
+    .sw-body { fill: #1c2128; stroke: #cdd9e5; }
+    .sw-knob { fill: #57ab5a; }
+    .usb     { stroke: #539bf5; }
+    .usb-t   { fill: #6cb6ff; }
+    .pwr     { stroke: #daaa3f; }
+    .pwr-t   { fill: #daaa3f; }
+    .rec     { stroke: #636e7b; }
+    .rec-box { stroke: #636e7b; }
+    .rec-t   { fill: #8b949e; }
+    .on      { fill: #57ab5a; }
+    .leader  { stroke: #9da7b3; }
+  }
+</style>
+
+<rect class="card" x="0.5" y="0.5" width="859" height="339" rx="10"/>
+
+<!-- Robot: board-mm geometry from the DotBot v3 plan-view glyph, x 28..122, y 52.5..147.5 mm -->
+<g id="dotbot" transform="translate(142.2 -86.5) scale(2.6)">
+  <path class="pcb" d="M 118.000 60.500 L 122.000 60.500 L 122.000 98.500 L 103.500 98.500 L 103.500 147.500 L 46.500 147.500 L 46.500 98.500 L 28.000 98.500 L 28.000 60.500 L 32.000 60.500 A 1.000 1.000 0 0 0 33.000 59.500 L 33.000 52.500 L 117.000 52.500 L 117.000 59.500 A 1.000 1.000 0 0 0 118.000 60.500 Z"/>
+  <rect class="tyre" x="28.00" y="104.50" width="17.50" height="40.00" rx="4.2"/>
+  <rect class="tyre" x="104.50" y="104.50" width="17.50" height="40.00" rx="4.2"/>
+  <circle class="ball" cx="75" cy="59" r="4.0"/>
+  <circle class="sensor-dot" cx="75" cy="71" r="2.2"/>
+  <!-- SW3, slider up = ON -->
+  <rect class="sw-body" x="35.25" y="61.45" width="3.5" height="9.1" rx="0.6"/>
+  <rect class="sw-knob" x="35.85" y="62.05" width="2.3" height="3.9" rx="0.4"/>
+  <!-- J4 barrel jack and J2 USB-C on the right edge -->
+  <rect class="port" x="113" y="68.5" width="9.5" height="8" rx="1"/>
+  <rect class="port" x="116.5" y="87.5" width="7" height="8" rx="2"/>
+  <!-- J3 programmer SWD header -->
+  <g class="port">
+    <circle cx="110.74" cy="85" r="0.9"/><circle cx="113.28" cy="85" r="0.9"/>
+    <circle cx="115.82" cy="85" r="0.9"/><circle cx="118.36" cy="85" r="0.9"/>
+    <circle cx="120.9" cy="85" r="0.9"/>
+  </g>
+</g>
+<text class="txt bold" x="337" y="322" text-anchor="middle">DotBot v3 (top view)</text>
+
+<!-- Switch callout -->
+<text class="txt bold" x="20" y="74">ON/OFF switch (SW3)</text>
+<text class="txt on bold" x="20" y="92">Set to ON</text>
+<text class="txt muted" x="20" y="112">OFF discharges</text>
+<text class="txt muted" x="20" y="129">the supercap</text>
+<path class="leader" d="M 178 88 L 231 88"/>
+<circle class="leader" cx="231" cy="88" r="2"/>
+
+<!-- Power: barrel jack J4 -> power supply -->
+<path class="pwr" d="M 470 102 L 540 102 L 540 60 L 690 60"/>
+<text class="txt pwr-t bold" x="554" y="51">barrel jack (J4)</text>
+<rect class="box" x="690" y="32" width="155" height="56" rx="6"/>
+<text class="txt bold" x="767.5" y="56" text-anchor="middle">Power supply</text>
+<text class="txt muted" x="767.5" y="74" text-anchor="middle">6-18 V DC</text>
+
+<!-- Recovery only: SWD header J3 -> nRF DK -->
+<path class="rec" d="M 457 134.5 L 690 134.5"/>
+<text class="txt rec-t" x="556" y="126">SWD header (J3)</text>
+<rect class="rec-box" x="690" y="107" width="155" height="56" rx="6"/>
+<text class="txt rec-t bold" x="767.5" y="131" text-anchor="middle">nRF DK</text>
+<text class="txt rec-t" x="767.5" y="149" text-anchor="middle">recovery only</text>
+
+<!-- Data: USB-C J2 -> computer -->
+<path class="usb" d="M 467 151.4 L 560 151.4 L 560 220 L 690 220"/>
+<text class="txt usb-t bold" x="572" y="211">USB-C (J2)</text>
+<rect class="box" x="690" y="192" width="155" height="56" rx="6"/>
+<text class="txt bold" x="767.5" y="216" text-anchor="middle">Computer</text>
+<text class="txt muted" x="767.5" y="234" text-anchor="middle">dotbot device flash</text>
+</svg>
