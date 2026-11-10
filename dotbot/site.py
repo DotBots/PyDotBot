@@ -15,6 +15,7 @@ a real site is measured, never shipped.
 
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -40,6 +41,12 @@ STAGING_DEPTH_MM = 600
 
 
 Point = tuple[int, int]
+
+
+def derived_frame_id(name: str, anchor: str) -> str:
+    """The frame id of a site that does not record one: 8 hex digits of its
+    name and anchor."""
+    return hashlib.sha256(f"{name}\n{anchor}".encode("utf-8")).hexdigest()[:8]
 
 
 @dataclass(frozen=True)

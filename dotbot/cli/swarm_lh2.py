@@ -960,6 +960,9 @@ def _show(ctx, calibration, site_name, next_robots):
         next_round,
         next_round_lines,
     )
+    import numpy as np
+
+    from dotbot.calibration.provenance import fix_lines, provenance_lines
 
     site, _ = site_from_context(ctx, site_name)
     try:
@@ -968,6 +971,12 @@ def _show(ctx, calibration, site_name, next_robots):
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
     rounds = sorted({t.round for t in loaded.tracks})
+    try:
+        error_map = error_map_from_calibration(loaded)
+    except (ValueError, np.linalg.LinAlgError):
+        error_map = None
+    for line in provenance_lines(loaded, site, error_map):
+        click.echo(line)
     click.echo(f"Calibration {loaded.id}, site {loaded.site.name}, {path}")
     click.echo(
         f"Created {loaded.created_at or 'at an unknown time'}"
@@ -979,7 +988,7 @@ def _show(ctx, calibration, site_name, next_robots):
         )
         + f", fence {list(loaded.valid_mm)}"
     )
-    for line in multi_station_report(loaded):
+    for line in multi_station_report(loaded) + fix_lines(loaded):
         click.echo(line)
     if next_robots:
         try:
@@ -988,7 +997,6 @@ def _show(ctx, calibration, site_name, next_robots):
             raise click.ClickException(
                 f"--next-round plans a round for collect --spin --append: {exc}"
             ) from exc
-        error_map = error_map_from_calibration(loaded)
         if error_map is None:
             raise click.ClickException(
                 f"{loaded.id8} is not a spin calibration, so it has no error map "

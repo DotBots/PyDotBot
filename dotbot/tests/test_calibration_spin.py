@@ -1058,6 +1058,8 @@ def test_show_prints_the_stations_links_and_error_map(monkeypatch, lab):
     assert "station 1 (channel 2): " in shown.output
     assert "station 0 (channel 1) - station 1 (channel 2):" in shown.output
     assert "predicted error (100 mm cells), station kept: worst" in shown.output
+    assert shown.output.startswith("provenance:\n  site ")
+    assert "who gives the fix: " in shown.output
 
 
 def test_show_prints_a_corner_calibration_without_an_error_map(lab, tmp_path):
