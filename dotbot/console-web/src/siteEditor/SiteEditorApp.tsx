@@ -422,12 +422,13 @@ export const SiteEditorApp: React.FC = () => {
     setKind(beforePresent);
   };
   useEffect(() => {
-    if (!present) return;
+    if (!present && !restoring) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       e.preventDefault();
       e.stopImmediatePropagation();
-      stopPresent();
+      if (restoring) setRestoring(null);
+      else stopPresent();
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
@@ -483,11 +484,13 @@ export const SiteEditorApp: React.FC = () => {
     }
   }, []);
   useEffect(() => {
-    if (tool === "turn" && !moves(frameMove) && draft?.doc.extent_mm) {
-      const [w, h] = draft.doc.extent_mm;
-      setFrameMove((m) => ({ ...m, pivot: [Math.round(w / 2), Math.round(h / 2)] }));
-    }
-  }, [tool]);
+    const [w, h] = draft?.doc.extent_mm ?? [0, 0];
+    setFrameMove(tool === "turn" && w ? { ...NO_MOVE, pivot: [Math.round(w / 2), Math.round(h / 2)] } : NO_MOVE);
+  }, [tool, kind]);
+  // A verification takes the right pane: the frame tool and its ghost go
+  useEffect(() => {
+    if (checking) setTool("select");
+  }, [checking]);
   // The frame tools draw in the inspector, so a sheet open there gives way
   useEffect(() => {
     if (kind !== "frame" || (tool !== "turn" && tool !== "capture")) return;
@@ -992,7 +995,7 @@ export const SiteEditorApp: React.FC = () => {
   return (
     <div className={`se${narrow ? " narrow" : ""}${present ? " present" : ""}`} data-theme={theme}>
       <TitleBar gap={10}>
-        <span style={{ fontWeight: 600, fontSize: 13, flex: "none" }}>Site editor</span>
+        <span className="selbl" style={{ fontWeight: 600, fontSize: 13, flex: "none" }}>Site editor</span>
         <span className="sitesw" title={payload?.path}>
           {context?.site ?? payload?.name ?? ""}
         </span>

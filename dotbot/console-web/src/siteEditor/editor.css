@@ -98,6 +98,15 @@ body {
   font: 600 13px var(--font-mono);
   flex: none;
 }
+.se [data-testid="title-bar"] {
+  overflow: hidden;
+}
+@media (max-width: 640px) {
+  .se .sitesw,
+  .se .selbl {
+    display: none;
+  }
+}
 /* The status line: what is in use and what the robots have, in the title bar */
 .se .sline {
   display: flex;

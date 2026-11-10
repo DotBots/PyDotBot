@@ -257,6 +257,22 @@ describe("capturing zero", () => {
   });
 });
 
+describe("the frame tools", () => {
+  it("drops the turn's ghost when the tool changes", async () => {
+    stubFetch({ "api/frame": () => new Response(JSON.stringify({ frame: "f2", from_frame: "f1", calibration: { id: "x", id8: "x", tag: "" }, source: "", warnings: [], push: "", steps: [] }), { status: 200 }) });
+    render(<SiteEditorApp />);
+    await waitFor(() => expect(screen.getByTestId("plan")).toBeTruthy());
+    keyDown("1");
+    keyDown("t");
+    const turn = screen.getByLabelText("turn");
+    fireEvent.change(turn, { target: { value: "5" } });
+    fireEvent.keyDown(turn, { key: "Enter" });
+    await waitFor(() => expect(screen.getByTestId("frame-ghost")).toBeTruthy());
+    keyDown("c");
+    await waitFor(() => expect(screen.queryByTestId("frame-ghost")).toBeNull());
+  });
+});
+
 describe("the collapse order", () => {
   it("folds the left pane into a rail below 1100 px and the right one below 980 px", async () => {
     stubFetch();

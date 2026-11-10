@@ -33,6 +33,16 @@ const Row: React.FC<{
   useEffect(() => {
     if (renaming !== null) input.current?.select();
   }, [renaming !== null]);
+  useEffect(() => {
+    if (!menu) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.stopImmediatePropagation();
+      setMenu(null);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [!!menu]);
   const item = (action: LibraryAction | "rename", icon: Parameters<typeof Icon>[0]["name"], text: string, disabled = false, title?: string) => (
     <button
       type="button"
