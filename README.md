@@ -210,6 +210,10 @@ calibration files are in the [LH2 calibration guide][lh2-doc].
   points at an experimental calibration from robots spinning in place.
 - **The controller + web UI** - drive and visualize a swarm from the browser:
   the [controller guide][controller-doc].
+- **Set up a room** - its floor, areas, which calibration is served, who gives
+  each robot its fix and whether it is ready to run, in the browser: the
+  [site editor guide][site-editor-doc] (`dotbot site edit`, or **Edit site**
+  in the console).
 - **Build firmware from source** instead of `dotbot fw fetch` - needs
   [SEGGER Embedded Studio](https://www.segger.com/products/development-tools/embedded-studio/)
   and a clone of the source:
@@ -257,4 +261,5 @@ See `LICENSE` in each component repository.
 [controller-doc]: https://pydotbot.readthedocs.io/en/latest/guides/controller.html
 [one-bot-doc]: https://pydotbot.readthedocs.io/en/latest/guides/one-bot.html
 [lh2-doc]: https://pydotbot.readthedocs.io/en/latest/guides/lh2-calibration.html
+[site-editor-doc]: https://pydotbot.readthedocs.io/en/latest/guides/site-editor.html
 [troubleshooting-doc]: https://pydotbot.readthedocs.io/en/latest/reference/troubleshooting.html
