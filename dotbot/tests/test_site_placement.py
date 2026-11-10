@@ -223,3 +223,50 @@ def test_boxes_checked_against_an_older_site_toml_are_a_409(client, placed, home
     )
     assert response.status_code == 409
     assert len(list((home / "arena").glob("*.toml"))) == 1
+
+
+def test_the_site_library_groups_box_layouts_by_spin(client, spun, placed):
+    boxed = client.post(
+        f"/api/calibrations/{placed.id}/boxes",
+        json={"stations": {"0": [0, 0, 1000, 2000]}},
+    ).json()
+    library = client.get("/api/calibrations?scope=site").json()
+    assert library["site"] == "arena" and library["served"] is None
+    # The spin of site "lab" lives in another site's folder, so it is not here
+    assert library["count"] == 2 and library["not_placed"] == []
+    (group,) = library["groups"]
+    assert {r["id"] for r in group["rows"]} == {placed.id, boxed["id"]}
+    row = next(r for r in group["rows"] if r["id"] == boxed["id"])
+    assert row["in_frame"] is True and row["served"] is False
+    assert row["reading"] == "S0 x 0-1000, y 0-2000"
+    assert row["stations"][0]["box"] == [0, 0, 1000, 2000]
+
+
+def test_an_unknown_library_scope_is_refused(client):
+    assert client.get("/api/calibrations?scope=fleet").status_code == 422
+
+
+def test_a_dry_run_names_the_id_and_writes_nothing(client, placed, home):
+    before = sorted((home / "arena").iterdir())
+    body = client.post(
+        f"/api/calibrations/{placed.id}/boxes?dry_run=1",
+        json={"stations": {"0": [0, 0, 1000, 2000]}},
+    ).json()
+    assert body["written"] is False and body["existing"] is None
+    assert sorted((home / "arena").iterdir()) == before
+    saved = client.post(
+        f"/api/calibrations/{placed.id}/boxes",
+        json={"stations": {"0": [0, 0, 1000, 2000]}},
+    ).json()
+    assert saved["id"] == body["id"]
+    again = client.post(
+        f"/api/calibrations/{placed.id}/boxes?dry_run=1",
+        json={"stations": {"0": [0, 0, 1000, 2000]}},
+    ).json()
+    assert again["existing"]["id"] == saved["id"]
+
+
+def test_a_standalone_editor_has_no_served_calibration(client):
+    body = client.get("/api/context").json()
+    assert body["mode"] == "standalone" and body["served"] is None
+    assert body["site"] == "arena"

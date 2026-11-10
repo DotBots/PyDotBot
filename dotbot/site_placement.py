@@ -18,8 +18,8 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from dotbot import site_toml
-from dotbot.calibration import lighthouse2, site_turn
+from dotbot import site_library, site_toml
+from dotbot.calibration import lighthouse2, site_turn, station_rule
 from dotbot.calibration.placement import (
     FREE_SOLVERS,
     PlacementRefused,
@@ -114,9 +114,11 @@ def create_router(
     pack: Path,
     site_text: Callable[[], str],
     write_site: Callable[[str, str], None] | None = None,
+    served_id: Callable[[], str | None] | None = None,
 ) -> APIRouter:
     """Routes for the site `name` in `pack`; `site_text` reads its site.toml,
-    `write_site(revision, text)` writes it over that revision."""
+    `write_site(revision, text)` writes it over that revision, `served_id`
+    names the calibration a controller serves."""
     router = APIRouter()
 
     def resolve(spec: str) -> lighthouse2.Calibration:
@@ -141,7 +143,13 @@ def create_router(
         return site_from_table(name, table, pack)
 
     @router.get("/api/calibrations")
-    def calibrations():
+    def calibrations(scope: str | None = None):
+        if scope == "site":
+            folders = [pack / PACK_CALIBRATIONS, lighthouse2.calibration_root() / name]
+            served = served_id() if served_id is not None else None
+            return site_library.library(folders, current_site(), served)
+        if scope is not None:
+            raise HTTPException(422, f"unknown scope {scope!r}; the one known is 'site'")
         try:
             site = current_site()
         except HTTPException:
@@ -207,7 +215,7 @@ def create_router(
         }
 
     @router.post("/api/calibrations/{spec}/boxes")
-    def boxes(spec: str, request: BoxesRequest):
+    def boxes(spec: str, request: BoxesRequest, dry_run: bool = False):
         source = resolve(spec)
         text = site_text()
         if (
@@ -226,6 +234,29 @@ def create_router(
                 tag=request.tag,
                 taken_tags=site_tags(site.name, _files(pack)),
             )
+            if dry_run:
+                same = next(
+                    (
+                        m
+                        for m in map(_metadata, _files(pack))
+                        if m and m["id"] == boxed.id
+                    ),
+                    None,
+                )
+                return {
+                    "id": boxed.id,
+                    "id8": boxed.id8,
+                    "source": source.id8,
+                    "written": False,
+                    "existing": (
+                        None
+                        if same is None
+                        else {k: same[k] for k in ("id", "id8", "tag", "path")}
+                    ),
+                    "reading": station_rule.reading(
+                        {st.index: st.valid_mm for st in boxed.stations}
+                    ),
+                }
             boxed, path = save_new(boxed)
         except BoxesRefused as exc:
             raise HTTPException(422, str(exc)) from exc
