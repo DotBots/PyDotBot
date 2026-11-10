@@ -141,6 +141,8 @@ interface PlanCanvasProps {
   onShortcuts?: () => void;
   /** Bumped by the page to fit the floor again. */
   fitSignal?: number;
+  /** False hides the zoom, fit, scale and shortcuts, as for a projector. */
+  chrome?: boolean;
 }
 
 const MIN_AREA_MM = 20;
@@ -872,12 +874,14 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
         </div>
       </div>
       {props.children}
-      {outlines.length > 0 && (
+      {props.chrome !== false && outlines.length > 0 && (
         <div className="float chipc" data-testid="coincident-chip" title="These rectangles are the same, so they are drawn as one outline">
           <Icon name="rect" size={13} />
           One rectangle: {outlines[0].join(" = ")}
         </div>
       )}
+      {props.chrome !== false && (
+      <>
       <div className="float zoom" onPointerDown={(e) => e.stopPropagation()}>
         <button type="button" className="zb" title="Zoom out" aria-label="Zoom out" onClick={() => zoomBy(-1)}>
           −
@@ -921,6 +925,8 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
         <button type="button" className="float shortbtn" onClick={props.onShortcuts} title="Every key of this page (?)">
           <span className="k2">?</span> shortcuts
         </button>
+      )}
+      </>
       )}
     </div>
   );

@@ -192,6 +192,7 @@ describe("the editor shell", () => {
     const first = render(<SiteEditorApp />);
     await waitFor(() => expect(screen.getByTestId("area-field")).toBeTruthy());
     // Rename the field from the inspector
+    fireEvent.click(screen.getByRole("tab", { name: "Outline" }));
     fireEvent.click(screen.getByTestId("outline-area:field"));
     const name = screen.getByLabelText("Name");
     fireEvent.change(name, { target: { value: "arena" } });
@@ -213,6 +214,7 @@ describe("the editor shell", () => {
     });
     render(<SiteEditorApp />);
     await waitFor(() => expect(screen.getByTestId("area-field")).toBeTruthy());
+    fireEvent.click(screen.getByRole("tab", { name: "Outline" }));
     fireEvent.click(screen.getByTestId("outline-area:field"));
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "arena" } });
     fireEvent.keyDown(screen.getByLabelText("Name"), { key: "Enter" });
@@ -238,6 +240,7 @@ describe("the editor shell", () => {
     });
     render(<SiteEditorApp />);
     await waitFor(() => expect(screen.getByTestId("area-field")).toBeTruthy());
+    fireEvent.click(screen.getByRole("tab", { name: "Outline" }));
     fireEvent.click(screen.getByTestId("outline-area:field"));
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "arena" } });
     fireEvent.keyDown(screen.getByLabelText("Name"), { key: "Enter" });

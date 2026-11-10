@@ -10,7 +10,23 @@ import { Tabs } from "../shared/Tabs";
 import { TitleBar } from "../shared/TitleBar";
 import { holds, typingIn } from "../shortcuts";
 import type { Site, UnifiedBot } from "../types";
-import { dryRunBoxes, fetchContext, fetchCoverage, fetchLibrary, fetchRevision, fetchSite, patchCalibration, type DryRun, type FrameResult } from "./api";
+import {
+  dryRunBoxes,
+  fetchChecks,
+  fetchContext,
+  fetchCoverage,
+  fetchLibrary,
+  fetchRevision,
+  fetchSite,
+  patchCalibration,
+  restorePoint,
+  type DryRun,
+  type FrameResult,
+  type RestorePoint,
+} from "./api";
+import { CheckMarkPanel } from "./CheckMarkPanel";
+import { goals as goalsOf, verdict as verdictOf, type CheckRecord, type GoalAction } from "./checks";
+import { ChecksPane } from "./ChecksPane";
 import { CompareSheet } from "./CompareSheet";
 import { FramePanel } from "./FramePanel";
 import { FrameSheet } from "./FrameSheet";
@@ -109,7 +125,7 @@ function useWidth(): number {
 const KINDS: EditKind[] = ["frame", "areas", "walls", "objects", "stations"];
 const KIND_ICON: Record<EditKind, IconName> = { view: "view", frame: "frame", areas: "areas", walls: "walls", objects: "objects", stations: "stations" };
 
-type LeftTab = "outline" | "library";
+type LeftTab = "checks" | "outline" | "library";
 type RightTab = "inspect" | "layers";
 type View = "plan" | "table" | "file";
 
@@ -198,7 +214,7 @@ export const SiteEditorApp: React.FC = () => {
   const [tool, setTool] = useState<Tool>("select");
   const [selected, setSelected] = useState<string[]>([]);
   const [edge, setEdge] = useState<{ key: string; handle: Handle } | null>(null);
-  const [leftTab, setLeftTab] = useState<LeftTab>("outline");
+  const [leftTab, setLeftTab] = useState<LeftTab>("checks");
   const [rightTab, setRightTab] = useState<RightTab>("inspect");
   const [leftFolded, setLeftFolded] = useState(false);
   const [rightFolded, setRightFolded] = useState(false);
@@ -227,6 +243,12 @@ export const SiteEditorApp: React.FC = () => {
   const [toast, setToast] = useState<{ text: string; push?: string; undo?: () => void } | null>(null);
   const [frameMove, setFrameMove] = useState<FrameMove>(NO_MOVE);
   const [frameReview, setFrameReview] = useState<FrameResult | null>(null);
+  const [servedCoverage, setServedCoverage] = useState<Coverage | null>(null);
+  const [checks, setChecks] = useState<CheckRecord[]>([]);
+  const [checking, setChecking] = useState<string | true | null>(null);
+  const [present, setPresent] = useState(false);
+  const [restoring, setRestoring] = useState<RestorePoint | null>(null);
+  const [checksRefresh, setChecksRefresh] = useState(0);
   useEffect(() => {
     if (!toast) return;
     const t = window.setTimeout(() => setToast(null), 9000);
@@ -261,6 +283,7 @@ export const SiteEditorApp: React.FC = () => {
     fetchContext().then(setContext, (e: Error) => setError(e.message));
     fetchSite().then(load, (e: Error) => setError(e.message.replace(/^\d+: /, "")));
     loadLibrary();
+    fetchChecks().then((c) => setChecks(Array.isArray(c?.checks) ? c.checks : []), () => {});
   }, [load, loadLibrary]);
 
   useEffect(() => {
@@ -334,6 +357,20 @@ export const SiteEditorApp: React.FC = () => {
   const frameChange = context?.frame_change && servedId === context.frame_change.to_id ? context.frame_change : null;
   const frameHeld = frameChange ? bots.filter((b) => heldCalibrationId(b).toLowerCase() === frameChange.to_id.toLowerCase()).length : 0;
   const frameOpen = !!frameChange && (bots.length === 0 || frameHeld < bots.length);
+  const editable = context?.can_write !== false;
+  const servedRowNow = rows.find((r) => r.id === servedId) ?? null;
+  useEffect(() => {
+    setServedCoverage(null);
+    if (!servedRowNow?.in_frame) return;
+    let live = true;
+    fetchCoverage(servedRowNow.id, null).then(
+      (c) => live && setServedCoverage(c),
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, [servedRowNow?.id, servedRowNow?.in_frame]);
   const chip: ChipModel = boxDraft
     ? { ...baseChip, side: { kind: "draft", from: boxDraft.from.slice(0, 8) } }
     : frameOpen && !previewId
@@ -343,6 +380,68 @@ export const SiteEditorApp: React.FC = () => {
   const circles = !previewId && fleetSite?.calibration?.id === servedId ? (fleetSite?.calibration?.circles ?? []) : [];
   const live = context?.mode === "controller";
   const problems = useMemo(() => (draft ? rulesOf(draft.doc) : []), [draft?.doc]);
+  const goalList = draft
+    ? goalsOf({
+        doc: draft.doc,
+        served: servedRowNow,
+        servedId,
+        rows,
+        coverage: servedCoverage,
+        robots: bots,
+        live,
+        problems,
+        checks,
+        frameChangeOpen: frameOpen,
+      })
+    : [];
+  const verdict = verdictOf(goalList);
+  const [beforePresent, setBeforePresent] = useState<EditKind>("view");
+  const startPresent = () => {
+    setBeforePresent(kind);
+    if (servedRowNow && servedRowNow.stations.length > 1) {
+      setKind("stations");
+      setCoverageMode("fix");
+    } else setKind("view");
+    setTool("select");
+    setSelected([]);
+    setMenu(false);
+    setPresent(true);
+  };
+  const stopPresent = () => {
+    setPresent(false);
+    setKind(beforePresent);
+  };
+  useEffect(() => {
+    if (!present) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      stopPresent();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  });
+  const goalAction = (a: GoalAction) => {
+    const go = a.go;
+    if (go.tab) {
+      setLeftTab(go.tab);
+      return;
+    }
+    if (go.sheet === "check") {
+      setChecking(true);
+      setRightTab("inspect");
+      if (rightAsRail) setDrawer("right");
+      return;
+    }
+    if (go.kind) {
+      setKind(go.kind);
+      setTool((go.tool as Tool) ?? "select");
+    }
+    if (go.select) setSelected([go.select]);
+    if (go.sheet === "split") setCoverageMode("fix");
+    setRightTab("inspect");
+  };
   const blocking = problems.filter((p) => p.blocking);
 
   const onEdit = useCallback((doc: Doc) => setDraft((d) => (d ? step(d, { doc }) : d)), []);
@@ -474,6 +573,7 @@ export const SiteEditorApp: React.FC = () => {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const ctrl = holds(e, "ctrl");
+      if (!editable && (ctrl || e.key.startsWith("Arrow") || e.key === "Delete" || e.key === "Backspace")) return;
       if (ctrl && e.key.toLowerCase() === "s" && !reviewing) {
         e.preventDefault();
         // A field being typed in applies on leaving it, before the review reads the draft
@@ -597,6 +697,7 @@ export const SiteEditorApp: React.FC = () => {
           value={leftTab}
           onChange={setLeftTab}
           options={[
+            { value: "checks", text: `Checks${verdict.state === "not-ready" ? " !" : ""}` },
             { value: "outline", text: "Outline" },
             { value: "library", text: `Calibrations${library ? ` ${library.count}` : ""}` },
           ]}
@@ -606,7 +707,25 @@ export const SiteEditorApp: React.FC = () => {
         </button>
       </div>
       <div className="pane-body">
-        {leftTab === "outline" ? (
+        {leftTab === "checks" ? (
+          <ChecksPane
+            goals={goalList}
+            verdict={verdict}
+            problems={problems}
+            editable={editable}
+            live={live}
+            refresh={checksRefresh}
+            onAction={goalAction}
+            onPresent={() => startPresent()}
+            onRestore={setRestoring}
+            onShowProblem={(key) => {
+              setView("plan");
+              select([key]);
+              setRightTab("inspect");
+            }}
+            onToast={(text) => setToast({ text })}
+          />
+        ) : leftTab === "outline" ? (
           <OutlinePane
             doc={draft.doc}
             kind={kind}
@@ -676,7 +795,19 @@ export const SiteEditorApp: React.FC = () => {
         </button>
       </div>
       <div className="pane-body">
-        {rightTab === "inspect" && kind === "frame" && (tool === "turn" || tool === "capture") ? (
+        {rightTab === "inspect" && checking && servedId ? (
+          <CheckMarkPanel
+            bots={bots}
+            robotId={typeof checking === "string" ? checking : null}
+            calibrationId={servedId}
+            coverage={servedCoverage}
+            onClose={() => setChecking(null)}
+            onRecorded={(c) => {
+              setChecks((cs) => [...cs, c]);
+              setChecksRefresh((n) => n + 1);
+            }}
+          />
+        ) : rightTab === "inspect" && kind === "frame" && (tool === "turn" || tool === "capture") ? (
           <FramePanel
             mode={tool === "capture" ? "capture" : "turn"}
             move={frameMove}
@@ -705,7 +836,7 @@ export const SiteEditorApp: React.FC = () => {
             extent={draft.doc.extent_mm ?? [1000, 1000]}
             rows={rows}
             selectedBox={selected.length === 1 && selected[0].startsWith("box:") ? Number(selected[0].slice(4)) : null}
-            editable
+            editable={editable}
             onBoxes={editBoxes}
             onSelectBox={(i) => setSelected(i === null ? [] : [`box:${i}`])}
             showNext={showNext}
@@ -717,7 +848,7 @@ export const SiteEditorApp: React.FC = () => {
             doc={draft.doc}
             selected={selected}
             kind={kind}
-            editable
+            editable={editable}
             boxes={boxes}
             shown={shown}
             servedCard={servedCard}
@@ -729,6 +860,7 @@ export const SiteEditorApp: React.FC = () => {
             onSelect={select}
             onBlink={live ? blink : undefined}
             frameId={payload?.frame_id}
+            onCheck={live && servedId ? (id) => setChecking(id) : undefined}
             onFrameTool={(t) => {
               setKind("frame");
               setTool(t);
@@ -759,7 +891,7 @@ export const SiteEditorApp: React.FC = () => {
   const leftProblems = blocking.length;
 
   return (
-    <div className={`se${narrow ? " narrow" : ""}`} data-theme={theme}>
+    <div className={`se${narrow ? " narrow" : ""}${present ? " present" : ""}`} data-theme={theme}>
       <TitleBar gap={10}>
         <span style={{ fontWeight: 600, fontSize: 13, flex: "none" }}>Site editor</span>
         <span className="sitesw" title={payload?.path}>
@@ -774,6 +906,8 @@ export const SiteEditorApp: React.FC = () => {
         )}
         <div className="sp" />
         <CalibrationChip chip={chip} compact={width < 1200} onClearSide={previewId ? () => setPreviewId(null) : undefined} />
+        {editable && (
+        <>
         <button type="button" className="btn icon ghost" title="Undo (Ctrl/Cmd Z)" aria-label="Undo" disabled={!draft?.past.length} onClick={() => setDraft((d) => (d ? undo(d) : d))}>
           <Icon name="undo" />
         </button>
@@ -787,6 +921,9 @@ export const SiteEditorApp: React.FC = () => {
             Changes {unsaved > 0 && <span className="chg-n">{unsaved}</span>}
           </button>
         )}
+        </>
+        )}
+        {editable && (
         <button
           type="button"
           data-testid="save"
@@ -797,6 +934,7 @@ export const SiteEditorApp: React.FC = () => {
         >
           Save{unsaved ? ` · ${unsaved}` : ""} {width >= 1200 && <span className="kbd">⌘S</span>}
         </button>
+        )}
         {live && <EditorFleet onBots={setBots} onSite={setFleetSite} compact={narrow} />}
         {width >= 1360 && (
           <Tabs<"dark" | "light">
@@ -828,6 +966,12 @@ export const SiteEditorApp: React.FC = () => {
                 <Icon name="view" /> {theme === "dark" ? "Light theme" : "Dark theme"}
               </button>
             )}
+            <button type="button" className="mi" role="menuitem" onClick={() => startPresent()}>
+              <Icon name="present" /> Present, for a projector
+            </button>
+            <button type="button" className="mi" role="menuitem" onClick={() => (setLeftTab("checks"), setMenu(false))}>
+              <Icon name="restore" /> Restore points and provenance
+            </button>
             <button type="button" className="mi" role="menuitem" onClick={() => (setView("file"), setMenu(false))}>
               <Icon name="file" /> site.toml as Save would write it
             </button>
@@ -861,11 +1005,21 @@ export const SiteEditorApp: React.FC = () => {
           )}
         </div>
       )}
+      {!editable && (
+        <div data-testid="view-only" role="status" style={{ padding: "6px 16px", fontSize: 12, borderBottom: "1px solid var(--hairline)", display: "flex", gap: 8, alignItems: "center", background: "color-mix(in srgb, var(--st-0) 9%, var(--surface))" }}>
+          <Icon name="lock" size={14} />
+          <span style={{ flex: 1 }}>
+            View only: this page was opened from another machine. Everything shows; editing, saving and serving work only on the controller's own machine, at 127.0.0.1. Stop
+            works here as in the console.
+          </span>
+        </div>
+      )}
       <div className="body">
         {leftAsRail ? (
           <Rail
             side="left"
             items={[
+              { key: "checks", icon: "checks", title: "Checks", on: drawer === "left" && leftTab === "checks" },
               { key: "outline", icon: "outline", title: "Outline", on: drawer === "left" && leftTab === "outline" },
               { key: "library", icon: "library", title: "Calibrations", on: drawer === "left" && leftTab === "library" },
             ]}
@@ -889,12 +1043,14 @@ export const SiteEditorApp: React.FC = () => {
                 tool={tool}
                 selected={selected}
                 edge={edge}
-                editable
+                editable={editable}
                 boxes={boxes}
                 circles={circles}
                 layers={layers}
                 robots={bots}
                 fitSignal={fitSignal}
+                labelScale={present ? 1.7 : 1}
+                chrome={!present}
                 onBoxEdit={shown?.in_frame ? (index, rect) => editBoxes({ [index]: rect }) : undefined}
                 underlay={kind === "stations" ? stationsUnderlay(coverageMode, coverage && coverage.id === shown?.id ? coverage : null, draft.doc.extent_mm ?? [1000, 1000], theme === "light", coverageStale) : undefined}
                 overlay={
@@ -998,7 +1154,7 @@ export const SiteEditorApp: React.FC = () => {
                 base={draft.base}
                 tab={tableTab}
                 selected={selected}
-                editable
+                editable={editable}
                 boxes={boxes}
                 shownId8={shown?.id8 ?? null}
                 robots={bots}
@@ -1013,13 +1169,26 @@ export const SiteEditorApp: React.FC = () => {
                 baseText={payload?.text ?? ""}
                 text={draft.text}
                 shownPath={payload?.shown_path ?? payload?.path ?? "site.toml"}
-                editable
+                editable={editable}
                 onText={(text, site) => setDraft((d) => (d ? step(d, { text, doc: docFromSite(site) }) : d))}
                 onDropText={() => setDraft((d) => (d ? step(d, { text: null }) : d))}
               />
             )
           ) : (
             <div style={{ margin: "auto", color: "var(--muted)", fontSize: 12 }}>{error ? "" : "Reading site.toml…"}</div>
+          )}
+          {present && (
+            <div className="float presbar" data-testid="presbar">
+              <span className="dot" style={{ width: 12, height: 12, background: verdict.state === "ready" ? "var(--ok)" : "var(--warn)" }} />
+              <b>{verdict.title}</b>
+              <span className="muted" style={{ fontSize: 15 }}>
+                {live ? `${bots.filter((b) => b.position).length} of ${bots.length} robots with a fix · ` : ""}serving {chip.id8 || "nothing"}
+              </span>
+              <span className="sp" style={{ flex: 1 }} />
+              <button type="button" className="btn" onClick={stopPresent}>
+                Exit <span className="kbd">Esc</span>
+              </button>
+            </div>
           )}
           <div className="float kinds" data-testid="editing-switch" role="tablist" aria-label="Editing">
             <button type="button" role="tab" aria-selected={kind === "view"} className={kind === "view" ? "on" : undefined} title="View: nothing editable (Esc)" onClick={() => pickKind("view")}>
@@ -1044,7 +1213,7 @@ export const SiteEditorApp: React.FC = () => {
               </button>
             ))}
           </div>
-          {view === "plan" && tools.length > 0 && (
+          {view === "plan" && tools.length > 0 && editable && (
             <div className="float rail" role="toolbar" aria-label="Tools" data-testid="tools">
               {tools.map(([key, t]) => (
                 <button key={t} type="button" aria-pressed={tool === t} className={tool === t ? "on" : undefined} title={`${TOOL_LABEL[t]} (${key})`} aria-label={TOOL_LABEL[t]} onClick={() => setTool(t)}>
@@ -1143,6 +1312,46 @@ export const SiteEditorApp: React.FC = () => {
             setFitSignal((n) => n + 1);
           }}
         />
+      )}
+      {restoring && draft && (
+        <>
+          <div className="scrim" onClick={() => setRestoring(null)} />
+          <div className="sheet" role="dialog" aria-modal="true" aria-label="Restore a point" data-testid="restore-sheet">
+            <h2>
+              <Icon name="restore" size={16} /> Restore "{restoring.name}"?
+            </h2>
+            <div className="sub">
+              site.toml goes back to how it was at {restoring.at.replace("T", " ").slice(0, 16)}
+              {live && restoring.served ? `, and this controller serves ${restoring.served.slice(0, 8)} again, this run only` : ""}. The current site.toml is kept in the history,
+              so this can be undone too. Robots keep what they hold.
+            </div>
+            <footer>
+              <span className="sp" style={{ flex: 1 }} />
+              <button type="button" className="btn" onClick={() => setRestoring(null)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn primary"
+                onClick={() =>
+                  restorePoint(restoring.id, draft.revision, live).then(
+                    (p) => {
+                      setRestoring(null);
+                      forget(storage(), p.name);
+                      load(p);
+                      fetchContext().then(setContext, () => {});
+                      loadLibrary();
+                      setToast({ text: `"${restoring.name}" restored: ${p.steps.map((x) => `${x.step} ${x.status}`).join(", ")}.` });
+                    },
+                    (e: Error) => setNotice({ tone: "err", text: `Not restored: ${e.message.replace(/^\d+: /, "")}` }),
+                  )
+                }
+              >
+                Restore
+              </button>
+            </footer>
+          </div>
+        </>
       )}
       {frameReview && servedId && draft && (
         <FrameSheet

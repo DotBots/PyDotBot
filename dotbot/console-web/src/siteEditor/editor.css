@@ -1795,3 +1795,199 @@ body {
 .se [data-compact] [role="status"]:not(:has([data-testid="testbed-confirm"])) {
   display: none;
 }
+
+/* the Checks home: the verdict and the goals */
+.se .verdict {
+  margin-top: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--hairline);
+  background: var(--canvas);
+  padding: 11px 12px;
+}
+.se .verdict .vh {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 13.5px;
+}
+.se .verdict .vh .big {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+.se .verdict.ok {
+  border-color: color-mix(in srgb, var(--ok) 40%, transparent);
+}
+.se .verdict.ok .big {
+  background: color-mix(in srgb, var(--ok) 18%, transparent);
+  color: var(--ok);
+}
+.se .verdict.part {
+  border-color: color-mix(in srgb, var(--ok) 32%, transparent);
+}
+.se .verdict.part .big {
+  background: color-mix(in srgb, var(--ok) 15%, transparent);
+  color: var(--ok);
+}
+.se .verdict.no {
+  border-color: color-mix(in srgb, var(--warn) 45%, transparent);
+}
+.se .verdict.no .big {
+  background: color-mix(in srgb, var(--warn) 18%, transparent);
+  color: var(--warn);
+}
+.se .verdict ul {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.se .verdict li {
+  display: flex;
+  gap: 7px;
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 4px;
+  align-items: flex-start;
+}
+.se .verdict li b {
+  color: var(--text);
+  font-weight: 500;
+}
+.se .goal {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  padding: 7px 6px;
+  border-radius: 7px;
+  position: relative;
+}
+.se .goal[role="button"] {
+  cursor: pointer;
+}
+.se .goal[role="button"]:hover {
+  background: var(--elevated);
+}
+.se .goal .st {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+}
+.se .goal .st.ok {
+  background: color-mix(in srgb, var(--ok) 20%, transparent);
+  color: var(--ok);
+}
+.se .goal .st.warn {
+  background: color-mix(in srgb, var(--warn) 22%, transparent);
+  color: var(--warn);
+}
+.se .goal .st.fail {
+  background: color-mix(in srgb, var(--err) 22%, transparent);
+  color: var(--err);
+}
+.se .goal .st.info {
+  background: color-mix(in srgb, var(--st-0) 22%, transparent);
+  color: var(--st-0);
+}
+.se .goal .st.opt {
+  border: 1.5px dashed var(--edge-strong);
+}
+.se .goal .st.unk {
+  border: 1.5px dashed color-mix(in srgb, var(--warn) 70%, transparent);
+  color: var(--warn);
+  font: 700 9px var(--font-mono);
+}
+.se .goal .t {
+  flex: 1;
+  min-width: 0;
+  display: block;
+}
+.se .goal .t .a {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+.se .goal .t .s {
+  display: block;
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 1px;
+  line-height: 1.4;
+}
+.se .goal .t .acts {
+  margin-top: 6px;
+}
+.se .prob {
+  display: flex;
+  gap: 8px;
+  padding: 7px 4px;
+  border-top: 1px solid var(--hairline);
+  font-size: 12px;
+  align-items: flex-start;
+}
+.se .prob:first-of-type {
+  border-top: 0;
+}
+.se .prob .t {
+  flex: 1;
+  min-width: 0;
+}
+.se .prob .t .s {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+  line-height: 1.4;
+}
+.se .steps {
+  display: flex;
+  gap: 4px;
+  margin: 8px 0 2px;
+}
+.se .steps i {
+  flex: 1;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--elevated);
+}
+.se .steps i.on {
+  background: var(--accent);
+}
+.se .steps i.done {
+  background: var(--ok);
+}
+
+/* presentation mode: the plan, the verdict and the legend, labels larger */
+.se.present .pane,
+.se.present .prail,
+.se.present .kinds,
+.se.present .rail,
+.se.present .views,
+.se.present .status,
+.se.present .banner,
+.se.present .readout {
+  display: none;
+}
+.se.present .legend {
+  font-size: 16px;
+  bottom: 20px;
+  right: 20px;
+  padding: 12px 16px;
+}
+.se.present .legend .lh,
+.se.present .legend .lh .cnd {
+  font-size: 13px;
+}
+.se.present .legend .lsw {
+  width: 26px;
+  height: 16px;
+}

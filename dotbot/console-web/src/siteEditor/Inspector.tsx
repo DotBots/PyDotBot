@@ -77,6 +77,8 @@ export interface InspectorProps {
   frameId?: string;
   /** Opens a frame tool. */
   onFrameTool?: (tool: "turn" | "capture") => void;
+  /** Starts a check on a mark with a robot. */
+  onCheck?: (id: string) => void;
 }
 
 const ProblemCard: React.FC<{ p: Problem; editable: boolean; onEdit: (doc: Doc) => void }> = ({ p, editable, onEdit }) => (
@@ -423,6 +425,11 @@ export const Inspector: React.FC<InspectorProps> = (props) => {
             <a className="btn sm" href={`${props.consoleHref}?sel=${bot.id}`} target="_blank" rel="noreferrer">
               <Icon name="ext" size={13} /> Show in the console
             </a>
+          )}
+          {props.onCheck && bot.position && (
+            <button type="button" className="btn sm" onClick={() => props.onCheck?.(bot.id)}>
+              <Icon name="pin" size={13} /> Check on a mark
+            </button>
           )}
         </div>
         {props.onBlink && <div className="note" style={{ marginTop: 8 }}>Blink is the one robot-facing action here besides Stop: it changes nothing a robot does.</div>}
