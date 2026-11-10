@@ -712,7 +712,36 @@ def _editor_socket(port: int):
     return sock
 
 
-def _serve_editor(name: str, pack: Path, sock, headless: bool) -> None:
+def _configured_calibration(ctx, name: str) -> dict | None:
+    """The calibration `[run.controller] lh2_calibration` names for site
+    `name`, resolved to its id when the file is found."""
+    from dotbot.calibration.lighthouse2 import (
+        read_calibration_file,
+        resolve_calibration_path,
+    )
+    from dotbot.config import resolve_source
+
+    try:
+        found = resolve_source(
+            "lh2_calibration",
+            section="run.controller",
+            config=(ctx.obj or {}).get("config"),
+        )
+    except ConfigError:
+        return None
+    if not found.value:
+        return None
+    out = {"spec": str(found.value), "source": found.source}
+    try:
+        cal = read_calibration_file(resolve_calibration_path(str(found.value), site=name))
+    except (OSError, ValueError) as exc:
+        return {**out, "error": str(exc)}
+    return {**out, "id": cal.id, "id8": cal.id8, "tag": cal.tag}
+
+
+def _serve_editor(
+    name: str, pack: Path, sock, headless: bool, configured: dict | None = None
+) -> None:
     """Serve the editor on `pack` from `sock` until Ctrl-C or Done."""
     import threading
     import webbrowser
@@ -729,7 +758,11 @@ def _serve_editor(name: str, pack: Path, sock, headless: bool) -> None:
     def done():
         server.should_exit = True
 
-    app = create_app(state, on_done=done)
+    app = create_app(
+        state,
+        on_done=done,
+        context=lambda: {"mode": "standalone", "configured": configured},
+    )
     server = uvicorn.Server(uvicorn.Config(app, log_level="warning"))
     click.echo(f"Editing site {name} ({pack / PACK_FILE})")
     click.echo(f"Site editor at {url} - Ctrl-C or Done to stop")
@@ -953,7 +986,8 @@ def edit(ctx, site, port, headless):
     site.
     """
     name, pack = _pack_of(ctx, site)
-    _serve_editor(name, pack, _editor_socket(port), headless)
+    sock = _editor_socket(port)
+    _serve_editor(name, pack, sock, headless, _configured_calibration(ctx, name))
 
 
 def _parse_point(_ctx, _param, value):

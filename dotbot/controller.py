@@ -49,6 +49,7 @@ from dotbot.adapter import (
 )
 from dotbot.area import Area
 from dotbot.calibration.driver import SessionDriver
+from dotbot import pydotbot_version
 from dotbot.calibration.lighthouse2 import homography_as_float32
 from dotbot.camera.detection.robot import MAX_ROBOTS
 from dotbot.camera.raster import WARP_FPS_MAX
@@ -271,6 +272,11 @@ class ControllerSettings:
     controller_http_host: str = CONTROLLER_HTTP_HOST_DEFAULT
     site: Optional[Site] = None
     lh2_calibration: Optional[str] = None
+    # Where `lh2_calibration` came from ("the command line", a config file)
+    lh2_calibration_source: str = ""
+    # The calibration a restart serves: the config's, without the command line
+    lh2_calibration_next: Optional[str] = None
+    lh2_calibration_next_source: str = ""
     lh2_calibration_max_age_days: int = LH2_CALIBRATION_MAX_AGE_DAYS
     stale_after_s: float = STALE_AFTER_S
     lost_after_s: float = LOST_AFTER_S
@@ -456,6 +462,36 @@ class Controller:
         self._dotbot_twins: Dict[str, DotBotTwin] = {}
         self._dotbot_twin_timestamps: Dict[str, float] = {}
         api.controller = self
+
+    def editor_context(self) -> dict:
+        """What the site editor says about the controller that opened it."""
+        settings = self.settings
+        cal = self.calibration
+        served = None
+        if cal is not None:
+            served = {
+                "id": cal.id,
+                "id8": cal.id8,
+                "tag": cal.tag,
+                "created_at": cal.created_at,
+                "spec": settings.lh2_calibration,
+                "source": settings.lh2_calibration_source or "unknown",
+            }
+        next_start = None
+        if settings.lh2_calibration_next:
+            next_start = {
+                "spec": settings.lh2_calibration_next,
+                "source": settings.lh2_calibration_next_source or "unknown",
+            }
+        return {
+            "mode": "controller",
+            "served": served,
+            "next_start": next_start,
+            "controller": {
+                "version": pydotbot_version(),
+                "port": settings.controller_http_port,
+            },
+        }
 
     def note_held_calibrations(self, held: Mapping[str, str]) -> None:
         """Record the calibration ids robots report holding, by address."""

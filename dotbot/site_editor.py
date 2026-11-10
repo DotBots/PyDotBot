@@ -179,10 +179,11 @@ def create_app(
     page_dir: Path | None = EDITOR_DIR,
     on_done: Callable[[], None] | None = None,
     on_saved: Callable[[], None] | None = None,
+    context: Callable[[], dict] | None = None,
 ) -> FastAPI:
     """The editor's app for `state`; `on_done` runs when the page says Done,
-    `on_saved` after a save wrote the file. Without `page_dir` it serves the
-    JSON routes only, as the console's panel uses them."""
+    `on_saved` after a save wrote the file, `context` says who opened it
+    (`GET api/context`). Without `page_dir` it serves the JSON routes only."""
     app = FastAPI(title="DotBot site editor", docs_url=None, redoc_url=None)
     app.add_middleware(LocalOnly)
 
@@ -245,6 +246,23 @@ def create_app(
                     on_saved()
         return {**body(data, text), "written": written}
 
+    def opened_by() -> dict:
+        return context() if context is not None else {"mode": "standalone"}
+
+    @app.get("/api/context")
+    def get_context():
+        found = {"served": None, "next_start": None, "configured": None}
+        return {
+            **found,
+            **opened_by(),
+            "site": state.name,
+            "path": str(state.path),
+        }
+
+    def served_id() -> str | None:
+        served = opened_by().get("served")
+        return served.get("id") if served else None
+
     @app.post("/api/done")
     def done():
         if on_done is not None:
@@ -264,7 +282,7 @@ def create_app(
 
     app.include_router(
         site_placement.create_router(
-            state.name, state.pack, lambda: read()[1], write_site
+            state.name, state.pack, lambda: read()[1], write_site, served_id
         )
     )
     app.include_router(

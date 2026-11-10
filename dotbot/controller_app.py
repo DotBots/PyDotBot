@@ -675,6 +675,9 @@ def main(
             active, conn_r, swarm_r if _swarm_applies(conn_r.value) else None
         )
     )
+    calibration_next, calibration_next_source = _resolve_controller_key(
+        ctx, "lh2_calibration", None, None
+    )
     print(
         f"LH2 calibration: {lh2_calibration} (from {calibration_source})"
         if lh2_calibration
@@ -764,6 +767,11 @@ def main(
         "controller_http_host": controller_http_host,
         "site": site,
         "lh2_calibration": lh2_calibration,
+        "lh2_calibration_source": calibration_source if lh2_calibration else None,
+        "lh2_calibration_next": calibration_next,
+        "lh2_calibration_next_source": (
+            calibration_next_source if calibration_next else None
+        ),
         "lh2_calibration_max_age_days": max_age_days,
         **staleness,
         "camera_calibration": camera_calibration,

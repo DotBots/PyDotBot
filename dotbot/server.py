@@ -972,7 +972,7 @@ class SiteEditorMount:
         from fastapi.responses import JSONResponse
 
         from dotbot.calibration.lighthouse2 import calibration_root
-        from dotbot.site_editor import EditorState, create_app
+        from dotbot.site_editor import EDITOR_DIR, EditorState, create_app
         from dotbot.site_packs import PACK_FILE
 
         controller = getattr(api, "controller", None)
@@ -991,8 +991,9 @@ class SiteEditorMount:
             loop = asyncio.get_running_loop()
             self._app = create_app(
                 state,
-                page_dir=None,
+                page_dir=EDITOR_DIR,
                 on_saved=lambda: loop.call_soon_threadsafe(controller.reload_site),
+                context=controller.editor_context,
             )
             self._key = (id(controller), pack)
         await self._app(scope, receive, send)

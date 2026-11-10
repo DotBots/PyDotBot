@@ -196,3 +196,36 @@ def test_barriers_swapped_away_during_a_tick_leave_the_tick_whole():
     plant.pwm[:] = 60.0
     plant.step(np.zeros(1, dtype=bool))
     assert plant.y[0] == 930.0
+
+
+@pytest.mark.asyncio
+async def test_the_editor_opened_from_the_controller_names_it(scenario):
+    _, local, _ = scenario
+    body = (await local.get("/controller/site-editor/api/context")).json()
+    assert body["mode"] == "controller"
+    assert body["served"] is None and body["next_start"] is None
+    assert body["controller"]["version"]
+
+
+def test_the_context_names_the_served_calibration_and_its_source():
+    from types import SimpleNamespace
+
+    from dotbot.controller import Controller, ControllerSettings
+
+    settings = ControllerSettings(
+        lh2_calibration="4640cfde",
+        lh2_calibration_source="the command line",
+        lh2_calibration_next="a1b41f12",
+        lh2_calibration_next_source="dotbot.local.toml",
+    )
+    cal = SimpleNamespace(
+        id="4640cfde014c7232",
+        id8="4640cfde",
+        tag="r3",
+        created_at="2026-11-09T08:12:50Z",
+    )
+    fake = SimpleNamespace(settings=settings, calibration=cal)
+    body = Controller.editor_context(fake)
+    assert body["served"]["id"] == cal.id
+    assert body["served"]["source"] == "the command line"
+    assert body["next_start"] == {"spec": "a1b41f12", "source": "dotbot.local.toml"}

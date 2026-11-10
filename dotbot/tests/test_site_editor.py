@@ -133,7 +133,9 @@ def served(monkeypatch):
     monkeypatch.setattr(
         site_cmd,
         "_serve_editor",
-        lambda name, pack, sock, headless: calls.append((name, pack, headless)),
+        lambda name, pack, sock, headless, configured=None: calls.append(
+            (name, pack, headless)
+        ),
     )
     return calls
 
