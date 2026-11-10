@@ -2239,3 +2239,112 @@ body {
 .se .tile.full i {
   background: var(--ok);
 }
+
+/* ---------------------------------------------------------- the room view -- */
+.se .room {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--canvas);
+}
+.se .room svg {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  user-select: none;
+}
+.se .room svg text {
+  font-family: var(--font-ui);
+  fill: var(--text);
+}
+.se .room svg text.halo {
+  paint-order: stroke;
+  stroke: var(--canvas);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+.se .room-legend {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 5px 12px;
+  border-top: 1px solid var(--hairline);
+  background: var(--surface);
+  font-size: 11px;
+}
+.se .room-legend .row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.se .room-legend .lsw {
+  width: 14px;
+  height: 10px;
+  border-radius: 2px;
+  display: inline-block;
+}
+.se .room-legend .muted {
+  color: var(--muted);
+}
+.se .room.large svg text {
+  font-size: 1.2em;
+}
+
+/* the Use sheet's steps and ticks */
+.se .sheet .stepn {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--elevated);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font: 600 11px var(--font-mono);
+  flex: none;
+}
+.se .sheet .ticks {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 4px 12px;
+  margin-top: 4px;
+}
+.se .sheet .tick {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.se .sheet .tick.off {
+  opacity: 0.6;
+  cursor: default;
+}
+.se .sheet .tick .muted {
+  color: var(--muted);
+}
+
+/* the nudge pad of the origin-from-robots panel */
+.se .nudge {
+  margin-top: 8px;
+  padding: 6px 8px;
+  border: 1px dashed var(--edge-strong);
+  border-radius: 6px;
+  font-size: 11px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  outline: none;
+}
+.se .nudge:focus {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.se .strip tr.on td {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}

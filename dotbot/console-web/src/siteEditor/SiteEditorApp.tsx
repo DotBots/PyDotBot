@@ -58,6 +58,7 @@ import { OutlinePane } from "./OutlinePane";
 import { DEFAULT_LAYERS, kindOfKey, PlanCanvas, type PlanLayers, type PlanPaint } from "./PlanCanvas";
 import { edgeMoved, handleAt, movedAll, removed, resized, type Handle } from "./plan";
 import { ReviewSheet } from "./ReviewSheet";
+import { RoomView } from "./RoomView";
 import { Readout, StationsLegend, stationsOverlay, stationsUnderlay } from "./StationsLayer";
 import { StationsPanel, type CoverageMode } from "./StationsPanel";
 import { problems as rulesOf } from "./rules";
@@ -96,7 +97,7 @@ const KIND_ICON: Record<EditKind, IconName> = { view: "view", frame: "frame", ar
 
 type LeftTab = "checks" | "outline" | "library";
 type RightTab = "inspect" | "layers";
-type View = "plan" | "table" | "file";
+type View = "plan" | "room" | "table" | "file";
 
 const Rail: React.FC<{ side: "left" | "right"; items: { key: string; icon: IconName; title: string; on: boolean; n?: number }[]; onOpen: (key: string) => void }> = ({
   side,
@@ -454,13 +455,14 @@ export const SiteEditorApp: React.FC = () => {
       })
     : [];
   const verdict = verdictOf(goalList);
-  const [beforePresent, setBeforePresent] = useState<EditKind>("view");
+  const [beforePresent, setBeforePresent] = useState<{ kind: EditKind; view: View }>({ kind: "view", view: "plan" });
   const startPresent = () => {
-    setBeforePresent(kind);
+    setBeforePresent({ kind, view });
     if (servedRowNow && servedRowNow.stations.length > 1) {
       setKind("stations");
       setCoverageMode("fix");
     } else setKind("view");
+    setView(servedRowNow?.geometry ? "room" : "plan");
     setTool("select");
     setSelected([]);
     setMenu(false);
@@ -468,7 +470,8 @@ export const SiteEditorApp: React.FC = () => {
   };
   const stopPresent = () => {
     setPresent(false);
-    setKind(beforePresent);
+    setKind(beforePresent.kind);
+    setView(beforePresent.view);
   };
   useEffect(() => {
     if (!present && !restoring) return;
@@ -572,7 +575,7 @@ export const SiteEditorApp: React.FC = () => {
 
   // The Stations kind's numbers, for the boxes as drafted; a little late
   // while an edge is dragged, so a drag never waits on the server
-  const needCoverage = kind === "stations" && !!shown?.in_frame;
+  const needCoverage = (kind === "stations" || view === "room") && !!shown?.in_frame;
   useEffect(() => {
     if (!needCoverage || !shown) return;
     setCoverageStale(true);
@@ -1381,6 +1384,26 @@ export const SiteEditorApp: React.FC = () => {
                   />
                 )}
               </PlanCanvas>
+            ) : view === "room" ? (
+              <RoomView
+                doc={draft.doc}
+                extent={draft.doc.extent_mm ?? [1000, 1000]}
+                geometry={(coverage && coverage.id === shown?.id ? coverage.geometry : null) ?? shown?.geometry ?? null}
+                boxes={boxes}
+                coverage={coverage && coverage.id === shown?.id ? coverage : null}
+                mode={coverageMode}
+                bots={bots}
+                shownName={shown ? nameOf(shown) : null}
+                shownId={shown?.id ?? null}
+                stationFit={shown ? Object.fromEntries(shown.stations.map((s) => [s.index, s.residual_mm])) : undefined}
+                light={theme === "light"}
+                large={present}
+                selectedStation={selected.length === 1 && selected[0].startsWith("box:") ? Number(selected[0].slice(4)) : null}
+                onSelectStation={(i) => {
+                  setSelected(i === null ? [] : [`box:${i}`]);
+                  if (i !== null) setKind("stations");
+                }}
+              />
             ) : view === "table" ? (
               <TableView
                 doc={draft.doc}
@@ -1457,9 +1480,9 @@ export const SiteEditorApp: React.FC = () => {
             </div>
           )}
           <div className="float views seg" role="tablist" aria-label="View as" style={{ border: "1px solid var(--hairline)" }}>
-            {(["plan", "table", "file"] as View[]).map((v) => (
-              <button key={v} type="button" role="tab" aria-selected={view === v} className={view === v ? "on" : undefined} onClick={() => setView(v)}>
-                {v === "plan" ? "Plan" : v === "table" ? "Table" : "File"}
+            {(["plan", "room", "table", "file"] as View[]).map((v) => (
+              <button key={v} type="button" role="tab" aria-selected={view === v} className={view === v ? "on" : undefined} onClick={() => setView(v)} title={v === "room" ? "The room as a twin: stations above the floor, coverage, robots" : undefined}>
+                {v === "plan" ? "Plan" : v === "room" ? "Room" : v === "table" ? "Table" : "File"}
               </button>
             ))}
           </div>
