@@ -157,7 +157,11 @@ export const LocalizationPanel: React.FC<LocalizationPanelProps> = ({
   selection,
   onPush,
 }) => {
-  const coverage = calibrationCoverage(bots, session?.saved_id ?? "");
+  // The fleet is compared with what the controller serves, or with what
+  // this session saved, which is what a push would send.
+  const served = site?.calibration ?? null;
+  const compared = session?.saved_id || served?.id || "";
+  const coverage = calibrationCoverage(bots, compared);
   const [target, setTarget] = useState<PushTarget>(loadPushTarget);
   const chooseTarget = (next: PushTarget) => {
     setTarget(next);
@@ -165,7 +169,7 @@ export const LocalizationPanel: React.FC<LocalizationPanelProps> = ({
   };
   const plan = pushPlan(target, selection, bots.length, coverage.stale, session?.saved_id ?? "");
   const pushDisabled = busy || plan.blocked !== "";
-  const rows = stationRows(session);
+  const rows = stationRows(session, served);
   const cameraRows = cameraStatusRows(cameras, cameraDetections);
 
   return (
@@ -191,7 +195,7 @@ export const LocalizationPanel: React.FC<LocalizationPanelProps> = ({
           </div>
           <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 3 }}>
             {coverage.unknown
-              ? "save a calibration in this session to compare the fleet against it"
+              ? "the controller serves none; save one in a session to compare the fleet against it"
               : coverageLabel(coverage)}
           </div>
           {coverage.stale.length > 0 && (
@@ -241,10 +245,10 @@ export const LocalizationPanel: React.FC<LocalizationPanelProps> = ({
         </Section>
 
         <Section title="Stations">
-          <div style={{ fontSize: 13 }}>{stationsSummary(session)}</div>
+          <div style={{ fontSize: 13 }}>{stationsSummary(session, served)}</div>
           {rows.map((row) => (
             <div key={row.index} style={{ ...mono, fontSize: 11, color: "var(--muted)", marginTop: 4 }}>
-              station {row.index} · {row.label}
+              S{row.index} · {row.label}
             </div>
           ))}
         </Section>
