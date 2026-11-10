@@ -1,4 +1,5 @@
-import type { EditorContext, EditorSite, Library, SitePayload } from "./types";
+import type { Coverage } from "./coverage";
+import type { EditorContext, EditorSite, Library, Rect, SitePayload } from "./types";
 
 // Every route is relative to the page: the controller serves the editor at
 // /controller/site-editor/ and `dotbot site edit` at its own root.
@@ -49,10 +50,19 @@ export interface ApplyStep {
   revision?: string;
   id?: string;
   push?: string;
+  warnings?: string[];
 }
 
-export const applySave = (revision: string, site: unknown, text: string | null = null) =>
-  json<SitePayload & { ok: boolean; steps: ApplyStep[] }>("api/apply", post({ revision, site, text }));
+export const applySave = (
+  revision: string,
+  site: unknown,
+  text: string | null = null,
+  boxes: { of: string; stations: Record<number, Rect>; tag: string | null } | null = null,
+) =>
+  json<SitePayload & { ok: boolean; steps: ApplyStep[] }>(
+    "api/apply",
+    post({ revision, site, text, ...(boxes ? { boxes_of: boxes.of, boxes: { stations: boxes.stations, tag: boxes.tag } } : {}) }),
+  );
 
 export interface Version {
   id: string;
@@ -63,3 +73,20 @@ export interface Version {
 export const fetchHistory = () => json<Version[]>("api/history");
 export const restoreVersion = (version: string, revision: string) =>
   json<SitePayload>("api/restore", post({ version, revision }));
+
+/** Who gives the fix and the predicted error for `boxes`, the file's own when null. */
+export const fetchCoverage = (id: string, boxes: Record<number, Rect> | null) =>
+  json<Coverage>(`api/calibrations/${encodeURIComponent(id)}/coverage${boxes ? `?boxes=${encodeURIComponent(JSON.stringify(boxes))}` : ""}`);
+
+export interface DryRun {
+  id: string;
+  id8: string;
+  source: string;
+  written: false;
+  existing: { id: string; id8: string; tag: string; path: string } | null;
+  reading: string;
+}
+
+/** What saving `id` with `boxes` would write, without writing it. */
+export const dryRunBoxes = (id: string, boxes: Record<number, Rect>, revision: string, tag: string | null) =>
+  json<DryRun>(`api/calibrations/${encodeURIComponent(id)}/boxes?dry_run=1`, post({ stations: boxes, revision, tag }));

@@ -47,6 +47,11 @@ export interface LibraryRow {
   reading: string;
   in_frame: boolean;
   served: boolean;
+  /** Where the stations stand, estimated from the homographies. */
+  geometry?: {
+    stations: Record<string, { x_mm: number; y_mm: number; height_mm: number; off_square_deg: number }>;
+    apart_mm: Record<string, number>;
+  };
 }
 
 export interface Library {
