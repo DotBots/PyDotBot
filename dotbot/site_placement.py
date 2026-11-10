@@ -20,7 +20,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from dotbot import site_coverage, site_library, site_toml
-from dotbot.calibration import lighthouse2, site_turn, station_rule
+from dotbot.calibration import lighthouse2, site_frame, site_turn, station_rule
 from dotbot.calibration.placement import (
     FREE_SOLVERS,
     PlacementRefused,
@@ -52,17 +52,20 @@ class PlaceRequest(BaseModel):
     reanchor: bool = False
 
 
-class TurnRequest(BaseModel):
-    theta_deg: float
-    pivot: tuple[float, float]
-    # The new anchor text; it must differ from the file's
-    anchor: str
-    # Ids of the calibrations to turn, each in the site's frame
-    calibrations: list[str]
-    # The site.toml revision the page loaded
+class FrameRequest(BaseModel):
+    # The calibration re-expressed in the new frame: the served one
+    calibration: str
+    theta_deg: float = 0.0
+    pivot: tuple[float, float] = (0.0, 0.0)
+    # Where zero moves, in the old frame's mm
+    dx_mm: float = 0.0
+    dy_mm: float = 0.0
+    # The note on where zero is now; None keeps the old note
+    note: str | None = None
     revision: str
-    # The user has read why the anchor is tied to marks on the floor
-    marks_confirmed: bool = False
+    # Serve the re-expressed calibration on the controller after writing
+    serve: bool = True
+    dry_run: bool = False
 
 
 class LibraryRequest(BaseModel):
@@ -113,6 +116,7 @@ def _metadata(path: Path) -> dict | None:
         "tag": meta.get("tag", ""),
         "site": data.get("site", {}).get("name", ""),
         "anchor": data.get("site", {}).get("anchor", ""),
+        "frame": data.get("site", {}).get("frame"),
         "path": str(path),
     }
 
@@ -123,6 +127,7 @@ def create_router(
     site_text: Callable[[], str],
     write_site: Callable[[str, str], None] | None = None,
     served_id: Callable[[], str | None] | None = None,
+    serve: Callable[[str, bool], dict] | None = None,
 ) -> APIRouter:
     """Routes for the site `name` in `pack`; `site_text` reads its site.toml,
     `write_site(revision, text)` writes it over that revision, `served_id`
@@ -164,7 +169,7 @@ def create_router(
             site = None
         listed = [m for m in map(_metadata, _files(pack)) if m and m["id"]]
         for m in listed:
-            file_site = Site(name=m["site"], anchor=m.pop("anchor"))
+            file_site = Site(name=m["site"], anchor=m.pop("anchor"), frame=m.pop("frame"))
             m["in_frame"] = site is not None and frame_refusal(file_site, site) is None
         return listed
 
@@ -176,6 +181,80 @@ def create_router(
         except HTTPException as exc:
             refusal = exc.detail
         return {**overlay(cal), "path": str(cal.path), "frame_refusal": refusal}
+
+    @router.post("/api/frame")
+    def frame_change(request: FrameRequest):
+        """Turn the site's frame or move its zero, in order: the calibration
+        re-expressed as a new file, site.toml with the new frame id, then
+        that file served. A refusal names the largest legal shift."""
+        source = resolve(request.calibration)
+        text = site_text()
+        if site_toml.revision(text.encode("utf-8")) != request.revision:
+            raise HTTPException(409, "site.toml changed on disk since the page loaded it")
+        site = current_site()
+        shift = (request.dx_mm, request.dy_mm)
+        frame = site_frame.new_frame_id(site.frame_id, request.theta_deg, request.pivot, shift)
+        note = site.anchor if request.note is None else request.note.strip()
+        try:
+            planned = site_frame.moved(
+                source,
+                site,
+                request.theta_deg,
+                request.pivot,
+                shift,
+                note,
+                frame,
+                taken_tags=site_tags(site.name, _files(pack)),
+            )
+        except site_turn.TurnRefused as exc:
+            offer = site_frame.largest_shift(
+                source, site, request.theta_deg, request.pivot, shift
+            )
+            raise HTTPException(
+                422,
+                {
+                    "message": str(exc),
+                    "offer": None if offer is None else {"dx_mm": offer[0], "dy_mm": offer[1]},
+                },
+            ) from exc
+        summary = {
+            "frame": frame,
+            "from_frame": site.frame_id,
+            "calibration": {"id": planned.id, "id8": planned.id8, "tag": planned.tag},
+            "source": source.id8,
+            "warnings": site_turn.outside_warnings(planned, site),
+            "push": push_line(planned),
+        }
+        if request.dry_run:
+            return {**summary, "steps": []}
+        if write_site is None:
+            raise HTTPException(405, "this editor cannot write site.toml")
+        steps = []
+        saved, path = save_new(planned)
+        steps.append({"step": "calibration", "status": "written", "detail": str(path), "id": saved.id})
+        try:
+            model = site_toml.site_model(site_toml.parse(text))
+            model["frame"] = frame
+            model["anchor"] = note or None
+            for key in ("areas", "objects"):
+                for entry in model.get(key) or []:
+                    entry["was"] = entry["name"]
+            for key in ("walls", "obstacles"):
+                for i, entry in enumerate(model.get(key) or []):
+                    entry["was"] = i
+            write_site(request.revision, site_toml.patched_text(text, model))
+        except (site_toml.SiteTomlError, HTTPException) as exc:
+            detail = exc.detail if isinstance(exc, HTTPException) else str(exc)
+            steps.append({"step": "site.toml", "status": "refused", "detail": str(detail)})
+            return {**summary, "steps": steps, "ok": False}
+        steps.append({"step": "site.toml", "status": "written", "detail": f"frame {frame}"})
+        if request.serve and serve is not None:
+            try:
+                serve(saved.id, False)
+                steps.append({"step": "serve", "status": "written", "detail": f"serving {saved.id8}, this run only"})
+            except (ValueError, OSError) as exc:
+                steps.append({"step": "serve", "status": "refused", "detail": str(exc)})
+        return {**summary, "steps": steps, "ok": all(s["status"] != "refused" for s in steps)}
 
     @router.patch("/api/calibrations/{spec}")
     def change(spec: str, request: LibraryRequest):
@@ -318,85 +397,5 @@ def create_router(
         }
 
     router.save_boxes = save_boxes  # type: ignore[attr-defined]
-
-    @router.get("/api/turn")
-    def turn_info():
-        site = current_site()
-        calibrations = site_turn.in_frame(site, _files(pack))
-        return {
-            "anchor": site.anchor,
-            "pivot": list(site_turn.default_pivot(site)),
-            "anchor_marks": site_turn.anchor_marks(site, calibrations),
-            "calibrations": [
-                {
-                    "id": cal.id,
-                    "id8": cal.id8,
-                    "tag": cal.tag,
-                    "created_at": cal.created_at,
-                    "stations": sorted(st.index for st in cal.stations),
-                    "path": str(cal.path),
-                }
-                for cal in calibrations
-            ],
-        }
-
-    @router.post("/api/turn")
-    def turn(request: TurnRequest):
-        if write_site is None:
-            raise HTTPException(405, "this editor cannot write site.toml")
-        text = site_text()
-        if site_toml.revision(text.encode("utf-8")) != request.revision:
-            raise HTTPException(
-                409, "site.toml changed on disk since the page loaded it"
-            )
-        site = current_site()
-        files = _files(pack)
-        by_id = {cal.id: cal for cal in site_turn.in_frame(site, files)}
-        unknown = [spec for spec in request.calibrations if spec not in by_id]
-        if unknown:
-            raise HTTPException(
-                422,
-                f"not a calibration in site {site.name}'s frame: {', '.join(unknown)}",
-            )
-        sources = [by_id[spec] for spec in dict.fromkeys(request.calibrations)]
-        marks = site_turn.anchor_marks(site, by_id.values())
-        if marks and not request.marks_confirmed:
-            raise HTTPException(
-                422, "turning moves zero off the floor marks: " + "; ".join(marks)
-            )
-        try:
-            planned = site_turn.plan_turn(
-                sources,
-                site,
-                request.theta_deg,
-                request.pivot,
-                request.anchor,
-                taken_tags=site_tags(site.name, files),
-            )
-        except site_turn.TurnRefused as exc:
-            raise HTTPException(422, str(exc)) from exc
-        try:
-            saved = site_turn.save_turn(
-                planned,
-                text,
-                request.anchor,
-                lambda new: write_site(request.revision, new),
-            )
-        except site_toml.SiteTomlError as exc:
-            raise HTTPException(422, str(exc)) from exc
-        return {
-            "saved": [
-                {
-                    **overlay(cal),
-                    "path": str(path),
-                    "source": source.id8,
-                    "push": push_line(cal),
-                    "warnings": site_turn.outside_warnings(cal, site)
-                    + coverage_warnings(cal),
-                }
-                for source, (cal, path) in zip(sources, saved)
-            ],
-            "anchor_marks": marks,
-        }
 
     return router

@@ -290,3 +290,25 @@ async def test_serve_refuses_an_unknown_id_and_a_remote_peer(served):
     await remote.aclose()
     assert refused.status_code == 403
     assert s.controller.calibration is None or s.controller.calibration.id != cal.id
+
+
+@pytest.mark.asyncio
+async def test_a_live_controller_keeps_its_calibration_when_the_note_changes(served):
+    from dotbot.calibration.lighthouse2 import check_calibration_site
+
+    s, local, pack, cal = served
+    await local.put("/controller/site-editor/api/served", json={"spec": cal.id8})
+    loaded = (await local.get("/controller/site-editor/api/site")).json()
+    site = loaded["site"]
+    for area in site["areas"]:
+        area["was"] = area["name"]
+    site["anchor"] = "the door corner, under the clock"
+    saved = await local.put(
+        "/controller/site-editor/api/site",
+        json={"revision": loaded["revision"], "site": site},
+    )
+    assert saved.status_code == 200, saved.text
+    await asyncio.sleep(0.05)
+    assert s.controller.site.anchor == "the door corner, under the clock"
+    assert s.controller.site.frame is not None
+    check_calibration_site(s.controller.calibration.site, s.controller.site, None)

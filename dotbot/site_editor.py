@@ -71,6 +71,8 @@ class ObjectModel(BaseModel):
 
 class SiteModel(BaseModel):
     anchor: str | None = None
+    # None leaves the file's frame id as it is
+    frame: str | None = None
     extent_mm: tuple[int, int] | None = None
     areas: list[AreaModel] = Field(default_factory=list)
     # None leaves the file's table as it is
@@ -275,6 +277,22 @@ def create_app(
         except site_toml.SiteTomlError as exc:
             raise HTTPException(422, str(exc)) from exc
 
+    def stamped(text: str, model: SiteModel) -> SiteModel:
+        """`model` with the frame id written first when its note on zero
+        changes and the file records none, so calibrations matched through
+        the old note keep matching."""
+        try:
+            current = site_toml.site_model(site_toml.parse(text))
+        except site_toml.SiteTomlError:
+            return model
+        if model.frame or current.get("frame") or (model.anchor or "") == (current.get("anchor") or ""):
+            return model
+        from dotbot.site import derived_frame_id
+
+        return model.model_copy(
+            update={"frame": derived_frame_id(state.name, current.get("anchor") or "")}
+        )
+
     @app.get("/api/site")
     def get_site():
         return body(*read())
@@ -291,7 +309,8 @@ def create_app(
     @app.post("/api/preview")
     def preview(request: PreviewRequest):
         _, text = read()
-        result = patched(base_of(text, request.text), request.site)
+        base = base_of(text, request.text)
+        result = patched(base, stamped(base, request.site))
         return {"text": result, "changed": result != text}
 
     @app.post("/api/parse")
@@ -345,6 +364,7 @@ def create_app(
                 raise HTTPException(
                     409, f"{state.path} changed on disk since the page loaded it"
                 )
+            model = stamped(base_of(text, edited), model)
             result = patched(base_of(text, edited), model)
             if result == text:
                 return data, text, False
@@ -471,7 +491,7 @@ def create_app(
             keep_and_write(data, text)
 
     placement = site_placement.create_router(
-        state.name, state.pack, lambda: read()[1], write_site, served_id
+        state.name, state.pack, lambda: read()[1], write_site, served_id, serve
     )
     app.include_router(placement)
     app.include_router(
