@@ -762,7 +762,7 @@ export const SiteEditorApp: React.FC = () => {
           value={leftTab}
           onChange={setLeftTab}
           options={[
-            { value: "checks", text: `Checks${verdict.state === "not-ready" ? " !" : ""}` },
+            { value: "checks", text: `Checks${verdict.fails ? " !" : ""}` },
             { value: "outline", text: "Outline" },
             { value: "library", text: `Calibrations${library && width >= 1360 ? ` ${library.count}` : ""}` },
           ]}
@@ -775,7 +775,7 @@ export const SiteEditorApp: React.FC = () => {
         {leftTab === "checks" ? (
           <ChecksPane
             goals={goalList}
-            verdict={verdict}
+            doc={draft.doc}
             problems={problems}
             editable={editable}
             live={live}
@@ -1256,7 +1256,7 @@ export const SiteEditorApp: React.FC = () => {
           )}
           {present && (
             <div className="float presbar" data-testid="presbar">
-              <span className="dot" style={{ width: 12, height: 12, background: verdict.state === "ready" ? "var(--ok)" : "var(--warn)" }} />
+              <span className="dot" style={{ width: 12, height: 12, background: verdict.fails ? "var(--err)" : verdict.needs ? "var(--warn)" : "var(--ok)" }} />
               <b>{verdict.title}</b>
               <span className="muted" style={{ fontSize: 15 }}>
                 {statusText(status)}

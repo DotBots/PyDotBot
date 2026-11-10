@@ -2,16 +2,17 @@ import type { UnifiedBot } from "../types";
 import type { Coverage } from "./coverage";
 import { moved } from "./coverage";
 import type { EditKind } from "./keys";
+import { nameOf, residuals, shortWhen } from "./library";
 import type { Doc } from "./model";
 import { heldBy } from "./robots";
 import { roleOf, type Problem } from "./rules";
 import type { LibraryRow } from "./types";
 
-// The Checks home's goals, as data: each says what it found and where to fix
-// it. The verdict is computed from them; a goal whose data is missing is an
-// unknown, counted, and never a pass.
+// The Checks home's rows, as data: each says what it found, in one of three
+// states, and where to act. A row whose data is missing is an unknown,
+// never a pass and never a failure.
 
-export type GoalState = "ok" | "warn" | "fail" | "unknown" | "info" | "optional";
+export type GoalState = "ok" | "warn" | "fail" | "unknown";
 
 export interface GoalAction {
   label: string;
@@ -25,8 +26,6 @@ export interface Goal {
   title: string;
   detail: string;
   state: GoalState;
-  /** The phrase the verdict lists, with its number in bold. */
-  summary?: [string, string];
   action?: GoalAction;
 }
 
@@ -38,6 +37,9 @@ export interface CheckRecord {
   robot: string;
   at: string;
   predicted_mm?: number;
+  /** Read as if the robot held the calibration, without the robot saying so. */
+  assumed?: boolean;
+  site_revision?: string;
 }
 
 export interface GoalInputs {
@@ -51,7 +53,7 @@ export interface GoalInputs {
   problems: Problem[];
   checks: CheckRecord[];
   frameChangeOpen: boolean;
-  /** The served calibration was switched in this run, from the editor */
+  /** The calibration in use was switched in this run, from the editor */
   servedHere?: boolean;
 }
 
@@ -59,12 +61,14 @@ export interface GoalInputs {
  * the site's limit and twice what was predicted there. */
 export const checkPasses = (c: CheckRecord, limitMm: number) => c.error_mm <= Math.max(limitMm, 2 * (c.predicted_mm ?? 0));
 
-/** The one step that gets a calibration served when none is: serve one
- * already in this room's frame, else place a measured spin, else measure. */
+/** The one step that gets a calibration in use when none is: choose one
+ * already in this room, else put a measured spin in it, else measure. */
 export function serveStep(rows: LibraryRow[]): GoalAction {
-  if (rows.some((r) => r.in_frame)) return { label: "Pick one…", go: { tab: "library" } };
-  return { label: rows.some((r) => r.free) ? "Place the spin…" : "Mount and measure…", go: { sheet: "newroom" } };
+  if (rows.some((r) => r.in_frame)) return { label: "Choose…", go: { tab: "library" } };
+  return { label: rows.some((r) => r.free) ? "Put the spin in the room…" : "Mount and measure…", go: { sheet: "newroom" } };
 }
+
+const at = (c: CheckRecord) => `${c.error_mm.toFixed(1)} mm at (${c.mark_mm[0]}, ${c.mark_mm[1]}) by …${c.robot.slice(-4)}, ${shortWhen(c.at) || c.at.slice(0, 16)}`;
 
 export function goals(i: GoalInputs): Goal[] {
   const out: Goal[] = [];
@@ -74,75 +78,94 @@ export function goals(i: GoalInputs): Goal[] {
     group: "room",
     title: "Floor",
     state: ext ? "ok" : "fail",
-    detail: ext ? `${ext[0]} × ${ext[1]} mm · positions outside it are dropped` : "not measured: robots' positions cannot be checked against it",
-    action: ext ? undefined : { label: "Set its size…", go: { kind: "frame", select: "floor" } },
+    detail: ext ? `${ext[0]} × ${ext[1]} mm` : "not measured: robots' positions cannot be checked against it",
+    action: { label: ext ? "Edit…" : "Set its size…", go: { kind: "frame", select: "floor" } },
   });
+
   const limit = i.coverage?.limit_mm ?? 2;
   const myChecks = i.checks.filter((c) => c.calibration === i.servedId);
-  const agreed = myChecks.some((c) => checkPasses(c, limit));
+  const last = myChecks[myChecks.length - 1];
+  const proven = myChecks.filter((c) => !c.assumed && checkPasses(c, limit));
+  const assumedOk = !proven.length && myChecks.some((c) => c.assumed && checkPasses(c, limit));
   out.push({
-    id: "zero",
+    id: "origin",
     group: "room",
-    title: "Zero",
-    state: agreed ? "ok" : "warn",
-    detail: agreed
-      ? "a robot on a taped mark agreed with the frame"
+    title: "Origin",
+    state: proven.length ? "ok" : !i.servedId ? "unknown" : "warn",
+    detail: proven.length
+      ? `verified with a robot on ${shortWhen(proven[proven.length - 1].at) || "a mark"}`
       : !i.servedId
-        ? "captured with a robot once a calibration is served"
-        : myChecks.length
-          ? "the last check on a mark was off: check the tape, or capture zero again"
-          : i.doc.anchor
-            ? "a note says where it is; not checked with a robot on a taped mark yet"
-            : "no note says where zero is in the room",
-    action: agreed || !i.servedId ? undefined : { label: "Capture with a robot…", go: { kind: "frame", tool: "capture" } },
+        ? "set and verified once a calibration is in use"
+        : assumedOk
+          ? "verified assuming the robots had the calibration: not proven"
+          : last
+            ? "the last check was off: check the tape, or move the origin"
+            : i.doc.anchor
+              ? "described in words, not verified with a robot"
+              : "no note says where it is in the room",
+    action: i.servedId && i.live ? { label: proven.length ? "Verify again…" : "Verify…", go: { sheet: "check" } } : { label: "Describe…", go: { kind: "frame", select: "floor" } },
   });
+
   if (!i.served) {
     out.push({
-      id: "stations",
+      id: "calibration",
       group: "room",
-      title: "Stations",
-      state: i.servedId ? "unknown" : "fail",
+      title: "Calibration",
+      state: i.servedId ? "unknown" : "warn",
       detail: i.servedId
-        ? "the served file is not in this site's folders"
+        ? "the file in use is not in this site's folders"
         : i.rows.some((r) => r.in_frame)
-          ? "measured in this room, but no calibration is served"
+          ? `${i.rows.filter((r) => r.in_frame).length} measured for this room, none in use`
           : i.rows.some((r) => r.free)
-            ? "a spin is measured but not placed in this room yet"
+            ? "a spin is measured but not in this room yet"
             : "not measured yet: mount two stations and spin robots",
-      action: i.servedId ? { label: "Pick one…", go: { tab: "library" } } : serveStep(i.rows),
+      action: i.servedId ? { label: "Choose…", go: { tab: "library" } } : serveStep(i.rows),
     });
   } else {
     const m = moved(i.served, i.rows);
-    const st = i.served.stations.map((s) => `S${s.index}`).join(", ");
+    const since = m.spins > 1 ? ` since ${shortWhen(i.served.created_at) || "the last spin"}` : "";
     out.push({
       id: "stations",
       group: "room",
       title: "Stations",
       state: m.verdict === "moved?" ? "warn" : "ok",
-      detail: `${st} measured in ${i.served.id8}${m.spins > 1 ? ` · ${m.spins} spins ${m.verdict === "moved?" ? "disagree: a station may have moved" : "agree (no sign of a move)"}` : ""}`,
-      summary: m.spins > 1 ? ["Stations ", m.verdict === "moved?" ? "may have moved" : `consistent across ${m.spins} spins`] : undefined,
-      action: { label: "Stations…", go: { kind: "stations", mode: "fix" } },
+      detail: `${i.served.stations.length} · fit ${residuals(i.served)}${m.spins > 1 ? (m.verdict === "moved?" ? ` · may have moved${since}` : ` · no sign of a move${since}`) : ""}`,
+      action: { label: "Show…", go: { kind: "stations", mode: "fix" } },
     });
     const shared = i.served.stations.length > 1 && new Set(i.served.stations.map((s) => s.box.join())).size === 1;
+    const handover = /handover ([xy]) ([\d.]+)/.exec(i.served.reading);
     out.push({
-      id: "fix",
+      id: "coverage",
       group: "room",
-      title: "Who gives the fix",
-      state: "info",
-      detail: shared ? "one shared box: the boxes decide nothing; the stations' disagreement does" : i.served.reading,
-      action: shared ? { label: "Split the floor…", go: { kind: "stations", sheet: "split", mode: "fix" } } : undefined,
+      title: "Coverage",
+      state: shared ? "warn" : "ok",
+      detail: shared
+        ? "both stations cover the whole floor, no handover: robots pick the closer fix, so the two can flicker"
+        : handover
+          ? `handover at ${handover[1]} ${Math.round(Number(handover[2]))} mm`
+          : i.served.stations.length === 1
+            ? "one station covers the floor"
+            : "each station has its own region",
+      action: shared ? { label: "Add a handover…", go: { kind: "stations", sheet: "split", mode: "fix" } } : { label: "Edit…", go: { kind: "stations", mode: "fix" } },
     });
   }
+
   const h = i.coverage?.headline;
   out.push({
-    id: "error",
+    id: "accuracy",
     group: "room",
-    title: "Predicted error",
-    state: !h ? "unknown" : h.worst_mm <= (i.coverage?.limit_mm ?? 2) ? "ok" : "fail",
-    detail: h ? `≤ ${h.worst_mm.toFixed(2)} mm on the floor, limit ${i.coverage?.limit_mm ?? 2} mm · for the station the robot keeps` : "not computed: no spin to predict it from",
-    summary: h ? ["Predicted error ", `≤ ${h.worst_mm.toFixed(2)} mm`] : undefined,
-    action: { label: "Predicted error…", go: { kind: "stations", mode: "error" } },
+    title: "Accuracy",
+    state: !h ? "unknown" : h.worst_mm <= limit ? "ok" : "warn",
+    detail: h
+      ? h.worst_mm <= limit
+        ? `within ${h.worst_mm.toFixed(1)} mm everywhere (limit ${limit} mm)`
+        : `up to ${h.worst_mm.toFixed(1)} mm, over the ${limit} mm limit`
+      : i.served
+        ? "unknown: this calibration was not measured by spinning"
+        : "unknown until a calibration is in use",
+    action: { label: "Show…", go: { kind: "stations", mode: "error" } },
   });
+
   const field = i.doc.areas.find((a) => roleOf(a) === "field");
   const staging = i.doc.areas.find((a) => roleOf(a) === "staging");
   const areaProblems = i.problems.filter((p) => p.blocking);
@@ -154,101 +177,73 @@ export function goals(i: GoalInputs): Goal[] {
     detail: areaProblems.length
       ? areaProblems[0].title
       : field
-        ? `${field.w} × ${field.h} mm${staging ? ` · staging ${staging.w} × ${staging.h} mm` : " · staging: optional, none"}`
+        ? `${field.w} × ${field.h} mm${staging ? ` · staging ${staging.w} × ${staging.h} mm` : ""}`
         : "no area is the field: scripts using --area field find none",
-    action: areaProblems.length || !field ? { label: "Areas…", go: { kind: "areas", select: areaProblems[0]?.keys[0] } } : undefined,
-  });
-  const chargers = i.doc.objects.filter((o) => o.kind === "charger").length;
-  out.push({
-    id: "objects",
-    group: "room",
-    title: "Chargers and walls",
-    state: "optional",
-    detail: chargers + i.doc.walls.length ? `${chargers} charger(s), ${i.doc.walls.length} wall(s)` : "optional · none",
+    action: { label: areaProblems.length ? "Fix…" : field ? "Edit…" : "Draw…", go: { kind: "areas", select: areaProblems[0]?.keys[0] } },
   });
 
   // Before a run
-  out.push({
-    id: "served",
-    group: "run",
-    title: "Served calibration",
-    state: !i.servedId ? "fail" : i.frameChangeOpen ? "warn" : i.served && !i.served.in_frame ? "fail" : "ok",
-    detail: !i.servedId
-      ? "nothing is served"
-      : i.frameChangeOpen
-        ? `${i.servedId.slice(0, 8)}, in a new frame: push it before a run`
-        : `${i.servedId.slice(0, 8)}${i.served?.tag ? ` "${i.served.tag}"` : ""}, in this room's frame`,
-    summary: i.servedId ? ["Serving ", i.servedId.slice(0, 8)] : undefined,
-    action: i.servedId ? undefined : serveStep(i.rows),
-  });
   if (i.live) {
     const held = i.robots.map((r) => heldBy(r, i.servedId));
     const unknown = held.filter((h) => h.kind === "not-reported" || h.kind === "old-firmware").length;
     const other = held.filter((h) => h.kind === "other" || h.kind === "none").length;
-    // Switched here this run and no robot says it holds it: none can, until a push
-    const unpushed = !!i.servedHere && !!i.servedId && unknown + other === i.robots.length;
+    const have = held.filter((h) => h.kind === "served").length;
+    // Switched here this run and no robot says it has it: none can, until it is sent
+    const unsent = !!i.servedHere && !!i.servedId && have === 0 && i.robots.length > 0;
     const located = i.robots.filter((r) => r.position);
     const inField = field ? located.filter((r) => r.position!.x >= field.x && r.position!.x <= field.x + field.w && r.position!.y >= field.y && r.position!.y <= field.y + field.h) : [];
+    const n = i.robots.length;
+    const name = i.served ? nameOf(i.served) : (i.servedId?.slice(0, 8) ?? "");
+    const state: GoalState = n === 0 ? "unknown" : !i.servedId ? "unknown" : other || unsent ? "warn" : unknown === n ? "unknown" : "ok";
+    const detail =
+      n === 0
+        ? "none reporting to this controller"
+        : !i.servedId
+          ? `${n} on the floor · positions from whatever calibration they have`
+          : other || unsent
+            ? `${n} on the floor · ${other ? `${other} have another calibration` : "none has it yet"}: positions are in the old frame until you send ${name}`
+            : unknown === n
+              ? `${n} on the floor · cannot tell which calibration they have (no device info)`
+              : `${inField.length} of ${n} in the field · ${have === n ? "all" : `${have} of ${n}`} have ${name}${unknown ? ` · ${unknown} cannot tell` : ""}`;
     out.push({
       id: "robots",
       group: "run",
-      title: "Robots on the floor",
-      state: i.robots.length === 0 || unpushed ? "unknown" : inField.length === i.robots.length ? "ok" : "warn",
-      detail:
-        i.robots.length === 0
-          ? "none reports to this controller"
-          : unpushed
-            ? "their positions are still in the frame of what they hold, not of the served calibration"
-            : `${inField.length} of ${i.robots.length} in the field${located.length < i.robots.length ? ` · ${i.robots.length - located.length} without a fix` : ""}`,
-      summary: i.robots.length && !unpushed ? ["", `${inField.length} of ${i.robots.length}`] : undefined,
-    });
-    out.push({
-      id: "held",
-      group: "run",
-      title: "Which calibration robots hold",
-      state: i.robots.length === 0 ? "unknown" : other || unpushed ? "fail" : unknown ? "unknown" : "ok",
-      detail:
-        i.robots.length === 0
-          ? "no robot to ask"
-          : unpushed
-            ? `${i.servedId?.slice(0, 8)} was served from here this run and no robot reports holding it: push it in the console`
-            : other
-            ? `${other} of ${i.robots.length} hold another calibration: push ${i.servedId?.slice(0, 8)} in the console`
-            : unknown
-              ? `${unknown} of ${i.robots.length} not reported: the fleet server sent no device info`
-              : `all ${i.robots.length} hold ${i.servedId?.slice(0, 8)}`,
-      summary: ["Which calibration robots hold: ", unpushed ? "push needed" : other ? `${other} hold another` : unknown ? "not reported" : `all hold ${i.servedId?.slice(0, 8)}`],
-      action: (unpushed || other) && i.servedId ? { label: "Send to robots…", go: { push: i.servedId } } : undefined,
+      title: "Robots",
+      state,
+      detail,
+      action: (other || unsent) && i.servedId ? { label: "Send…", go: { push: i.servedId } } : { label: "Show…", go: { tab: "outline" } },
     });
   } else {
-    out.push({ id: "robots", group: "run", title: "Robots", state: "unknown", detail: "no controller opened this page, so no robot is known" });
+    out.push({ id: "robots", group: "run", title: "Robots", state: "unknown", detail: "no controller opened this page, so no robot is known", action: { label: "Outline…", go: { tab: "outline" } } });
   }
-  const last = myChecks[myChecks.length - 1];
   out.push({
-    id: "checked",
+    id: "verified",
     group: "run",
-    title: "Checked on a mark",
-    state: last ? (checkPasses(last, limit) ? "ok" : "warn") : "optional",
-    detail: last ? `${checkPasses(last, limit) ? "" : "off: "}${last.error_mm.toFixed(1)} mm at (${last.mark_mm[0]}, ${last.mark_mm[1]}) by …${last.robot.slice(-4)}, ${last.at.replace("T", " ").slice(0, 16)}` : "optional · a robot on a taped mark proves the positions",
-    action: i.live ? { label: "Check on a mark…", go: { sheet: "check" } } : undefined,
+    title: "Verified with a robot",
+    state: last ? (last.assumed ? "warn" : checkPasses(last, limit) ? "ok" : "warn") : "unknown",
+    detail: last
+      ? `${checkPasses(last, limit) ? "" : "off: "}${at(last)}${last.assumed ? " · assumed the robot had the calibration: unverified" : ""}`
+      : i.servedId
+        ? "not yet: a robot on a measured spot proves the positions"
+        : "once a calibration is in use",
+    action: i.live && i.servedId ? { label: last ? "Verify again…" : "Verify…", go: { sheet: "check" } } : undefined,
   });
   return out;
 }
 
 export interface Verdict {
-  state: "ready" | "not-ready";
+  /** Rows that block a run, rows that need the operator, rows that cannot tell. */
+  fails: number;
+  needs: number;
   unknown: number;
+  /** "3 to fix", "1 needs you", "ready", for a tab or a title. */
   title: string;
-  /** The goals listed under the verdict. */
-  lines: Goal[];
 }
 
-/** One verdict from the goals: not ready on any failure, else ready with
- * the unknowns counted; an unknown is never a pass. */
 export function verdict(all: Goal[]): Verdict {
-  const fails = all.filter((g) => g.state === "fail");
+  const fails = all.filter((g) => g.state === "fail").length;
+  const needs = all.filter((g) => g.state === "warn").length;
   const unknown = all.filter((g) => g.state === "unknown").length;
-  const lines = all.filter((g) => g.summary || g.state === "fail" || (g.state === "unknown" && g.group === "run"));
-  if (fails.length) return { state: "not-ready", unknown, title: `Not ready · ${fails.length} to fix`, lines };
-  return { state: "ready", unknown, title: unknown ? `Ready to run · ${unknown} unknown` : "Ready to run", lines };
+  const title = fails ? `${fails} to fix` : needs ? `${needs} need${needs === 1 ? "s" : ""} you` : unknown ? `ready · ${unknown} cannot tell` : "ready";
+  return { fails, needs, unknown, title };
 }

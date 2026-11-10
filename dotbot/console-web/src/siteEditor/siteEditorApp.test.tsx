@@ -1,5 +1,5 @@
 import React from "react";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../useFleet", () => {
@@ -232,11 +232,12 @@ describe("capturing zero", () => {
       "api/calibrations": () => new Response(JSON.stringify({ ...LIBRARY, served: null, serving: null, groups: [{ ...LIBRARY.groups[0], rows: inFrame.map((r) => ({ ...r, served: false })) }] }), { status: 200 }),
     });
     render(<SiteEditorApp />);
-    await waitFor(() => expect(screen.getByTestId("goal-served").textContent).toContain("nothing is served"));
-    expect(screen.getByTestId("goal-zero").querySelector("button")).toBeNull();
+    await waitFor(() => expect(screen.getByTestId("goal-calibration").textContent).toContain("none in use"));
+    expect(screen.getByTestId("goal-origin").textContent).toContain("Describe…");
+    expect(screen.queryByTestId("goal-stations")).toBeNull();
     keyDown("1");
     keyDown("c");
-    await waitFor(() => expect(screen.getByTestId("frame-serve-step").textContent).toBe("Pick one…"));
+    await waitFor(() => expect(screen.getByTestId("frame-serve-step").textContent).toBe("Choose…"));
     fireEvent.click(screen.getByTestId("frame-serve-step"));
     expect(screen.getByRole("tab", { name: /Calibrations/ }).getAttribute("aria-selected")).toBe("true");
     expect(screen.getByTestId("library-serve-hint").textContent).toContain("Use this…");
@@ -249,7 +250,8 @@ describe("capturing zero", () => {
     fireEvent.click(screen.getByLabelText("More"));
     fireEvent.click(screen.getByRole("menuitem", { name: /Mount, spin and place/ }));
     expect(screen.getByTestId("new-room")).toBeTruthy();
-    fireEvent.click(within(screen.getByTestId("goal-zero")).getByRole("button"));
+    keyDown("1");
+    keyDown("c");
     await waitFor(() => expect(screen.getByTestId("frame-capture")).toBeTruthy());
     expect(screen.queryByTestId("new-room")).toBeNull();
   });

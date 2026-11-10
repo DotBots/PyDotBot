@@ -1991,9 +1991,13 @@ body {
   border: 1.5px dashed var(--edge-strong);
 }
 .se .goal .st.unk {
-  border: 1.5px dashed color-mix(in srgb, var(--warn) 70%, transparent);
-  color: var(--warn);
+  border: 1.5px solid var(--edge-strong);
+  color: var(--muted);
   font: 700 9px var(--font-mono);
+}
+.se .goal > .acts {
+  flex: none;
+  margin-top: 1px;
 }
 .se .goal .t {
   flex: 1;
