@@ -1,13 +1,13 @@
 import React, { useEffect, useRef, useState } from "react";
 
 import { Badge } from "../shared/Badge";
-import { applySave, fetchHistory, HttpError, previewSite, restoreVersion, type ApplyStep } from "./api";
+import { applySave, fetchHistory, HttpError, previewSite, restoreVersion, type ApplyStep, type DryRun } from "./api";
 import { lineDiff } from "./diff";
-import { changes, type Change } from "./draft";
+import { changes, type BoxDraft, type Change } from "./draft";
 import { Icon } from "./icons";
 import { siteModel, type Doc } from "./model";
 import type { Problem } from "./rules";
-import type { SitePayload } from "./types";
+import type { LibraryRow, SitePayload } from "./types";
 
 // Review and save: what each write changes, in three parts, then one ordered
 // write whose steps are reported one by one. Saving writes files only.
@@ -32,6 +32,15 @@ export interface ReviewSheetProps {
   onStale: () => Promise<void>;
   /** Shows a broken rule's thing on the plan. */
   onShow?: (key: string) => void;
+  /** New station boxes, saved as a new calibration after site.toml. */
+  boxes?: BoxDraft | null;
+  /** The calibration the boxes start from. */
+  boxSource?: LibraryRow | null;
+  dry?: DryRun | null;
+  site?: string;
+  onTag?: (tag: string) => void;
+  /** A new calibration was written; the page lists it. */
+  onCalibration?: (id: string) => void;
 }
 
 type Phase =
@@ -83,10 +92,19 @@ export const ReviewSheet: React.FC<ReviewSheetProps> = (props) => {
     return () => window.removeEventListener("keydown", onKey, true);
   }, [phase.kind, onClose]);
 
+  const boxesNew = !!props.boxes && !props.dry?.existing;
   const save = async () => {
     setPhase({ kind: "saving" });
     try {
-      const result = await applySave(revision, siteModel(doc), props.text);
+      const siteChanged = list.length > 0 || (props.text !== null && props.text !== baseText);
+      const result = await applySave(
+        revision,
+        siteChanged ? siteModel(doc) : null,
+        siteChanged ? props.text : null,
+        boxesNew && props.boxes ? { of: props.boxes.from, stations: props.boxes.boxes, tag: props.boxes.tag || null } : null,
+      );
+      const written = result.steps.find((x) => x.step === "calibration" && x.status === "written");
+      if (written?.id) props.onCalibration?.(written.id);
       setPhase({ kind: "done", steps: result.steps, ok: result.ok, payload: result, before: revision });
       onSaved(result);
     } catch (e) {
@@ -111,7 +129,13 @@ export const ReviewSheet: React.FC<ReviewSheetProps> = (props) => {
 
   const diff = text === null ? [] : lineDiff(baseText, text);
   const blocked = problem !== "" || blockers.length > 0;
-  const nothing = list.length === 0 && (props.text === null || props.text === baseText);
+  const nothing = list.length === 0 && (props.text === null || props.text === baseText) && !boxesNew;
+  const twin = props.boxes
+    ? `dotbot swarm calibrate-lh2 rebox ${props.boxes.from.slice(0, 8)} ${Object.entries(props.boxes.boxes)
+        .filter(([k, r]) => props.boxSource?.stations.find((st) => st.index === Number(k))?.box.join() !== r.join())
+        .map(([k, r]) => `--station ${k}=${r[0]},${r[1]},${r[2] - r[0]},${r[3] - r[1]}`)
+        .join(" ")}${props.boxes.tag ? ` --tag ${props.boxes.tag}` : ""}${props.site ? ` --site ${props.site}` : ""}`
+    : "";
   const busy = phase.kind === "saving";
   const file = props.path.split("/").slice(-2).join("/");
 
@@ -172,15 +196,15 @@ export const ReviewSheet: React.FC<ReviewSheetProps> = (props) => {
               {file}
             </span>
             <span className="sp" />
-            {live && (
+            {live && list.length > 0 && (
               <Badge tone="warn" title="The controller reloads site.toml as soon as it is written: its console redraws the areas at once">
                 applies live
               </Badge>
             )}
           </div>
           <div className="pb">
-            {nothing ? (
-              "Nothing changed."
+            {list.length === 0 && (props.text === null || props.text === baseText) ? (
+              "Nothing changes in site.toml."
             ) : (
               <>
                 {list.map((c) => (
@@ -217,7 +241,36 @@ export const ReviewSheet: React.FC<ReviewSheetProps> = (props) => {
             <Icon name="stations" size={15} />
             <span>2 · A new calibration</span>
           </div>
-          <div className="pb">Nothing new: no station box was edited.</div>
+          {!props.boxes ? (
+            <div className="pb">Nothing new: no station box was edited.</div>
+          ) : props.dry?.existing ? (
+            <div className="pb" data-testid="review-boxes">
+              These boxes are <b>{props.dry.existing.id8}</b> "{props.dry.existing.tag}" already: nothing new is written. Serve that file instead.
+            </div>
+          ) : (
+            <div className="pb" data-testid="review-boxes">
+              A <b>rebox</b> of {props.boxes.from.slice(0, 8)}: same homographies, new boxes, saved as a new file
+              {props.dry ? (
+                <>
+                  {" "}
+                  with id <b className="mono">{props.dry.id8}</b>. {props.dry.reading}.
+                </>
+              ) : (
+                "."
+              )}{" "}
+              The file it starts from is never rewritten, and nothing is served or pushed.
+              <div style={{ marginTop: 8, maxWidth: 360 }}>
+                <span className="lbl">Tag of the new file</span>
+                <div className="fld">
+                  <input aria-label="Tag of the new file" value={props.boxes.tag} onChange={(e) => props.onTag?.(e.target.value)} placeholder="no tag" />
+                </div>
+              </div>
+              <div className="cli" style={{ marginTop: 8 }}>
+                <span className="c"># the same from a terminal{"\n"}</span>
+                {twin}
+              </div>
+            </div>
+          )}
         </div>
         <div className="part">
           <div className="ph">
@@ -265,7 +318,13 @@ export const ReviewSheet: React.FC<ReviewSheetProps> = (props) => {
           </button>
           {phase.kind !== "done" && (
             <button ref={saveRef} type="button" data-testid="review-save" className="btn primary" disabled={blocked || nothing || busy} onClick={save}>
-              {busy ? "Saving…" : "Save site.toml"}
+              {busy
+                ? "Saving…"
+                : boxesNew && list.length + (props.text !== null && props.text !== baseText ? 1 : 0) > 0
+                  ? "Save site.toml and the calibration"
+                  : boxesNew
+                    ? "Save the new calibration"
+                    : "Save site.toml"}
             </button>
           )}
         </footer>

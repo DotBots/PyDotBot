@@ -10,7 +10,8 @@ import { Tabs } from "../shared/Tabs";
 import { TitleBar } from "../shared/TitleBar";
 import { holds, typingIn } from "../shortcuts";
 import type { Site, UnifiedBot } from "../types";
-import { fetchContext, fetchLibrary, fetchRevision, fetchSite } from "./api";
+import { dryRunBoxes, fetchContext, fetchCoverage, fetchLibrary, fetchRevision, fetchSite, type DryRun } from "./api";
+import type { Coverage } from "./coverage";
 import { forget, newDraft, pending, persist, reapply, redo, restore, step, undo, type Change, type Draft, type KeyValue, type Snap } from "./draft";
 import "./editor.css";
 import { EditorFleet } from "./EditorFleet";
@@ -24,8 +25,10 @@ import { residuals, when } from "./library";
 import { docFromPayload, docFromSite, type Doc, type Point } from "./model";
 import { OutlinePane } from "./OutlinePane";
 import { DEFAULT_LAYERS, kindOfKey, PlanCanvas, type PlanLayers } from "./PlanCanvas";
-import { edgeMoved, movedAll, removed, type Handle } from "./plan";
+import { edgeMoved, handleAt, movedAll, removed, resized, type Handle } from "./plan";
 import { ReviewSheet } from "./ReviewSheet";
+import { Readout, StationsLegend, stationsOverlay, stationsUnderlay } from "./StationsLayer";
+import { StationsPanel, type CoverageMode } from "./StationsPanel";
 import { problems as rulesOf } from "./rules";
 import { TableView, type TableTab } from "./TableView";
 import type { EditorContext, Library, LibraryRow, Rect, SitePayload } from "./types";
@@ -163,6 +166,13 @@ export const SiteEditorApp: React.FC = () => {
   const [cursor, setCursor] = useState<Point | null>(null);
   const [snapTo, setSnapTo] = useState("");
   const [fitSignal, setFitSignal] = useState(0);
+  const [coverageMode, setCoverageMode] = useState<CoverageMode>("fix");
+  const [coverage, setCoverage] = useState<Coverage | null>(null);
+  const [coverageError, setCoverageError] = useState("");
+  const [coverageStale, setCoverageStale] = useState(false);
+  const [showNext, setShowNext] = useState(true);
+  const [probe, setProbe] = useState<{ at: Point; px: Point } | null>(null);
+  const [dry, setDry] = useState<DryRun | null>(null);
 
   const load = useCallback((p: SitePayload) => {
     setPayload(p);
@@ -254,8 +264,16 @@ export const SiteEditorApp: React.FC = () => {
   const servedId = context?.served?.id ?? context?.configured?.id ?? null;
   const shownId = previewId ?? servedId;
   const shown = rows.find((r) => r.id === shownId) ?? null;
-  const chip = editorChip(context, previewId ? shown : null);
-  const boxes: { index: number; rect: Rect }[] = shown?.in_frame ? shown.stations.map((s) => ({ index: s.index, rect: s.box })) : [];
+  const boxDraft = draft?.boxes && shown && draft.boxes.from === shown.id ? draft.boxes : null;
+  const fileBoxes: { index: number; rect: Rect }[] = shown?.in_frame ? shown.stations.map((s) => ({ index: s.index, rect: s.box })) : [];
+  const boxes: { index: number; rect: Rect }[] = boxDraft
+    ? Object.entries(boxDraft.boxes)
+        .map(([k, rect]) => ({ index: Number(k), rect }))
+        .sort((a, b) => a.index - b.index)
+    : fileBoxes;
+  const baseChip = editorChip(context, previewId ? shown : null);
+  const chip: ChipModel = boxDraft ? { ...baseChip, side: { kind: "draft", from: boxDraft.from.slice(0, 8) } } : baseChip;
+  const boxesKey = JSON.stringify(boxDraft?.boxes ?? null);
   const circles = !previewId && fleetSite?.calibration?.id === servedId ? (fleetSite?.calibration?.circles ?? []) : [];
   const live = context?.mode === "controller";
   const problems = useMemo(() => (draft ? rulesOf(draft.doc) : []), [draft?.doc]);
@@ -276,6 +294,66 @@ export const SiteEditorApp: React.FC = () => {
     if (k === "view") setSelected([]);
     else setSelected((s) => s.filter((key) => kindOfKey(key) === k));
   };
+
+  // The Stations kind's numbers, for the boxes as drafted; a little late
+  // while an edge is dragged, so a drag never waits on the server
+  const needCoverage = kind === "stations" && !!shown?.in_frame;
+  useEffect(() => {
+    if (!needCoverage || !shown) return;
+    setCoverageStale(true);
+    let live = true;
+    const t = window.setTimeout(() => {
+      fetchCoverage(shown.id, boxDraft ? boxDraft.boxes : null).then(
+        (c) => {
+          if (!live) return;
+          setCoverage(c);
+          setCoverageStale(false);
+          setCoverageError(c.headline ? "" : `${shown.id8} has no spin to compute a predicted error from (its stations were solved from corners or placements).`);
+        },
+        (e: Error) => {
+          if (!live) return;
+          setCoverageStale(false);
+          setCoverageError(e.message.replace(/^\d+: /, ""));
+        },
+      );
+    }, 220);
+    return () => {
+      live = false;
+      window.clearTimeout(t);
+    };
+  }, [needCoverage, shown?.id, boxesKey]);
+
+  // What Save would write for the drafted boxes, without writing it
+  useEffect(() => {
+    setDry(null);
+    if (!boxDraft || !draft) return;
+    let live = true;
+    const t = window.setTimeout(() => {
+      dryRunBoxes(boxDraft.from, boxDraft.boxes, draft.revision, boxDraft.tag || null).then(
+        (d) => live && setDry(d),
+        () => {},
+      );
+    }, 250);
+    return () => {
+      live = false;
+      window.clearTimeout(t);
+    };
+  }, [boxesKey, boxDraft?.tag, draft?.revision]);
+
+  const editBoxes = useCallback(
+    (next: Record<number, Rect>) => {
+      if (!shown) return;
+      setDraft((d) => {
+        if (!d) return d;
+        const tag = d.boxes?.from === shown.id ? d.boxes.tag : shown.tag ? `${shown.tag}-boxes` : "";
+        const before = d.boxes?.from === shown.id ? d.boxes.boxes : Object.fromEntries(shown.stations.map((st) => [st.index, st.box]));
+        const merged = { ...before, ...next };
+        const unchanged = shown.stations.every((st) => (merged[st.index] ?? st.box).join() === st.box.join());
+        return step(d, { boxes: unchanged ? null : { from: shown.id, boxes: merged, tag } });
+      });
+    },
+    [shown],
+  );
 
   const onSaved = useCallback((p: SitePayload) => {
     forget(storage(), p.name);
@@ -323,7 +401,17 @@ export const SiteEditorApp: React.FC = () => {
         const dx = e.key === "ArrowLeft" ? -d : e.key === "ArrowRight" ? d : 0;
         const dy = e.key === "ArrowUp" ? -d : e.key === "ArrowDown" ? d : 0;
         const movable = selected.filter((k) => kindOfKey(k) === kind && !k.startsWith("box:") && !k.startsWith("robot:"));
-        if (edge && kindOfKey(edge.key) === kind) {
+        if (edge && edge.key.startsWith("box:") && kind === "stations") {
+          e.preventDefault();
+          const index = Number(edge.key.slice(4));
+          const b = boxes.find((x) => x.index === index);
+          if (b) {
+            const rr = { x: b.rect[0], y: b.rect[1], w: b.rect[2] - b.rect[0], h: b.rect[3] - b.rect[1] };
+            const [hx, hy] = handleAt(rr, edge.handle);
+            const n = resized(rr, edge.handle, [hx + dx, hy + dy]);
+            editBoxes({ [index]: [n.x, n.y, n.x + n.w, n.y + n.h] });
+          }
+        } else if (edge && kindOfKey(edge.key) === kind) {
           e.preventDefault();
           setDraft(step(draft, { doc: edgeMoved(draft.doc, edge.key, edge.handle, dx, dy) }));
         } else if (movable.length) {
@@ -471,7 +559,27 @@ export const SiteEditorApp: React.FC = () => {
         </button>
       </div>
       <div className="pane-body">
-        {rightTab === "inspect" ? (
+        {rightTab === "inspect" && kind === "stations" && !selected.some((k) => k.startsWith("robot:")) ? (
+          <StationsPanel
+            shown={shown}
+            servedId={servedId}
+            boxes={boxes}
+            drafted={!!boxDraft}
+            coverage={coverage && coverage.id === shown?.id ? coverage : null}
+            coverageError={coverageError}
+            mode={coverageMode}
+            onMode={setCoverageMode}
+            extent={draft.doc.extent_mm ?? [1000, 1000]}
+            rows={rows}
+            selectedBox={selected.length === 1 && selected[0].startsWith("box:") ? Number(selected[0].slice(4)) : null}
+            editable
+            onBoxes={editBoxes}
+            onSelectBox={(i) => setSelected(i === null ? [] : [`box:${i}`])}
+            showNext={showNext}
+            onShowNext={setShowNext}
+            dry={dry}
+          />
+        ) : rightTab === "inspect" ? (
           <Inspector
             doc={draft.doc}
             selected={selected}
@@ -649,6 +757,10 @@ export const SiteEditorApp: React.FC = () => {
                 layers={layers}
                 robots={bots}
                 fitSignal={fitSignal}
+                onBoxEdit={shown?.in_frame ? (index, rect) => editBoxes({ [index]: rect }) : undefined}
+                underlay={kind === "stations" ? stationsUnderlay(coverageMode, coverage && coverage.id === shown?.id ? coverage : null, draft.doc.extent_mm ?? [1000, 1000], theme === "light", coverageStale) : undefined}
+                overlay={kind === "stations" ? stationsOverlay(coverage && coverage.id === shown?.id ? coverage : null, showNext && coverageMode === "error", probe?.at ?? null) : undefined}
+                onProbe={(at, px) => setProbe(at && px ? { at, px } : null)}
                 onSelect={select}
                 onEdge={setEdge}
                 onEdit={onEdit}
@@ -656,7 +768,57 @@ export const SiteEditorApp: React.FC = () => {
                 onSnap={setSnapTo}
                 onToolDone={() => setTool("select")}
                 onShortcuts={() => setShortcuts(true)}
-              />
+              >
+                {kind === "stations" && boxes.length > 0 && (
+                  <StationsLegend mode={coverageMode} coverage={coverage && coverage.id === shown?.id ? coverage : null} boxes={boxes} showNext={showNext} stale={coverageStale} />
+                )}
+                {kind === "stations" && tool === "probe" && probe && (
+                  <Readout
+                    at={probe.at}
+                    px={probe.px}
+                    boxes={boxes}
+                    coverage={coverage && coverage.id === shown?.id ? coverage : null}
+                    area={draft.doc.areas.find((a) => probe.at[0] >= a.x && probe.at[0] <= a.x + a.w && probe.at[1] >= a.y && probe.at[1] <= a.y + a.h)?.name ?? null}
+                  />
+                )}
+                {boxDraft && (
+                  <div className={`float banner ${dry?.existing ? "same" : "draft"}`} data-testid="box-banner" style={{ left: tools.length ? 62 : 12 }}>
+                    <Icon name={dry?.existing ? "check" : "pin"} size={15} />
+                    <span className="tx">
+                      {dry?.existing ? (
+                        <>
+                          <b>Same as {dry.existing.id8}</b> "{dry.existing.tag}": these boxes are that file already, so Save writes nothing new.
+                        </>
+                      ) : (
+                        <>
+                          <b>Draft boxes from {boxDraft.from.slice(0, 8)}</b>, not saved: Save writes a new calibration{dry ? ` (${dry.id8})` : ""} and serves nothing.
+                        </>
+                      )}
+                    </span>
+                    {dry?.existing && (
+                      <button
+                        type="button"
+                        className="btn sm"
+                        onClick={() => {
+                          const id = dry.existing!.id;
+                          setDraft((d) => (d ? step(d, { boxes: null }) : d));
+                          setPreviewId(id === servedId ? null : id);
+                        }}
+                      >
+                        Show {dry.existing.id8}
+                      </button>
+                    )}
+                    <button type="button" className="btn sm" onClick={() => setDraft((d) => (d ? step(d, { boxes: null }) : d))}>
+                      Discard
+                    </button>
+                    {!dry?.existing && (
+                      <button type="button" className="btn sm" onClick={() => setReviewing(true)}>
+                        Review
+                      </button>
+                    )}
+                  </div>
+                )}
+              </PlanCanvas>
             ) : view === "table" ? (
               <TableView
                 doc={draft.doc}
@@ -792,6 +954,15 @@ export const SiteEditorApp: React.FC = () => {
           onClose={() => setReviewing(false)}
           onSaved={onSaved}
           onStale={onStale}
+          boxes={draft.boxes}
+          boxSource={rows.find((r) => r.id === draft.boxes?.from) ?? null}
+          dry={dry}
+          site={payload.name}
+          onTag={(tag) => setDraft((d) => (d && d.boxes ? { ...d, boxes: { ...d.boxes, tag } } : d))}
+          onCalibration={(id) => {
+            loadLibrary();
+            setPreviewId(id === servedId ? null : id);
+          }}
           onShow={(key) => {
             setReviewing(false);
             setView("plan");

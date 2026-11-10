@@ -88,6 +88,7 @@ type Drag =
   | { type: "pan"; from: Point; cam: Camera; moved: boolean }
   | { type: "move"; keys: string[]; from: Point; moved: boolean }
   | { type: "resize"; key: string; handle: Handle }
+  | { type: "box"; index: number; handle: Handle; rect: Rect }
   | { type: "area"; from: Point; to: Point }
   | { type: "marquee"; from: Point; to: Point; base: string[] }
   | { type: "measure"; from: Point; to: Point };
@@ -117,14 +118,16 @@ interface PlanCanvasProps {
   robots: UnifiedBot[];
   /** Labels on the plan scaled up, for a projector. */
   labelScale?: number;
-  /** Drawn under the areas, e.g. who gives the fix. */
-  underlay?: (paint: PlanPaint) => React.ReactNode;
+  /** Drawn under the areas, e.g. who gives the fix, for the boxes as drawn now. */
+  underlay?: (paint: PlanPaint, boxes: { index: number; rect: Rect }[]) => React.ReactNode;
   /** Drawn over everything, e.g. suggested spins. */
-  overlay?: (paint: PlanPaint) => React.ReactNode;
+  overlay?: (paint: PlanPaint, boxes: { index: number; rect: Rect }[]) => React.ReactNode;
   /** A floating card the page shows over the plan, e.g. a legend. */
   children?: React.ReactNode;
   onSelect: (keys: string[]) => void;
   onEdge: (edge: { key: string; handle: Handle } | null) => void;
+  /** A station box dragged to a new rectangle; absent where boxes are read only. */
+  onBoxEdit?: (index: number, rect: Rect) => void;
   onEdit: (doc: Doc) => void;
   onCursor?: (mm: Point | null) => void;
   /** What the last drag snapped to, for the status bar. */
@@ -159,6 +162,7 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
   const [preview, setPreview] = useState<Doc | null>(null);
   const [poly, setPoly] = useState<Point[]>([]);
   const [hover, setHover] = useState<Point | null>(null);
+  const [boxPreview, setBoxPreview] = useState<{ index: number; rect: Rect } | null>(null);
   const [, setHoverBot] = useState<string | null>(null);
 
   const extent: [number, number] = doc.extent_mm ?? [2000, 2000];
@@ -318,7 +322,15 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
     const at = mmAt(e);
     setHover(at);
     props.onCursor?.(at);
+    if (tool === "probe" && !drag) props.onProbe?.(rawMm(e), local(e));
     if (!drag) return;
+    if (drag.type === "box") {
+      const s = snapped(e);
+      props.onSnap?.(s.to);
+      const r = resized({ x: drag.rect[0], y: drag.rect[1], w: drag.rect[2] - drag.rect[0], h: drag.rect[3] - drag.rect[1] }, drag.handle, s.point);
+      setBoxPreview({ index: drag.index, rect: [r.x, r.y, r.x + r.w, r.y + r.h] });
+      return;
+    }
     if (drag.type === "pan") {
       const p = local(e);
       const dx = p[0] - drag.from[0];
@@ -350,6 +362,8 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
   };
 
   const onUp = () => {
+    if (drag?.type === "box" && boxPreview) props.onBoxEdit?.(boxPreview.index, boxPreview.rect);
+    setBoxPreview(null);
     if (drag?.type === "pan" && !drag.moved && tool === "select") {
       props.onSelect([]);
       props.onEdge(null);
@@ -498,8 +512,9 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
     );
   });
 
+  const shownBoxes = boxPreview ? props.boxes.map((b) => (b.index === boxPreview.index ? boxPreview : b)) : props.boxes;
   const boxNodes = props.layers.boxes
-    ? props.boxes.map((b, i) => {
+    ? shownBoxes.map((b, i) => {
         const inset = (i + 1) * 3 * chrome;
         const [x0, y0] = px([b.rect[0], b.rect[1]]);
         const [x1, y1] = px([b.rect[2], b.rect[3]]);
@@ -520,11 +535,16 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
               style={{ pointerEvents: kind === "stations" && interactive ? "stroke" : "none", cursor: "pointer" }}
               onPointerDown={(e) => onEntityDown(e, `box:${b.index}`)}
             />
-            {kind === "stations" && (
-              <text className="halo" x={x0 + inset + 5 * chrome} y={y1 - inset - 6 * chrome} fontSize={11 * label} fill={hue} fontWeight={600} strokeWidth={3 * chrome}>
-                S{b.index} box
-              </text>
-            )}
+            {kind === "stations" &&
+              (b.index % 2 === 0 ? (
+                <text className="halo" x={x0 + inset + 5 * chrome} y={y1 - inset - 6 * chrome} fontSize={11 * label} fill={hue} fontWeight={600} strokeWidth={3 * chrome}>
+                  S{b.index} box
+                </text>
+              ) : (
+                <text className="halo" x={x1 - inset - 5 * chrome} y={y0 + inset + 14 * label} fontSize={11 * label} fill={hue} fontWeight={600} textAnchor="end" strokeWidth={3 * chrome}>
+                  S{b.index} box
+                </text>
+              ))}
           </g>
         );
       })
@@ -559,6 +579,40 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
       })
     : null;
 
+  const selectedBox = kind === "stations" && props.onBoxEdit && tool === "select" && selected.length === 1 ? shownBoxes.find((b) => `box:${b.index}` === selected[0]) : undefined;
+  const boxHandles = selectedBox
+    ? HANDLES.map((h) => {
+        const rr = { x: selectedBox.rect[0], y: selectedBox.rect[1], w: selectedBox.rect[2] - selectedBox.rect[0], h: selectedBox.rect[3] - selectedBox.rect[1] };
+        const [hx, hy] = px(handleAt(rr, h));
+        const s = 10 * chrome;
+        const picked = props.edge?.key === `box:${selectedBox.index}` && props.edge.handle === h;
+        const cursor = h === "n" || h === "s" ? "ns-resize" : h === "e" || h === "w" ? "ew-resize" : h === "nw" || h === "se" ? "nwse-resize" : "nesw-resize";
+        return (
+          <rect
+            key={`bh-${h}`}
+            data-testid={`box-handle-${h}`}
+            x={hx - s / 2}
+            y={hy - s / 2}
+            width={s}
+            height={s}
+            rx={2 * chrome}
+            fill={picked ? `var(--st-${selectedBox.index % 2})` : "var(--surface)"}
+            stroke={`var(--st-${selectedBox.index % 2})`}
+            strokeWidth={1.5 * chrome}
+            style={{ cursor }}
+            onPointerDown={(e) => {
+              if (e.button !== 0) return;
+              e.stopPropagation();
+              capture(e);
+              props.onEdge({ key: `box:${selectedBox.index}`, handle: h });
+              setDrag({ type: "box", index: selectedBox.index, handle: h, rect: selectedBox.rect });
+            }}
+          >
+            <title>Drag to move this edge of S{selectedBox.index}'s box; click, then the arrow keys nudge it</title>
+          </rect>
+        );
+      })
+    : null;
   const selectedAreas = kind === "areas" && editable && tool === "select" ? shown.areas.filter((a) => sel(a.key)) : [];
   const handles =
     selectedAreas.length === 1
@@ -588,6 +642,20 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
           );
         })
       : null;
+  const boxPill = boxPreview
+    ? (() => {
+        const [x, y] = px([(boxPreview.rect[0] + boxPreview.rect[2]) / 2, boxPreview.rect[3]]);
+        const t = `S${boxPreview.index} x ${boxPreview.rect[0]}-${boxPreview.rect[2]} · y ${boxPreview.rect[1]}-${boxPreview.rect[3]}`;
+        return (
+          <g style={{ pointerEvents: "none" }}>
+            <rect x={x - 90 * chrome} y={y + 7 * chrome} width={180 * chrome} height={17 * chrome} rx={4 * chrome} fill={`var(--st-${boxPreview.index % 2})`} />
+            <text x={x} y={y + 19.5 * chrome} fontSize={10.5 * chrome} textAnchor="middle" fill="#fff" fontFamily="var(--font-mono)" fontWeight={600}>
+              {t}
+            </text>
+          </g>
+        );
+      })()
+    : null;
   const sizePill =
     selectedAreas.length === 1 && (drag?.type === "resize" || drag?.type === "move")
       ? (() => {
@@ -723,6 +791,7 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
         onPointerLeave={() => {
           props.onCursor?.(null);
           setHover(null);
+          if (tool === "probe") props.onProbe?.(null, null);
         }}
         onDoubleClick={() => poly.length && finishPoly()}
         style={{
@@ -757,7 +826,7 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
               />
               {gridLines}
               {ruler}
-              {props.underlay?.(paint)}
+              {props.underlay?.(paint, shownBoxes)}
               <rect data-testid="floor" x={fx} y={fy} width={fw} height={fh} fill="none" stroke="var(--muted)" strokeWidth={chrome} style={{ pointerEvents: "none" }} />
               <text className="tl halo" x={fx + fw / 2} y={fy + fh + 16 * label} fontSize={10 * label} textAnchor="middle" strokeWidth={3 * chrome}>
                 floor {extent[0]} × {extent[1]} mm
@@ -769,8 +838,10 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
               {shown.obstacles.map((o) => barrier(o, true))}
               {objectNodes}
               {frameNodes}
-              {props.overlay?.(paint)}
+              {props.overlay?.(paint, shownBoxes)}
               {handles}
+              {boxHandles}
+              {boxPill}
               {sizePill}
               {drawing}
             </svg>
