@@ -91,7 +91,8 @@ type Drag =
   | { type: "box"; index: number; handle: Handle; rect: Rect }
   | { type: "area"; from: Point; to: Point }
   | { type: "marquee"; from: Point; to: Point; base: string[] }
-  | { type: "measure"; from: Point; to: Point };
+  | { type: "measure"; from: Point; to: Point }
+  | { type: "floor"; from: Point; turn: boolean };
 
 /** What an overlay drawn on the plan needs: frame mm to the box's pixels. */
 export interface PlanPaint {
@@ -138,6 +139,10 @@ interface PlanCanvasProps {
   onToolDone: () => void;
   /** A click on the floor with a tool that picks a point, e.g. the pivot. */
   onPoint?: (mm: Point) => void;
+  /** With the capture tool, a drag on the floor moves the whole room: called
+   * from the press to each pointer position, `turn` when Alt or Shift was held
+   * at the press, `done` on release. */
+  onFloorDrag?: (from: Point, to: Point, turn: boolean, done: boolean) => void;
   onShortcuts?: () => void;
   /** Bumped by the page to fit the floor again. */
   fitSignal?: number;
@@ -291,6 +296,7 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
     if (tool === "measure") return setDrag({ type: "measure", from: at, to: at });
     if (tool === "probe") return props.onProbe?.(rawMm(e), local(e));
     if (tool === "turn") return props.onPoint?.(at);
+    if (tool === "capture" && props.onFloorDrag) return setDrag({ type: "floor", from: rawMm(e), turn: e.altKey || e.shiftKey });
     if (editable && (tool === "wall" || tool === "obstacle")) return setPoly((p) => [...p, at]);
     const objectKind = OBJECT_TOOLS[tool];
     if (editable && objectKind) return placeObject(at, objectKind);
@@ -344,6 +350,10 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
       setBoxPreview({ index: drag.index, rect: [r.x, r.y, r.x + r.w, r.y + r.h] });
       return;
     }
+    if (drag.type === "floor") {
+      props.onFloorDrag?.(drag.from, rawMm(e), drag.turn, false);
+      return;
+    }
     if (drag.type === "pan") {
       const p = local(e);
       const dx = p[0] - drag.from[0];
@@ -374,7 +384,8 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
     }
   };
 
-  const onUp = () => {
+  const onUp = (e?: React.PointerEvent) => {
+    if (drag?.type === "floor" && e) props.onFloorDrag?.(drag.from, rawMm(e), drag.turn, true);
     if (drag?.type === "box" && boxPreview) props.onBoxEdit?.(boxPreview.index, boxPreview.rect);
     setBoxPreview(null);
     if (drag?.type === "pan" && !drag.moved && tool === "select") {

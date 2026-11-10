@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { anchorErrors, fitAnchors, forbidden, frameTwin, NO_MOVE, plainWarning, toNew, toOld, withOrigin, zeroAt } from "./frameMove";
+import { anchorErrors, fitAnchors, forbidden, frameTwin, NO_MOVE, toNew, toOld, plainWarning, turnedAbout, withOrigin, zeroAt } from "./frameMove";
 
 describe("a move of the frame", () => {
   it("goes there and back", () => {
@@ -37,6 +37,10 @@ describe("the stillness gate", () => {
     expect(stillness(track.slice(-2), 2000).still).toBe(false);
     const moving = track.map((s, i) => ({ ...s, p: [100 + 10 * i, 200] as [number, number] }));
     expect(stillness(moving, 2000).still).toBe(false);
+    // a timer that drifts a few ms per sample still opens it
+    const drifting = [0, 504, 1009, 1513, 2018].map((t) => ({ t, p: [100, 200] as [number, number] }));
+    expect(stillness(drifting, 2018).still).toBe(true);
+    expect(stillness(drifting.map((x) => ({ ...x, t: x.t + 3 })), 2025).still).toBe(true);
   });
 });
 
@@ -71,6 +75,23 @@ describe("the origin from robots on spots", () => {
     expect(toOld(moved, [0, 0])).toEqual([200, 300]);
     expect(forbidden(moved, points)!.originOk).toBe(true);
     expect(forbidden(NO_MOVE, [])).toBeNull();
+  });
+});
+
+describe("turning a move about a point", () => {
+  it("swings every point of the new frame about that point", () => {
+    const m = { theta_deg: 3, pivot: [400, 300] as [number, number], dx: 50, dy: -20, note: null };
+    const c: [number, number] = [700, 500];
+    const t = turnedAbout(m, c, 10);
+    expect(t.theta_deg).toBe(13);
+    for (const p of [[0, 0], [1000, 0], [250, 800]] as [number, number][]) {
+      const a = toOld(m, p);
+      const r = (10 * Math.PI) / 180;
+      const want = [c[0] + Math.cos(r) * (a[0] - c[0]) - Math.sin(r) * (a[1] - c[1]), c[1] + Math.sin(r) * (a[0] - c[0]) + Math.cos(r) * (a[1] - c[1])];
+      const got = toOld(t, p);
+      expect(got[0]).toBeCloseTo(want[0], 0);
+      expect(got[1]).toBeCloseTo(want[1], 0);
+    }
   });
 });
 

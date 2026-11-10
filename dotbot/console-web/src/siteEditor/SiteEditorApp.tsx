@@ -33,7 +33,7 @@ import { ChecksPane } from "./ChecksPane";
 import { CompareSheet } from "./CompareSheet";
 import { anchorsOverlay, FramePanel } from "./FramePanel";
 import { FrameSheet } from "./FrameSheet";
-import { moves, NO_MOVE, toOld, type Anchor, type FrameMove } from "./frameMove";
+import { moves, NO_MOVE, toOld, turnedAbout, withOrigin, type Anchor, type FrameMove } from "./frameMove";
 import { ServeSheet } from "./ServeSheet";
 import { heldCalibrationId } from "../botFacts";
 import { coverageTag, splitFloor, type Coverage } from "./coverage";
@@ -553,6 +553,23 @@ export const SiteEditorApp: React.FC = () => {
       live = false;
     };
   }, [kind, tool, servedId]);
+  // A drag on the plan, once robots are pinned, carries the whole room with the
+  // pointer, or turns it about the pinned spots with Alt or Shift held
+  const dragBase = useRef<FrameMove | null>(null);
+  const onFloorDrag = (from: Point, to: Point, turn: boolean, done: boolean) => {
+    const base = dragBase.current ?? frameMove;
+    dragBase.current = done ? null : base;
+    if (turn) {
+      const at = anchors.map((a) => toOld(base, a.spot));
+      const c: Point = [at.reduce((v, p) => v + p[0], 0) / at.length, at.reduce((v, p) => v + p[1], 0) / at.length];
+      const deg = ((Math.atan2(to[1] - c[1], to[0] - c[0]) - Math.atan2(from[1] - c[1], from[0] - c[0])) * 180) / Math.PI;
+      setFrameMove(turnedAbout(base, c, Math.round(deg * 100) / 100));
+    } else {
+      const o = toOld(base, [0, 0]);
+      setFrameMove(withOrigin(base, [o[0] + to[0] - from[0], o[1] + to[1] - from[1]]));
+    }
+  };
+
   // A verification takes the right pane: the frame tool and its ghost go
   useEffect(() => {
     if (checking) setTool("select");
@@ -1366,6 +1383,7 @@ export const SiteEditorApp: React.FC = () => {
                 }
                 onProbe={(at, px) => setProbe(at && px ? { at, px } : null)}
                 onPoint={(p) => setFrameMove((m) => ({ ...m, pivot: p }))}
+                onFloorDrag={kind === "frame" && tool === "capture" && anchors.length > 0 ? onFloorDrag : undefined}
                 onSelect={select}
                 onEdge={setEdge}
                 onEdit={onEdit}

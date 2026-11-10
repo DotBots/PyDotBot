@@ -84,6 +84,15 @@ export function withOrigin(m: FrameMove, o: Point): FrameMove {
   return { ...m, dx: round(back[0]), dy: round(back[1]) };
 }
 
+/** `m` turned further by `deg` about `c` (current frame's mm): every point
+ * of the new frame lands where `m` put it, turned about `c`. */
+export function turnedAbout(m: FrameMove, c: Point, deg: number): FrameMove {
+  const theta = Math.round((m.theta_deg + deg) * 100) / 100;
+  const swung = turn([m.pivot[0] - c[0], m.pivot[1] - c[1]], [0, 0], theta - m.theta_deg);
+  const back = turn([c[0] + swung[0] - m.pivot[0], c[1] + swung[1] - m.pivot[1]], [0, 0], -theta);
+  return { ...m, theta_deg: theta, dx: round(m.dx + back[0]), dy: round(m.dy + back[1]) };
+}
+
 /** Each anchor's robot against its spot under `m`, mm. */
 export function anchorErrors(m: FrameMove, anchors: Anchor[]): number[] {
   return anchors.map((a) => {

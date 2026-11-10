@@ -21,7 +21,8 @@ export const STILL_MS = 2000;
 
 /** Whether a robot's fixes over the last `STILL_MS` stayed within `STILL_MM`. */
 export function stillness(track: { t: number; p: Point }[], now: number): { still: boolean; mean: Point | null; measuring?: boolean } {
-  const recent = track.filter((s) => now - s.t <= STILL_MS);
+  // A quarter of slack: samples on a timer drift, and the oldest one must still count
+  const recent = track.filter((s) => now - s.t <= STILL_MS * 1.25);
   if (recent.length < 2 || now - recent[0].t < STILL_MS * 0.8) return { still: false, mean: recent.length ? recent[recent.length - 1].p : null, measuring: true };
   const mx = recent.reduce((a, s) => a + s.p[0], 0) / recent.length;
   const my = recent.reduce((a, s) => a + s.p[1], 0) / recent.length;
@@ -197,7 +198,8 @@ export const FramePanel: React.FC<FramePanelProps> = (props) => {
     const unrot = (p: Point): Point => turnBy(p, move.theta_deg);
     const ro = rot(o);
     const rc = rot(forb.corner);
-    onMove(withOrigin(move, unrot([Math.min(ro[0], rc[0]), Math.min(ro[1], rc[1])])));
+    // A fifth of a millimetre inside, so rounding the move cannot land it outside
+    onMove(withOrigin(move, unrot([Math.min(ro[0], rc[0] - 0.2), Math.min(ro[1], rc[1] - 0.2)])));
   };
 
   const status = !moves(move) ? (
@@ -356,6 +358,9 @@ export const FramePanel: React.FC<FramePanelProps> = (props) => {
             Turn {move.theta_deg.toFixed(2)}°, the origin moves by ({move.dx}, {move.dy}) mm{worst !== null && anchors.length > 1 ? ` · the dots are up to ${worst.toFixed(1)} mm off their spots` : ""}.
             <div className="nudge" tabIndex={0} onKeyDown={nudge} data-testid="nudge-pad" title="Click here, then use the arrow keys">
               <Icon name="select" size={12} /> Nudge with the arrows: 1 mm · Shift 10 mm · Alt turns 0.1° (Shift Alt 1°)
+            </div>
+            <div className="note" style={{ marginTop: 6 }}>
+              Or drag the plan: the room follows the pointer; hold Alt or Shift as you press to turn it about the spots.
             </div>
             <div className="acts">
               <button type="button" className="btn xs" onClick={() => setAnchors([])}>
