@@ -12,6 +12,7 @@ vi.mock("../useOrchestration", () => {
 });
 
 import { filtered, groupTitle } from "./library";
+import { docFromSite } from "./model";
 import { SiteEditorApp } from "./SiteEditorApp";
 import type { Library, LibraryRow, Rect } from "./types";
 
@@ -254,6 +255,87 @@ describe("capturing zero", () => {
     keyDown("c");
     await waitFor(() => expect(screen.getByTestId("frame-capture")).toBeTruthy());
     expect(screen.queryByTestId("new-room")).toBeNull();
+  });
+});
+
+describe("keeping the operator's work", () => {
+  const edit = async () => {
+    await waitFor(() => expect(screen.getByTestId("area-field")).toBeTruthy());
+    fireEvent.click(screen.getByRole("tab", { name: "Outline" }));
+    fireEvent.click(screen.getByTestId("outline-area:field"));
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "arena" } });
+    fireEvent.keyDown(screen.getByLabelText("Name"), { key: "Enter" });
+    await waitFor(() => expect(screen.getByTestId("unsaved").textContent).toContain("1 unsaved"));
+  };
+
+  it("discards every unsaved change on request, here and in this browser", async () => {
+    stubFetch();
+    render(<SiteEditorApp />);
+    await edit();
+    fireEvent.click(screen.getByLabelText("More"));
+    fireEvent.click(screen.getByTestId("discard-all"));
+    await waitFor(() => expect(screen.getByTestId("unsaved").textContent).toBe("saved"));
+    expect(window.localStorage.getItem("dotbot.siteEditor.draft.inria-2lh")).toBeNull();
+  });
+
+  it("keeps text edits that cannot follow a changed file, for copying", async () => {
+    window.localStorage.setItem(
+      "dotbot.siteEditor.draft.inria-2lh",
+      JSON.stringify({ revision: "r0", calibration: null, base: docFromSite(SITE.site), doc: docFromSite(SITE.site), text: "# my hand edit\n" + TEXT, boxes: null }),
+    );
+    stubFetch();
+    render(<SiteEditorApp />);
+    await waitFor(() => expect(screen.getByTestId("notice").textContent).toContain("copy them from here"));
+    expect(screen.getByTestId("notice-copy-lost")).toBeTruthy();
+  });
+
+  it("names what depends on a file before archiving it, and archives anyway on request", async () => {
+    const calls = stubFetch({
+      "api/calibrations/a1b41f1200000000": (init) => {
+        const body = JSON.parse((init?.body as string) ?? "{}");
+        if (init?.method === "PATCH" && !body.force)
+          return new Response(JSON.stringify({ detail: { message: "a1b41f12 is named for the next start: a1b41f12 in dotbot.local.toml", dependents: ["named for the next start: a1b41f12 in dotbot.local.toml"] } }), { status: 409 });
+        return new Response(JSON.stringify({ id: handover.id, id8: "a1b41f12", tag: "t", path: "/x" }), { status: 200 });
+      },
+    });
+    render(<SiteEditorApp />);
+    await waitFor(() => expect(screen.getByRole("tab", { name: /Calibrations/ })).toBeTruthy());
+    fireEvent.click(screen.getByRole("tab", { name: /Calibrations/ }));
+    await waitFor(() => expect(screen.getByTestId("library-row-a1b41f12")).toBeTruthy());
+    fireEvent.click(screen.getByLabelText("Actions for tag-a1b41f12"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Archive" }));
+    await waitFor(() => expect(screen.getByTestId("notice").textContent).toContain("named for the next start"));
+    fireEvent.click(screen.getByTestId("notice-act"));
+    await waitFor(() => expect(screen.getByTestId("toast").textContent).toContain("Archived tag-a1b41f12"));
+    const forced = calls.filter((c) => c.init?.method === "PATCH").map((c) => JSON.parse(c.init!.body as string).force);
+    expect(forced).toEqual([false, true]);
+  });
+
+  it("lists the files this build cannot read instead of saying there are none", async () => {
+    stubFetch({
+      "api/calibrations?": () =>
+        new Response(JSON.stringify({ ...LIBRARY, count: 0, groups: [], not_placed: [], serving: null, served: null, unreadable: [{ path: "/cal/old.toml", name: "old.toml", schema: 2, error: "unsupported schema_version 2" }] }), { status: 200 }),
+    });
+    render(<SiteEditorApp />);
+    await waitFor(() => expect(screen.getByRole("tab", { name: /Calibrations/ })).toBeTruthy());
+    fireEvent.click(screen.getByRole("tab", { name: /Calibrations/ }));
+    await waitFor(() => expect(screen.getByTestId("library-unreadable")).toBeTruthy());
+    expect(screen.getByTestId("library").textContent).toContain("1 older file, none this build reads");
+    expect(screen.getByTestId("library").textContent).toContain("old.toml");
+  });
+
+  it("restores a kept version of the room file from the Snapshots section", async () => {
+    const calls = stubFetch({
+      "api/history": () => new Response(JSON.stringify([{ id: "v1", at: "2026-11-10T09:00:00Z", revision: "r0" }]), { status: 200 }),
+      "api/restore": () => new Response(JSON.stringify({ ...SITE, revision: "r0", text: TEXT, restored: "v1" }), { status: 200 }),
+    });
+    render(<SiteEditorApp />);
+    await waitFor(() => expect(screen.getByTestId("versions")).toBeTruthy());
+    const restore = screen.getByRole("button", { name: "Restore…" });
+    fireEvent.click(restore);
+    fireEvent.click(screen.getByRole("button", { name: "Restore now" }));
+    await waitFor(() => expect(screen.getByTestId("toast").textContent).toContain("back as kept at 2026-11-10 09:00"));
+    expect(JSON.parse(calls.find((c) => c.url === "api/restore")!.init!.body as string)).toEqual({ version: "v1", revision: "r1" });
   });
 });
 

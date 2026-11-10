@@ -96,7 +96,7 @@ export const putServed = (spec: string, persist: boolean) =>
   json<EditorContext>("api/served", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ spec, persist }) });
 
 /** Rename a file's tag, or move it into or out of archived/. */
-export const patchCalibration = (id: string, change: { tag?: string; archived?: boolean }) =>
+export const patchCalibration = (id: string, change: { tag?: string; archived?: boolean; force?: boolean }) =>
   json<{ id: string; id8: string; tag: string; path: string }>(`api/calibrations/${encodeURIComponent(id)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },

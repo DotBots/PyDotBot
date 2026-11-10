@@ -75,6 +75,8 @@ export interface Library {
   groups: { spin: string; created_at: string; rows: LibraryRow[] }[];
   not_placed: LibraryRow[];
   archived?: LibraryRow[];
+  /** Files under the site this build cannot read, with the schema they carry. */
+  unreadable?: { path: string; name: string; schema: number | null; error: string }[];
 }
 
 export interface EditorArea {

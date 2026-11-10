@@ -16,12 +16,16 @@ import {
   fetchCoverage,
   fetchLibrary,
   fetchRevision,
+  fetchHistory,
   fetchSite,
+  HttpError,
   patchCalibration,
   restorePoint,
+  restoreVersion,
   type DryRun,
   type FrameResult,
   type RestorePoint,
+  type Version,
 } from "./api";
 import { CheckMarkPanel } from "./CheckMarkPanel";
 import { goals as goalsOf, serveStep, verdict as verdictOf, type CheckRecord, type GoalAction } from "./checks";
@@ -33,7 +37,7 @@ import { moves, NO_MOVE, toOld, type FrameMove } from "./frameMove";
 import { ServeSheet } from "./ServeSheet";
 import { heldCalibrationId } from "../botFacts";
 import { splitFloor, type Coverage } from "./coverage";
-import { forget, newDraft, pending, persist, reapply, redo, restore, step, undo, type Change, type Draft, type KeyValue, type Snap } from "./draft";
+import { forget, newDraft, pending, persist, reapply, redo, restore, serialize, step, storageKey, undo, type Change, type Draft, type KeyValue, type Snap } from "./draft";
 import "./editor.css";
 import { EditorFleet } from "./EditorFleet";
 import { SitesSheet, StartScreen } from "./SitesSheet";
@@ -111,6 +115,21 @@ const Rail: React.FC<{ side: "left" | "right"; items: { key: string; icon: IconN
 interface Notice {
   text: string;
   tone: "info" | "warn" | "err";
+  /** Text edits that could not follow a reload, offered for copying. */
+  lost?: string;
+  /** One action the notice offers. */
+  act?: { label: string; on: () => void };
+}
+
+/** The message and dependents of a 409 refusal, when the server sent them. */
+function refusal(e: unknown): { message: string; dependents: string[] } | null {
+  if (!(e instanceof HttpError) || e.status !== 409) return null;
+  try {
+    const d = JSON.parse(e.message.replace(/^\d+: /, ""));
+    return typeof d?.message === "string" ? { message: d.message, dependents: Array.isArray(d.dependents) ? d.dependents : [] } : null;
+  } catch {
+    return null;
+  }
 }
 
 /** The new floor and zero of a frame move, dashed over the plan. */
@@ -244,12 +263,13 @@ export const SiteEditorApp: React.FC = () => {
       setConflicts(kept.conflicts);
       const n = pending(kept.draft);
       setNotice({
-        tone: kept.conflicts.length || kept.textDropped ? "warn" : "info",
+        tone: kept.conflicts.length || kept.lostText ? "warn" : "info",
         text: kept.reapplied
-          ? `site.toml changed since you last had this page open. Your ${n} unsaved change${n === 1 ? " was" : "s were"} re-applied on top${
+          ? `The room file changed since you last had this page open. Your ${n} unsaved change${n === 1 ? " was" : "s were"} re-applied on top${
               kept.conflicts.length ? `; ${kept.conflicts.length} that the file also changed kept the file's version` : ""
-            }${kept.textDropped ? "; your edits to the file's text could not follow and were dropped" : ""}.`
+            }${kept.lostText ? "; your edits to the file's text could not follow: copy them from here" : ""}.`
           : `Your ${n} unsaved change${n === 1 ? " was" : "s were"} restored from this browser.`,
+        lost: kept.lostText ?? undefined,
       });
     } else setDraft(newDraft(p.name, p.revision, null, loaded));
   }, []);
@@ -304,11 +324,37 @@ export const SiteEditorApp: React.FC = () => {
     const n = pending(next);
     setNotice({
       tone: c.length || d.text !== null ? "warn" : "info",
-      text: `site.toml changed on disk, so the page reloaded it${n ? ` and re-applied your ${n} change${n === 1 ? "" : "s"}` : ""}${
+      text: `The room file changed on disk, so the page reloaded it${n ? ` and re-applied your ${n} change${n === 1 ? "" : "s"}` : ""}${
         c.length ? `; ${c.map((x) => x.label).join(", ")} kept the file's version` : ""
-      }${d.text !== null ? "; your edits to the old text were dropped" : ""}.`,
+      }${d.text !== null ? "; your edits to the old text could not follow: copy them from here" : ""}.`,
+      lost: d.text ?? undefined,
     });
   }, [loadLibrary]);
+
+  // Another tab of this room: follow its draft while this one has none, else say so
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      const d = draftRef.current;
+      if (!d || e.key !== storageKey(d.site) || !e.newValue || e.newValue === serialize(d)) return;
+      if (pending(d) === 0) {
+        const kept = restore(storage(), d.site, d.revision, d.base);
+        if (!kept) return;
+        setDraft(kept.draft);
+        setConflicts(kept.conflicts);
+        setNotice({ tone: "info", text: "Another tab edited this room: its unsaved changes are shown here too." });
+      } else setNotice({ tone: "warn", text: "This room is being edited in another tab too. The last Save wins, and a reload re-applies your changes on top of it." });
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  // The kept versions of the room file, for the Snapshots section
+  const [versions, setVersions] = useState<Version[]>([]);
+  const [armedVersion, setArmedVersion] = useState<string | null>(null);
+  useEffect(() => {
+    if (leftTab !== "checks") return;
+    fetchHistory().then((v) => setVersions(Array.isArray(v) ? v : []), () => setVersions([]));
+  }, [leftTab, checksRefresh]);
 
   // The file and the controller are both polled: site.toml for a change on
   // disk, the context for a calibration served or restarted elsewhere
@@ -567,17 +613,28 @@ export const SiteEditorApp: React.FC = () => {
       const other = shown && shown.id !== row.id ? shown : rows.find((r) => r.served && r.id !== row.id);
       if (other) setComparing([other, row]);
     } else if (action === "archive" || action === "restore") {
-      patchCalibration(row.id, { archived: action === "archive" }).then(
-        () => {
-          loadLibrary();
-          if (action === "archive" && previewId === row.id) setPreviewId(null);
-          setToast({
-            text: action === "archive" ? `Archived ${nameOf(row)}: moved into archived/, found by its full id, never deleted.` : `${nameOf(row)} is back in the list.`,
-            undo: action === "archive" ? () => patchCalibration(row.id, { archived: false }).then(loadLibrary) : undefined,
-          });
-        },
-        (e: Error) => setNotice({ tone: "err", text: `${nameOf(row)}: ${e.message.replace(/^\d+: /, "")}` }),
-      );
+      const change = (force: boolean) =>
+        patchCalibration(row.id, { archived: action === "archive", force }).then(
+          () => {
+            loadLibrary();
+            setNotice(null);
+            if (action === "archive" && previewId === row.id) setPreviewId(null);
+            setToast({
+              text: action === "archive" ? `Archived ${nameOf(row)}: moved into archived/, found by its full id, never deleted.` : `${nameOf(row)} is back in the list.`,
+              undo: action === "archive" ? () => patchCalibration(row.id, { archived: false }).then(loadLibrary) : undefined,
+            });
+          },
+          (e: Error) => {
+            const r = refusal(e);
+            const hard = !r || r.dependents.includes("in use by this controller");
+            setNotice({
+              tone: hard ? "err" : "warn",
+              text: `${nameOf(row)}: ${r ? r.message : e.message.replace(/^\d+: /, "")}`,
+              act: r && !hard && !force ? { label: "Archive anyway", on: () => change(true) } : undefined,
+            });
+          },
+        );
+      change(false);
     }
   };
 
@@ -602,7 +659,17 @@ export const SiteEditorApp: React.FC = () => {
     setDraft(newDraft(p.name, p.revision, null, docFromPayload(p)));
     setConflicts([]);
     setNotice(null);
+    setChecksRefresh((n) => n + 1);
   }, []);
+
+  /** Drops every unsaved change, here and in this browser's store. */
+  const discardAll = useCallback(() => {
+    if (!payload) return;
+    forget(storage(), payload.name);
+    setDraft(newDraft(payload.name, payload.revision, null, docFromPayload(payload)));
+    setConflicts([]);
+    setNotice(null);
+  }, [payload]);
 
   const blink = useCallback(async (id: string) => {
     const bot = bots.find((b) => b.id === id);
@@ -792,6 +859,44 @@ export const SiteEditorApp: React.FC = () => {
               setRightTab("inspect");
             }}
             onToast={(text) => setToast({ text })}
+            versions={
+              versions.length > 0 ? (
+                <details style={{ marginTop: 8 }} data-testid="versions">
+                  <summary className="note" style={{ cursor: "pointer" }}>
+                    Kept versions of the room file · {versions.length}
+                  </summary>
+                  {versions.map((v) => (
+                    <div className="orow" key={v.id} style={{ marginLeft: 0 }}>
+                      <Icon name="file" size={13} />
+                      <span className="mono">{v.at.replace("T", " ").slice(0, 16)}</span>
+                      <span className="meta">{v.revision.slice(0, 8)}</span>
+                      {editable && (
+                        <button
+                          type="button"
+                          className={`btn xs${armedVersion === v.id ? " primary" : ""}`}
+                          onClick={() => {
+                            if (armedVersion !== v.id) return setArmedVersion(v.id);
+                            setArmedVersion(null);
+                            restoreVersion(v.id, draft.revision).then(
+                              (p) => {
+                                forget(storage(), p.name);
+                                load(p);
+                                setChecksRefresh((n) => n + 1);
+                                setToast({ text: `The room file is back as kept at ${v.at.replace("T", " ").slice(0, 16)}; the version it replaced is kept too.` });
+                              },
+                              (e: Error) => setNotice({ tone: "err", text: `Not restored: ${e.message.replace(/^\d+: /, "")}` }),
+                            );
+                          }}
+                        >
+                          {armedVersion === v.id ? "Restore now" : "Restore…"}
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  <div className="note" style={{ marginTop: 6 }}>The last 20 saves of the room file. Restoring writes one back; the file it replaces is kept too, so this can be undone.</div>
+                </details>
+              ) : null
+            }
           />
         ) : leftTab === "outline" ? (
           <OutlinePane
@@ -1106,6 +1211,11 @@ export const SiteEditorApp: React.FC = () => {
                 </button>
               </>
             )}
+            {editable && unsaved > 0 && (
+              <button type="button" className="mi" role="menuitem" data-testid="discard-all" onClick={() => (discardAll(), setMenu(false))}>
+                <Icon name="undo" /> Discard unsaved changes
+              </button>
+            )}
             <button type="button" className="mi" role="menuitem" onClick={() => startPresent()}>
               <Icon name="present" /> Present, for a projector
             </button>
@@ -1138,6 +1248,21 @@ export const SiteEditorApp: React.FC = () => {
         >
           <Icon name={error || notice?.tone === "err" ? "err" : notice?.tone === "warn" ? "warn" : "info"} size={14} />
           <span style={{ flex: 1 }}>{error ? `The site could not be read: ${error}` : notice?.text}</span>
+          {!error && notice?.lost && (
+            <button
+              type="button"
+              className="btn xs"
+              data-testid="notice-copy-lost"
+              onClick={() => navigator.clipboard.writeText(notice.lost!).then(() => setToast({ text: "The lost text is on the clipboard." }), () => setToast({ text: "The browser refused the clipboard: open the File view to retype them." }))}
+            >
+              Copy the lost text
+            </button>
+          )}
+          {!error && notice?.act && (
+            <button type="button" className="btn xs primary" data-testid="notice-act" onClick={notice.act.on}>
+              {notice.act.label}
+            </button>
+          )}
           {!error && (
             <button type="button" className="btn xs" onClick={() => setNotice(null)}>
               OK
@@ -1355,6 +1480,11 @@ export const SiteEditorApp: React.FC = () => {
           {unsaved ? (
             <b style={{ color: "var(--warn)" }}>
               ● {unsaved} unsaved, kept in this browser
+              {editable && (
+                <button type="button" className="btn xs ghost" style={{ marginLeft: 6, height: 18 }} onClick={discardAll} title="Drop every unsaved change">
+                  Discard
+                </button>
+              )}
             </b>
           ) : (
             "saved"

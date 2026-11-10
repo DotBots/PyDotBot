@@ -247,7 +247,7 @@ export const LibraryPane: React.FC<{
       </div>
       {library.count === 0 && filter !== "archived" && (
         <div className="callout" style={{ marginTop: 12 }}>
-          <div className="h">No calibration for this room yet</div>
+          <div className="h">{library.unreadable?.length ? `${library.unreadable.length} older file${library.unreadable.length === 1 ? "" : "s"}, none this build reads` : "No calibration for this room yet"}</div>
           Spin robots in the console's Localization tab to measure the stations; the files it saves appear here.
         </div>
       )}
@@ -275,6 +275,23 @@ export const LibraryPane: React.FC<{
             </React.Fragment>
           ))}
           {view.groups.length === 0 && library.count > 0 && <div className="note" style={{ marginTop: 12 }}>{query ? `Nothing in this room matches "${query}".` : "No file in this room yet."}</div>}
+          {!query && (library.unreadable?.length ?? 0) > 0 && (
+            <>
+              <div className="grp" data-testid="library-unreadable">
+                Older files · {library.unreadable!.length}
+              </div>
+              <div className="grpnote">Written by an older version: this build reads schema 4 only. They stay on disk; spin the robots again to measure the stations.</div>
+              {library.unreadable!.map((u) => (
+                <div className="orow" key={u.path} title={u.error} style={{ marginLeft: 0, opacity: 0.75 }}>
+                  <Icon name="file" size={13} />
+                  <span className="mono" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
+                    {u.name}
+                  </span>
+                  <span className="meta">{u.schema === null ? "unreadable" : `schema ${u.schema}`}</span>
+                </div>
+              ))}
+            </>
+          )}
         </>
       )}
       {filter === "free" && (

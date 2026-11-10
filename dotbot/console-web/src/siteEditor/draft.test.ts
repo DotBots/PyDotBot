@@ -35,7 +35,7 @@ describe("one draft, one history", () => {
     let d = newDraft("inria-2lh", "r1", "4640cfde", base);
     d = edit(d, withStaging(d.doc));
     d = edit(d, { ...d.doc, anchor: "the window" });
-    expect(changes(d.base, d.doc).map((c) => c.label)).toEqual(["the note on where zero is", "area staging"]);
+    expect(changes(d.base, d.doc).map((c) => c.label)).toEqual(["the note on where the origin is", "area staging"]);
     d = undo(d);
     expect(d.doc.anchor).toBe("the door");
     d = undo(d);
@@ -93,11 +93,43 @@ describe("the draft kept in this browser", () => {
     expect(doc.anchor).toBe("moved");
   });
 
+  it("is no conflict when another tab saved the same edit", () => {
+    const base = docFromSite(SITE);
+    const mine = { ...base, areas: [{ ...base.areas[0], name: "arena" }] };
+    const theirs = { ...base, areas: [{ ...base.areas[0], name: "arena", was: { index: 0 } as unknown as Doc["areas"][0]["was"] }] };
+    const { doc, conflicts } = reapply(base, mine, theirs);
+    expect(conflicts).toEqual([]);
+    expect(changes(theirs, doc)).toEqual([]);
+  });
+
+  it("is no conflict when another tab saved the same rename", () => {
+    const base = docFromSite(SITE);
+    const mine = { ...base, areas: [{ ...base.areas[0], name: "arena" }] };
+    const theirs = docFromSite({ ...SITE, areas: [{ ...SITE.areas[0], name: "arena" }] });
+    const { doc, conflicts } = reapply(base, mine, theirs);
+    expect(conflicts).toEqual([]);
+    expect(changes(theirs, doc)).toEqual([]);
+  });
+
   it("takes a removal the file did not also change", () => {
     const base = docFromSite(SITE);
     const mine = { ...base, walls: [] };
     const { doc, conflicts } = reapply(base, mine, base);
     expect(doc.walls).toEqual([]);
     expect(conflicts).toEqual([]);
+  });
+});
+
+describe("text edits across a changed file", () => {
+  it("keeps the text that could not follow, instead of dropping it", () => {
+    const storage = memory();
+    const base = docFromSite(SITE);
+    const mine = { ...edit(newDraft("inria-2lh", "r1", null, base), withStaging(base)), text: "# by hand\n" };
+    persist(storage, mine);
+    const back = restore(storage, "inria-2lh", "r2", base)!;
+    expect(back.reapplied).toBe(true);
+    expect(back.lostText).toBe("# by hand\n");
+    expect(back.draft.text).toBeNull();
+    expect(restore(memory(), "inria-2lh", "r2", base)).toBeNull();
   });
 });

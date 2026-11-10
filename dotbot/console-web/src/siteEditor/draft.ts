@@ -81,6 +81,10 @@ export interface Change {
 type Keyed = { key: string };
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+/** The same entity body, wherever each copy says it was in its file. */
+const sameBody = <T extends { was: unknown }>(a: T, b: T) => same({ ...a, was: null }, { ...b, was: null });
+/** The same entity under any key: a rename re-keys it by its new name. */
+const sameAnyKey = <T extends Keyed & { was: unknown }>(a: T, b: T) => same({ ...a, key: "", was: null }, { ...b, key: "", was: null });
 
 const entities = (doc: Doc): Map<string, Keyed & { name?: string | null }> =>
   new Map([...doc.areas, ...doc.walls, ...doc.obstacles, ...doc.objects].map((e) => [e.key, e]));
@@ -93,7 +97,7 @@ function labelOf(key: string, e: { name?: string | null } | undefined): string {
 /** Every difference between `base` and `doc`, one per entity or field. */
 export function changes(base: Doc, doc: Doc): Change[] {
   const out: Change[] = [];
-  if (base.anchor !== doc.anchor) out.push({ key: "anchor", what: "changed", label: "the note on where zero is" });
+  if (base.anchor !== doc.anchor) out.push({ key: "anchor", what: "changed", label: "the note on where the origin is" });
   if (!same(base.extent_mm, doc.extent_mm)) out.push({ key: "extent_mm", what: "changed", label: "the floor's size" });
   const a = entities(base);
   const b = entities(doc);
@@ -118,16 +122,16 @@ const PREFIX = "dotbot.siteEditor.draft.";
 
 export const storageKey = (site: string) => `${PREFIX}${site}`;
 
+/** The draft as storage keeps it. */
+export const serialize = (draft: Draft) =>
+  JSON.stringify({ revision: draft.revision, calibration: draft.calibration, base: draft.base, doc: draft.doc, text: draft.text, boxes: draft.boxes });
+
 /** Keep the draft in `storage`; a draft with nothing changed is dropped. */
 export function persist(storage: KeyValue | null, draft: Draft): void {
   if (!storage) return;
   try {
     if (pending(draft) === 0) storage.removeItem(storageKey(draft.site));
-    else
-      storage.setItem(
-        storageKey(draft.site),
-        JSON.stringify({ revision: draft.revision, calibration: draft.calibration, base: draft.base, doc: draft.doc, text: draft.text, boxes: draft.boxes }),
-      );
+    else storage.setItem(storageKey(draft.site), serialize(draft));
   } catch {
     // a browser that refuses storage keeps the draft in memory only
   }
@@ -147,8 +151,17 @@ export interface Restored {
   conflicts: Change[];
   /** True when the kept draft was made on another revision of the file. */
   reapplied: boolean;
-  /** True when hand edits to the old file's text could not follow. */
-  textDropped?: boolean;
+  /** Hand edits to the old file's text that could not follow, kept for the operator to copy. */
+  lostText?: string | null;
+}
+
+/** The draft as kept in storage, for a page that wants to compare rather than load. */
+export function peek(storage: KeyValue | null, site: string): string | null {
+  try {
+    return storage?.getItem(storageKey(site)) ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -156,12 +169,7 @@ export interface Restored {
  * revision matches, else re-applied onto the new version. Null with none kept.
  */
 export function restore(storage: KeyValue | null, site: string, revision: string, loaded: Doc): Restored | null {
-  let raw: string | null;
-  try {
-    raw = storage?.getItem(storageKey(site)) ?? null;
-  } catch {
-    return null;
-  }
+  const raw = peek(storage, site);
   if (!raw) return null;
   let kept: { revision: string; calibration: string | null; base: Doc; doc: Doc; text?: string | null; boxes?: BoxDraft | null };
   try {
@@ -177,7 +185,7 @@ export function restore(storage: KeyValue | null, site: string, revision: string
   // A hand edit was made on the old file's text, so it cannot follow onto a new one
   const { doc, conflicts } = reapply(kept.base, kept.doc, loaded);
   const draft = { ...newDraft(site, revision, kept.calibration, loaded), doc, boxes: kept.boxes ?? null, past: [first] };
-  return { draft, conflicts, reapplied: true, textDropped: (kept.text ?? null) !== null };
+  return { draft, conflicts, reapplied: true, lostText: kept.text ?? null };
 }
 
 // --- Re-applying a draft onto a newer file --------------------------------
@@ -198,21 +206,23 @@ function mergeList<T extends Keyed & { was: unknown }>(
     const now = out.get(key);
     if (!before) {
       if (!now) out.set(key, e);
-      else if (!same(now, e)) conflicts.push({ key, what: "added", label: label(key, e) });
+      else if (!sameBody(now, e)) conflicts.push({ key, what: "added", label: label(key, e) });
       continue;
     }
     if (!now) {
-      conflicts.push({ key, what: "removed", label: label(key, e) });
+      // Saved elsewhere already, renamed the same way
+      if (![...out.values()].some((t) => sameAnyKey(t, e))) conflicts.push({ key, what: "removed", label: label(key, e) });
       continue;
     }
     // The file's own `was`, so the save patches the entity where it now is
-    if (same(now, before) || same(now, e)) out.set(key, { ...e, was: now.was });
+    if (sameBody(now, e)) continue; // the file already says what I said
+    if (sameBody(now, before)) out.set(key, { ...e, was: now.was });
     else conflicts.push({ key, what: "changed", label: label(key, e) });
   }
   for (const [key, before] of o) {
     if (m.has(key)) continue; // I kept it
     const now = out.get(key);
-    if (now && same(now, before)) out.delete(key);
+    if (now && sameBody(now, before)) out.delete(key);
     else if (now) conflicts.push({ key, what: "removed", label: label(key, before) });
   }
   return [...out.values()];
@@ -231,7 +241,7 @@ export function reapply(oldBase: Doc, mine: Doc, theirs: Doc): { doc: Doc; confl
     return theirs[k];
   };
   const doc: Doc = {
-    anchor: field("anchor", "the note on where zero is"),
+    anchor: field("anchor", "the note on where the origin is"),
     frame: theirs.frame,
     extent_mm: field("extent_mm", "the floor's size"),
     areas: mergeList(oldBase.areas, mine.areas, theirs.areas, conflicts, lab),
