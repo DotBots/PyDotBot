@@ -71,7 +71,13 @@ def _persist_path(ctx) -> str | None:
     from dotbot.cli._config_write import WriteError, target
 
     try:
-        return str(target((ctx.obj or {}).get("config"), ("run", "controller", "lh2_calibration"), None))
+        return str(
+            target(
+                (ctx.obj or {}).get("config"),
+                ("run", "controller", "lh2_calibration"),
+                None,
+            )
+        )
     except WriteError:
         return None
 

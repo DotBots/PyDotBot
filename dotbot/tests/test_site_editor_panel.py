@@ -282,13 +282,17 @@ async def test_serve_at_the_next_start_writes_the_config(served, tmp_path):
 @pytest.mark.asyncio
 async def test_serve_refuses_an_unknown_id_and_a_remote_peer(served):
     s, local, _, cal = served
-    unknown = await local.put("/controller/site-editor/api/served", json={"spec": "deadbeef"})
+    unknown = await local.put(
+        "/controller/site-editor/api/served", json={"spec": "deadbeef"}
+    )
     assert unknown.status_code == 422
     remote = httpx.AsyncClient(
         transport=httpx.ASGITransport(app=api, client=("192.168.1.30", 5000)),
         base_url="http://192.168.1.10",
     )
-    refused = await remote.put("/controller/site-editor/api/served", json={"spec": cal.id8})
+    refused = await remote.put(
+        "/controller/site-editor/api/served", json={"spec": cal.id8}
+    )
     await remote.aclose()
     assert refused.status_code == 403
     assert s.controller.calibration is None or s.controller.calibration.id != cal.id
@@ -324,7 +328,13 @@ async def test_a_frame_change_is_named_until_robots_hold_it(served):
     body = (
         await local.post(
             "/controller/site-editor/api/frame",
-            json={"calibration": cal.id8, "theta_deg": 0, "dx_mm": -20, "dy_mm": -20, "revision": revision},
+            json={
+                "calibration": cal.id8,
+                "theta_deg": 0,
+                "dx_mm": -20,
+                "dy_mm": -20,
+                "revision": revision,
+            },
         )
     ).json()
     assert body["ok"] is True, body

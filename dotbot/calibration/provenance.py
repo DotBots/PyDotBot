@@ -9,9 +9,9 @@ import math
 from datetime import datetime, timezone
 
 from dotbot.calibration import station_rule
+from dotbot.calibration.checks import check_line
 from dotbot.calibration.lighthouse2 import Calibration
 from dotbot.calibration.multi_station import ErrorMap
-from dotbot.calibration.checks import check_line
 from dotbot.site import Site
 
 

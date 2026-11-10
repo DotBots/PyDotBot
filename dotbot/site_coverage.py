@@ -36,7 +36,9 @@ def _model(calibration: Calibration) -> ms.CoverageModel | None:
 
 
 def _flat(grid: np.ndarray, digits: int = 3) -> list[float | None]:
-    return [None if not math.isfinite(v) else round(float(v), digits) for v in grid.ravel()]
+    return [
+        None if not math.isfinite(v) else round(float(v), digits) for v in grid.ravel()
+    ]
 
 
 def _per_station(model: ms.CoverageModel, rects, headline: ms.ErrorMap) -> dict:
@@ -47,12 +49,16 @@ def _per_station(model: ms.CoverageModel, rects, headline: ms.ErrorMap) -> dict:
     for s in model.stations:
         if s not in rects:
             continue
-        own = model.error_map({s: rects[s]}, headline.cell_mm, (
-            headline.origin_mm[0],
-            headline.origin_mm[1],
-            headline.origin_mm[0] + cols * headline.cell_mm,
-            headline.origin_mm[1] + rows * headline.cell_mm,
-        )).sigma_mm
+        own = model.error_map(
+            {s: rects[s]},
+            headline.cell_mm,
+            (
+                headline.origin_mm[0],
+                headline.origin_mm[1],
+                headline.origin_mm[0] + cols * headline.cell_mm,
+                headline.origin_mm[1] + rows * headline.cell_mm,
+            ),
+        ).sigma_mm
         worst = None
         for row in range(rows):
             for col in range(cols):
@@ -74,7 +80,9 @@ def coverage(
     when None), on `site`'s floor."""
     rects = {
         int(k): tuple(int(v) for v in r)
-        for k, r in (boxes or {st.index: st.valid_mm for st in calibration.stations}).items()
+        for k, r in (
+            boxes or {st.index: st.valid_mm for st in calibration.stations}
+        ).items()
     }
     limit = site.error_limit_mm
     out: dict = {
@@ -103,7 +111,9 @@ def coverage(
     headline = model.error_map(rects)
     if np.all(np.isnan(headline.sigma_mm)):
         return out
-    row, col = np.unravel_index(np.nanargmax(headline.sigma_mm), headline.sigma_mm.shape)
+    row, col = np.unravel_index(
+        np.nanargmax(headline.sigma_mm), headline.sigma_mm.shape
+    )
     out["headline"] = {
         "worst_mm": round(headline.worst_mm, 3),
         "at": [round(v) for v in headline.centre(int(row), int(col))],
@@ -132,11 +142,23 @@ def coverage(
         "cols": cols,
         "rows": rows,
         "sigma": _flat(fog.sigma_mm),
-        "undecided": [bool(v) for v in (fog.undecided if fog.undecided is not None else np.zeros_like(fog.sigma_mm, bool)).ravel()],
+        "undecided": [
+            bool(v)
+            for v in (
+                fog.undecided
+                if fog.undecided is not None
+                else np.zeros_like(fog.sigma_mm, bool)
+            ).ravel()
+        ],
         "own": own,
     }
     out["next"] = [
-        {"x": round(t.point_mm[0]), "y": round(t.point_mm[1]), "stations": list(t.stations), "why": t.why}
+        {
+            "x": round(t.point_mm[0]),
+            "y": round(t.point_mm[1]),
+            "stations": list(t.stations),
+            "why": t.why,
+        }
         for t in ms.next_round(headline, rects, calibration.links, robots=robots)
     ]
     return out

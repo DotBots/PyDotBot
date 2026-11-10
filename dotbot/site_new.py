@@ -57,7 +57,9 @@ def render_pack(site: Site, header: str) -> str:
     if site.extent_mm is not None:
         lines.append(f"extent_mm = [{site.extent_mm[0]}, {site.extent_mm[1]}]")
     if site.spin_radius_mm is not None:
-        lines.append(f"spin_radius_mm = {float(site.spin_radius_mm)}   # as the robots spun")
+        lines.append(
+            f"spin_radius_mm = {float(site.spin_radius_mm)}   # as the robots spun"
+        )
     notes = {
         "field": "where the robots spun, grown by a robot's footprint",
         "staging": "where robots park, along the field's bottom edge",
@@ -133,7 +135,9 @@ def write_new_site(
             raise NewSiteRefused("give the floor's size, width x height in mm")
         if size_mm is not None and (size_mm[0] <= 0 or size_mm[1] <= 0):
             raise NewSiteRefused("the floor's width and height must be over 0 mm")
-        site = Site(name=name, anchor=note, extent_mm=size_mm if start == "size" else None)
+        site = Site(
+            name=name, anchor=note, extent_mm=size_mm if start == "size" else None
+        )
         header = (
             f"Site {name}, written by the site editor.\n"
             "The frame's zero is the anchor, x right, y down, mm."

@@ -243,8 +243,7 @@ def place_calibration(
 
     fence = transform.box(calibration.valid_mm)
     below = [
-        f"S{st.index}'s rectangle "
-        f"{list(station_rect(st) or fence)}"
+        f"S{st.index}'s rectangle " f"{list(station_rect(st) or fence)}"
         for st in stations
         if min((station_rect(st) or fence)[:2]) < 0
     ]
@@ -258,8 +257,7 @@ def place_calibration(
         dataclasses.replace(calibration, stations=stations)
     ).items():
         below += [
-            f"circle {c['name']} (S{index}) at "
-            f"({c['x']:.0f}, {c['y']:.0f})"
+            f"circle {c['name']} (S{index}) at " f"({c['x']:.0f}, {c['y']:.0f})"
             for c in circles
             if c["x"] < 0 or c["y"] < 0
         ]

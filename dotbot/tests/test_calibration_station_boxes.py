@@ -103,9 +103,7 @@ def test_a_second_edit_numbers_the_tag(placed):
     ],
 )
 def test_a_rectangle_a_robot_cannot_take_is_refused(placed, rect, why):
-    with pytest.raises(
-        BoxesRefused, match=rf"S0's rectangle .*{why}"
-    ):
+    with pytest.raises(BoxesRefused, match=rf"S0's rectangle .*{why}"):
         reboxed(placed, ARENA, {0: rect})
 
 
@@ -121,7 +119,9 @@ def test_a_calibration_of_another_site_or_anchor_is_refused(placed):
         reboxed(placed, dataclasses.replace(ARENA, anchor="moved"), {0: (0, 0, 10, 10)})
     # The same anchor under a recorded frame id of another frame is refused too
     with pytest.raises(BoxesRefused, match="is in frame"):
-        reboxed(placed, dataclasses.replace(ARENA, frame="0badf00d"), {0: (0, 0, 10, 10)})
+        reboxed(
+            placed, dataclasses.replace(ARENA, frame="0badf00d"), {0: (0, 0, 10, 10)}
+        )
 
 
 def test_an_unknown_station_nothing_changed_and_a_taken_tag_are_refused(placed):
@@ -143,9 +143,7 @@ def test_a_rectangle_leaving_out_circles_is_warned_about(placed):
     assert coverage_warnings(placed) == []
     boxed = reboxed(placed, ARENA, {0: (0, 0, 50, 50)})
     (line,) = coverage_warnings(boxed)
-    assert line.startswith(
-        "S0's rectangle [0, 0, 50, 50] leaves out"
-    )
+    assert line.startswith("S0's rectangle [0, 0, 50, 50] leaves out")
     assert "spin circle(s)" in line
 
 

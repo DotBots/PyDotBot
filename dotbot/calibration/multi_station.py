@@ -1451,7 +1451,9 @@ def _error_map_lines(error_map: ErrorMap | None) -> list[str]:
     if error_map is None or error_map.covered == 0:
         return []
     worst = error_map.worst_cell
-    bound = ", a bound: the boxes do not decide there" if error_map.worst_is_bound else ""
+    bound = (
+        ", a bound: the boxes do not decide there" if error_map.worst_is_bound else ""
+    )
     return [
         f"predicted error ({error_map.cell_mm:.0f} mm cells), station kept: worst "
         f"{error_map.worst_mm:.1f} mm near ({worst[0]:.0f}, {worst[1]:.0f}) mm{bound}, "

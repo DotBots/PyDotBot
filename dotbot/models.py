@@ -9,8 +9,8 @@
 
 # pylint: disable=too-few-public-methods,no-name-in-module
 
-from enum import IntEnum
 import math
+from enum import IntEnum
 from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, BeforeValidator, Field, field_validator, model_validator

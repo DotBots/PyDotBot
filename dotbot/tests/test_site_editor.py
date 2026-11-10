@@ -426,37 +426,63 @@ def test_open_runs_the_named_editor_on_site_toml(client, pack, monkeypatch):
 
 def test_reads_reach_the_page_off_loopback_and_writes_do_not(pack, page, tmp_path):
     app = create_app(EditorState("arena", pack, [tmp_path / "c"]), page)
-    lan = TestClient(app, base_url="http://bench-host:8000", client=("192.168.1.30", 50000))
+    lan = TestClient(
+        app, base_url="http://bench-host:8000", client=("192.168.1.30", 50000)
+    )
     origin = {"Origin": "http://bench-host:8000"}
     body = lan.get("/api/site", headers=origin)
     assert body.status_code == 200
     assert lan.get("/api/context", headers=origin).json()["can_write"] is False
     site = body.json()
-    refused = lan.put("/api/site", headers=origin, json={"revision": site["revision"], "site": site["site"]})
+    refused = lan.put(
+        "/api/site",
+        headers=origin,
+        json={"revision": site["revision"], "site": site["site"]},
+    )
     assert refused.status_code == 403
-    assert lan.get("/api/site", headers={"Origin": "http://example.org"}).status_code == 403
+    assert (
+        lan.get("/api/site", headers={"Origin": "http://example.org"}).status_code
+        == 403
+    )
     assert local_client(app).get("/api/context").json()["can_write"] is True
 
 
-def test_a_check_is_appended_and_no_calibration_is_rewritten(client, tmp_path, monkeypatch):
+def test_a_check_is_appended_and_no_calibration_is_rewritten(
+    client, tmp_path, monkeypatch
+):
     from dotbot.calibration import checks, lighthouse2
 
     monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path / "home")
     first = client.post(
         "/api/checks",
-        json={"calibration": "4640cfde014c7232", "mark_mm": [500, 600], "measured_mm": [502.4, 598.1], "robot": "222a34f9458e8aad"},
+        json={
+            "calibration": "4640cfde014c7232",
+            "mark_mm": [500, 600],
+            "measured_mm": [502.4, 598.1],
+            "robot": "222a34f9458e8aad",
+        },
     ).json()
     assert first["error_mm"] == 3.06 and first["robot"] == "222A34F9458E8AAD"
     path = checks.checks_path("arena")
     before = path.read_text()
     client.post(
         "/api/checks",
-        json={"calibration": "4640cfde014c7232", "mark_mm": [0, 0], "measured_mm": [1, 0], "robot": "c999"},
+        json={
+            "calibration": "4640cfde014c7232",
+            "mark_mm": [0, 0],
+            "measured_mm": [1, 0],
+            "robot": "c999",
+        },
     )
     after = path.read_text()
     assert after.startswith(before)
-    assert [c["error_mm"] for c in client.get("/api/checks").json()["checks"]] == [3.06, 1.0]
-    assert list((tmp_path / "home" / "calibrations" / "arena").glob("calibration*")) == []
+    assert [c["error_mm"] for c in client.get("/api/checks").json()["checks"]] == [
+        3.06,
+        1.0,
+    ]
+    assert (
+        list((tmp_path / "home" / "calibrations" / "arena").glob("calibration*")) == []
+    )
 
 
 def test_a_restore_point_puts_site_toml_back(client, pack, tmp_path, monkeypatch):
@@ -470,7 +496,9 @@ def test_a_restore_point_puts_site_toml_back(client, pack, tmp_path, monkeypatch
     client.put("/api/site", json={"revision": body["revision"], "site": body["site"]})
     assert "w = 1500" in (pack / "site.toml").read_text()
     revision = client.get("/api/site").json()["revision"]
-    back = client.post(f"/api/points/{point['id']}/restore", json={"revision": revision}).json()
+    back = client.post(
+        f"/api/points/{point['id']}/restore", json={"revision": revision}
+    ).json()
     assert (pack / "site.toml").read_text() == ARENA
     assert back["steps"][0]["status"] == "written"
     assert [p["name"] for p in client.get("/api/points").json()] == ["Monday class"]

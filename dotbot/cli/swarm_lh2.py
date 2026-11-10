@@ -949,6 +949,8 @@ def _gated_push(client, calibration, site_changed=False, devices=None, stop=Fals
 def _show(ctx, calibration, site_name, next_robots):
     if _devices(ctx):
         raise click.UsageError("show reads a file, so it takes no `dotbot swarm -d`")
+    import numpy as np
+
     from dotbot.calibration.lighthouse2 import (
         read_calibration_file,
         resolve_calibration_path,
@@ -960,8 +962,6 @@ def _show(ctx, calibration, site_name, next_robots):
         next_round,
         next_round_lines,
     )
-    import numpy as np
-
     from dotbot.calibration.provenance import fix_lines, provenance_lines
 
     site, _ = site_from_context(ctx, site_name)

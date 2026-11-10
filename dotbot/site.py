@@ -46,7 +46,7 @@ Point = tuple[int, int]
 def derived_frame_id(name: str, anchor: str) -> str:
     """The frame id of a site that does not record one: 8 hex digits of its
     name and anchor."""
-    return hashlib.sha256(f"{name}\n{anchor}".encode("utf-8")).hexdigest()[:8]
+    return hashlib.sha256(f"{name}\n{anchor}".encode()).hexdigest()[:8]
 
 
 @dataclass(frozen=True)

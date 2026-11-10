@@ -38,6 +38,7 @@ from dotbot import (
     SIMULATOR_INIT_STATE_DEFAULT,
     SWARMIT_URL_DEFAULT,
     addr_to_hex,
+    pydotbot_version,
 )
 from dotbot.adapter import (
     DotBotSimulatorAdapter,
@@ -49,7 +50,6 @@ from dotbot.adapter import (
 )
 from dotbot.area import Area
 from dotbot.calibration.driver import SessionDriver
-from dotbot import pydotbot_version
 from dotbot.calibration.lighthouse2 import homography_as_float32
 from dotbot.camera.detection.robot import MAX_ROBOTS
 from dotbot.camera.raster import WARP_FPS_MAX
@@ -415,7 +415,10 @@ class Controller:
         self.site = settings.site or Site()
         # What this run started serving, and from where, for the editor
         self._started_with = (
-            {"spec": settings.lh2_calibration, "source": settings.lh2_calibration_source}
+            {
+                "spec": settings.lh2_calibration,
+                "source": settings.lh2_calibration_source,
+            }
             if settings.lh2_calibration
             else None
         )
@@ -1310,7 +1313,9 @@ class Controller:
         dropped = None
         if self.calibration is not None:
             try:
-                check_calibration_site(self.calibration.site, site, self.calibration.path)
+                check_calibration_site(
+                    self.calibration.site, site, self.calibration.path
+                )
             except ValueError:
                 dropped = self.calibration.id8
                 self.calibration = None

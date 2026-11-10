@@ -2125,7 +2125,7 @@ def test_a_robot_reporting_another_calibration_gets_no_homography(
     )
     with capture_logs() as logs:
         assert _homographies_sent(controller, "a1b41f12d20eac3c") == []
-    (warning,) = [e for e in logs if e["log_level"] == "warning"]
+    (warning,) = (e for e in logs if e["log_level"] == "warning")
     assert warning["held"] == "a1b41f12"
 
 

@@ -92,7 +92,9 @@ def read_checks(site: str) -> list[dict]:
 
 def last_check(site: str, calibration_id: str) -> dict | None:
     """The newest check of `calibration_id` on `site`."""
-    mine = [c for c in read_checks(site) if str(c.get("calibration", "")) == calibration_id]
+    mine = [
+        c for c in read_checks(site) if str(c.get("calibration", "")) == calibration_id
+    ]
     return mine[-1] if mine else None
 
 

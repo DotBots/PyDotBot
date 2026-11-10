@@ -62,7 +62,15 @@ def largest_shift(
 
     def legal(scale: float) -> bool:
         try:
-            moved(source, site, theta_deg, pivot, (shift[0] * scale, shift[1] * scale), "", "00000000")
+            moved(
+                source,
+                site,
+                theta_deg,
+                pivot,
+                (shift[0] * scale, shift[1] * scale),
+                "",
+                "00000000",
+            )
         except TurnRefused:
             return False
         return True

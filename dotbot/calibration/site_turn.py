@@ -233,7 +233,14 @@ def plan_turn(
     out = []
     for source in sources:
         result = turned(
-            source, site, theta_deg, pivot, anchor, taken_tags=taken, move=move, frame=frame
+            source,
+            site,
+            theta_deg,
+            pivot,
+            anchor,
+            taken_tags=taken,
+            move=move,
+            frame=frame,
         )
         if result.tag:
             taken.append(result.tag)

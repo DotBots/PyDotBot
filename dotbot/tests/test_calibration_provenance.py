@@ -24,7 +24,9 @@ def _calibration(shared_box: bool):
 
 
 def test_the_frame_id_derives_from_the_name_and_anchor():
-    assert derived_frame_id("arena", "the door") == derived_frame_id("arena", "the door")
+    assert derived_frame_id("arena", "the door") == derived_frame_id(
+        "arena", "the door"
+    )
     assert derived_frame_id("arena", "the door") != derived_frame_id("arena", "a door")
     assert len(derived_frame_id("arena", "")) == 8
 
@@ -32,7 +34,10 @@ def test_the_frame_id_derives_from_the_name_and_anchor():
 def test_shared_boxes_say_the_disagreement_decides():
     calibration = _calibration(shared_box=True)
     lines = fix_lines(calibration)
-    assert lines[0] == "who gives the fix: S0 and S1 share one box: the boxes do not decide"
+    assert (
+        lines[0]
+        == "who gives the fix: S0 and S1 share one box: the boxes do not decide"
+    )
     assert "mm disagreement on" in lines[1] and "decides" in lines[1]
 
 
@@ -56,6 +61,16 @@ def test_the_provenance_names_the_frame_the_error_and_its_limit():
 
 def test_the_provenance_names_the_last_check_on_a_mark():
     calibration = _calibration(shared_box=True)
-    check = {"error_mm": 3.06, "mark_mm": [500.0, 600.0], "robot": "222A34F9458E8AAD", "at": "2026-11-09T21:48:00Z"}
-    lines = provenance_lines(calibration, Site(name="arena", anchor="the door"), None, check=check)
-    assert "  checked on a mark: 3.1 mm at (500, 600) by …8E8AAD, 2026-11-09T21:48:00Z" in lines
+    check = {
+        "error_mm": 3.06,
+        "mark_mm": [500.0, 600.0],
+        "robot": "222A34F9458E8AAD",
+        "at": "2026-11-09T21:48:00Z",
+    }
+    lines = provenance_lines(
+        calibration, Site(name="arena", anchor="the door"), None, check=check
+    )
+    assert (
+        "  checked on a mark: 3.1 mm at (500, 600) by …8E8AAD, 2026-11-09T21:48:00Z"
+        in lines
+    )

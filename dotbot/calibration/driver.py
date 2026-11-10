@@ -18,12 +18,12 @@ from typing import Any, Callable, Sequence
 from dotbot.calibration.lighthouse2 import calibration_payload
 from dotbot.calibration.points import field_corners, resolve_placement_points
 from dotbot.calibration.push import PushRefused, gate_push, push_worklist
-from dotbot.calibration.spin_run import SpinRefused, SpinRun, run_spin, spin_robots
 from dotbot.calibration.session import (
     CalibrationSession,
     SessionError,
     placement_dict,
 )
+from dotbot.calibration.spin_run import SpinRefused, SpinRun, run_spin, spin_robots
 from dotbot.logger import LOGGER
 from dotbot.site import Site
 
@@ -174,7 +174,9 @@ class SessionDriver:
                     await asyncio.to_thread(self._listen_for_buttons)
             return {"id": calibration.id, "bytes": len(payload), "stale": stale}
 
-    async def _send(self, calibration, payload: bytes, site_changed, devices) -> list[str]:
+    async def _send(
+        self, calibration, payload: bytes, site_changed, devices
+    ) -> list[str]:
         targets = sorted({d.upper() for d in devices}) if devices else None
         client = await asyncio.to_thread(self._ensure_client)
         try:

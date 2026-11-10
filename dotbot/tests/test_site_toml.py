@@ -231,7 +231,9 @@ def test_a_model_the_schema_refuses_is_an_error(change, message):
 def test_a_corner_may_overlap_the_field_and_staging_may_touch_it():
     model = _loaded(ARENA)
     model["areas"][1].update(y=model["areas"][0]["h"])
-    model["areas"].append({"name": "c", "x": 0, "y": 0, "w": 50, "h": 50, "role": "corner"})
+    model["areas"].append(
+        {"name": "c", "x": 0, "y": 0, "w": 50, "h": 50, "role": "corner"}
+    )
     assert "[areas.c]" in patched_text(ARENA, model)
 
 

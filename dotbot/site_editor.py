@@ -307,7 +307,8 @@ def create_app(
         return {
             "name": state.name,
             "path": str(state.path),
-            "frame_id": site.get("frame") or derived_frame_id(state.name, site.get("anchor") or ""),
+            "frame_id": site.get("frame")
+            or derived_frame_id(state.name, site.get("anchor") or ""),
             "revision": site_toml.revision(data),
             "shown_path": _shown_path(state.path),
             "text": text,
@@ -329,7 +330,11 @@ def create_app(
             current = site_toml.site_model(site_toml.parse(text))
         except site_toml.SiteTomlError:
             return model
-        if model.frame or current.get("frame") or (model.anchor or "") == (current.get("anchor") or ""):
+        if (
+            model.frame
+            or current.get("frame")
+            or (model.anchor or "") == (current.get("anchor") or "")
+        ):
             return model
         from dotbot.site import derived_frame_id
 
@@ -347,7 +352,9 @@ def create_app(
         try:
             site_toml.site_model(site_toml.parse(edited))
         except site_toml.SiteTomlError as exc:
-            raise HTTPException(422, f"the edited site.toml does not read: {exc}") from exc
+            raise HTTPException(
+                422, f"the edited site.toml does not read: {exc}"
+            ) from exc
         return edited
 
     @app.post("/api/preview")
@@ -417,9 +424,7 @@ def create_app(
 
     @app.put("/api/site")
     def save(request: SaveRequest):
-        data, text, written = write_model(
-            request.revision, request.site, request.text
-        )
+        data, text, written = write_model(request.revision, request.site, request.text)
         return {**body(data, text), "written": written}
 
     @app.post("/api/apply")
@@ -516,7 +521,10 @@ def create_app(
     def get_checks():
         from dotbot.calibration import checks
 
-        return {"checks": checks.read_checks(state.name), "path": str(checks.checks_path(state.name))}
+        return {
+            "checks": checks.read_checks(state.name),
+            "path": str(checks.checks_path(state.name)),
+        }
 
     @app.post("/api/checks")
     def post_check(request: CheckRequest):
@@ -540,7 +548,10 @@ def create_app(
 
         cal = served_calibration()
         if cal is None:
-            raise HTTPException(404, "no calibration is served or configured, so there is nothing to record")
+            raise HTTPException(
+                404,
+                "no calibration is served or configured, so there is nothing to record",
+            )
         try:
             error_map = error_map_from_calibration(cal)
         except (ValueError, ArithmeticError):
@@ -580,14 +591,24 @@ def create_app(
         with saving:
             data, text = read()
             if site_toml.revision(data) != request.revision:
-                raise HTTPException(409, f"{state.path} changed on disk since the page loaded it")
+                raise HTTPException(
+                    409, f"{state.path} changed on disk since the page loaded it"
+                )
             if kept_text != text:
                 keep_and_write(data, kept_text)
-        steps = [{"step": "site.toml", "status": "written", "detail": f"as at {kept['at']}"}]
+        steps = [
+            {"step": "site.toml", "status": "written", "detail": f"as at {kept['at']}"}
+        ]
         if request.serve and kept.get("served") and serve is not None:
             try:
                 serve(kept["served"], False)
-                steps.append({"step": "serve", "status": "written", "detail": f"serving {kept['served'][:8]}, this run only"})
+                steps.append(
+                    {
+                        "step": "serve",
+                        "status": "written",
+                        "detail": f"serving {kept['served'][:8]}, this run only",
+                    }
+                )
             except (ValueError, OSError) as exc:
                 steps.append({"step": "serve", "status": "refused", "detail": str(exc)})
         data, text = read()
@@ -722,7 +743,13 @@ def create_lobby_app(
             try:
                 site = site_from_table(site_name, read_pack(folder), folder)
             except Exception as exc:  # noqa: BLE001
-                rows.append({"name": site_name, "shown_path": _shown_path(folder / PACK_FILE), "error": str(exc)})
+                rows.append(
+                    {
+                        "name": site_name,
+                        "shown_path": _shown_path(folder / PACK_FILE),
+                        "error": str(exc),
+                    }
+                )
                 continue
             rows.append(
                 {
@@ -791,7 +818,9 @@ def create_lobby_app(
             "can_write": can_write(request.scope),
         }
 
-    @app.api_route("/api/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+    @app.api_route(
+        "/api/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"]
+    )
     def no_pack(rest: str):
         raise HTTPException(404, NO_PACK)
 

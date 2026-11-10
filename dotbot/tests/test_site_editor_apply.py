@@ -12,7 +12,10 @@ from dotbot.tests.test_site_placement import client, home, placed, spun  # noqa:
 
 def _with_area(site: dict, name: str) -> dict:
     areas = [{**a, "was": a["name"]} for a in site["areas"]]
-    return {**site, "areas": areas + [{"name": name, "x": 0, "y": 0, "w": 100, "h": 100}]}
+    return {
+        **site,
+        "areas": areas + [{"name": name, "x": 0, "y": 0, "w": 100, "h": 100}],
+    }
 
 
 def test_a_refused_second_step_leaves_site_toml_written_and_reports_both(
@@ -53,7 +56,12 @@ def test_both_steps_write_in_order(client, placed):  # noqa: F811
     site_step, cal_step = body["steps"]
     assert site_step["status"] == "written"
     boxed = read_calibration_file(cal_step["detail"])
-    assert boxed.id == cal_step["id"] and boxed.station(0).valid_mm == (0, 0, 1000, 2000)
+    assert boxed.id == cal_step["id"] and boxed.station(0).valid_mm == (
+        0,
+        0,
+        1000,
+        2000,
+    )
 
 
 def test_a_stale_revision_writes_nothing(client):  # noqa: F811
@@ -71,7 +79,10 @@ def test_a_save_is_undone_from_the_history(client):  # noqa: F811
     loaded = client.get("/api/site").json()
     saved = client.post(
         "/api/apply",
-        json={"revision": loaded["revision"], "site": _with_area(loaded["site"], "pen")},
+        json={
+            "revision": loaded["revision"],
+            "site": _with_area(loaded["site"], "pen"),
+        },
     ).json()
     (kept,) = client.get("/api/history").json()
     assert kept["revision"] == loaded["revision"]
@@ -95,7 +106,7 @@ def test_the_history_keeps_the_last_twenty(home):  # noqa: F811
     assert site_history.read_version("arena", kept[0]["id"]) == b"v24"
 
 
-def test_the_site_payload_carries_the_file_text_for_the_review_diff(client):  # noqa: F811
+def test_the_payload_carries_the_file_text_for_the_diff(client):  # noqa: F811
     loaded = client.get("/api/site").json()
     from dotbot.tests.test_site_toml import ARENA
 

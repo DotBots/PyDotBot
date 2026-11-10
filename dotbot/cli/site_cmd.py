@@ -705,7 +705,9 @@ def _configured_calibration(ctx, name: str) -> dict | None:
         return None
     out = {"spec": str(found.value), "source": found.source}
     try:
-        cal = read_calibration_file(resolve_calibration_path(str(found.value), site=name))
+        cal = read_calibration_file(
+            resolve_calibration_path(str(found.value), site=name)
+        )
     except (OSError, ValueError) as exc:
         return {**out, "error": str(exc)}
     return {**out, "id": cal.id, "id8": cal.id8, "tag": cal.tag}

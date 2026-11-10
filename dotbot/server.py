@@ -31,20 +31,19 @@ from dotbot import pydotbot_version
 from dotbot.build import build_info
 from dotbot.camera.service import STREAM_MEDIA_TYPE
 from dotbot.logger import LOGGER
-from dotbot.same_origin import same_origin
 from dotbot.models import (
-    DotBotCalibrationSpinModel,
     MAX_TRAIL_SIZE,
     DotBotBackgroundMapModel,
     DotBotBodyModel,
     DotBotBuildModel,
+    DotBotCalibrationFilePushModel,
     DotBotCalibrationPreviewModel,
     DotBotCalibrationPushedModel,
-    DotBotCalibrationFilePushModel,
     DotBotCalibrationPushModel,
     DotBotCalibrationSavedModel,
     DotBotCalibrationSaveModel,
     DotBotCalibrationSessionModel,
+    DotBotCalibrationSpinModel,
     DotBotCalibrationStartModel,
     DotBotCameraDetectionModel,
     DotBotCameraModel,
@@ -80,6 +79,7 @@ from dotbot.protocol import (
     PayloadLH2Waypoints,
     PayloadWaypointHeading,
 )
+from dotbot.same_origin import same_origin
 from dotbot.stream import StreamOptions, encode, robot_object
 from dotbot.swarm_client import conn_string
 from dotbot.ws_clients import TransportScope
@@ -1077,7 +1077,10 @@ class SiteEditorMount:
                 def current():
                     s = controller.site
                     p = Path(s.pack) if s is not None and s.pack else None
-                    return (s.name if s is not None else "", p if p and (p / PACK_FILE).is_file() else None)
+                    return (
+                        s.name if s is not None else "",
+                        p if p and (p / PACK_FILE).is_file() else None,
+                    )
 
                 self._lobby = create_lobby_app(
                     current,
@@ -1099,7 +1102,9 @@ class SiteEditorMount:
                 page_dir=EDITOR_DIR,
                 on_saved=lambda: loop.call_soon_threadsafe(controller.reload_site),
                 context=controller.editor_context,
-                serve=lambda spec, persist: _on_loop(loop, controller.serve, spec, persist),
+                serve=lambda spec, persist: _on_loop(
+                    loop, controller.serve, spec, persist
+                ),
             )
             self._key = (id(controller), pack)
         await self._app(scope, receive, send)

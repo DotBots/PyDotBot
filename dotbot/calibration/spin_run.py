@@ -130,9 +130,11 @@ def solve_and_save(
             {
                 "index": st.index,
                 "residual_mm": st.residual_mm,
-                "kept": len(joint.solutions[st.index].tracks)
-                if st.index in joint.solutions
-                else 0,
+                "kept": (
+                    len(joint.solutions[st.index].tracks)
+                    if st.index in joint.solutions
+                    else 0
+                ),
             }
             for st in sorted(calibration.stations, key=lambda s: s.index)
         ],

@@ -65,9 +65,7 @@ def test_a_spin_client_s_reads_solve_two_stations():
     for address, x, y in ROBOTS:
         for event in client.events_of(address, (x, y)):
             assembler.add_event(event)
-    samples = [
-        s for spin in assembler.by_device().values() for s in spin.samples(51.4)
-    ]
+    samples = [s for spin in assembler.by_device().values() for s in spin.samples(51.4)]
     calibration, _, unsolved = solve_calibration(samples, Site(name="lab"))
     assert not unsolved and is_free_mode(calibration)
     assert sorted(st.index for st in calibration.stations) == [0, 1]
@@ -85,10 +83,7 @@ async def lab(tmp_path, monkeypatch):
     monkeypatch.setattr("dotbot.site_packs.USER_SITES_DIR", homes)
     s = Scenario(
         tmp_path,
-        [
-            {"address": a, "pos_x": x, "pos_y": y, "direction": 0}
-            for a, x, y in ROBOTS
-        ],
+        [{"address": a, "pos_x": x, "pos_y": y, "direction": 0} for a, x, y in ROBOTS],
     )
     local = httpx.AsyncClient(
         transport=httpx.ASGITransport(app=api), base_url="http://127.0.0.1"
@@ -136,9 +131,7 @@ async def test_new_site_refuses_another_machine(lab):
 @pytest.mark.asyncio
 async def test_a_spin_from_the_controller_saves_a_free_calibration(lab):
     s, local, _ = lab
-    await local.post(
-        "/controller/site-editor/api/sites", json={"name": "bench-b"}
-    )
+    await local.post("/controller/site-editor/api/sites", json={"name": "bench-b"})
     await asyncio.sleep(0.05)
     started = await local.post("/controller/calibration/spin", json={"tag": "r1"})
     assert started.status_code == 200, started.text

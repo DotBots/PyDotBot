@@ -74,7 +74,9 @@ def select(
     return None if best is None else best[0]
 
 
-def candidates(rects: Mapping[int, Sequence[int]], x: float, y: float) -> tuple[int, ...]:
+def candidates(
+    rects: Mapping[int, Sequence[int]], x: float, y: float
+) -> tuple[int, ...]:
     """The stations that can give the fix at (x, y) when every station sees
     the robot and solves it there.
 

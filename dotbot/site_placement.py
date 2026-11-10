@@ -162,14 +162,18 @@ def create_router(
             served = served_id() if served_id is not None else None
             return site_library.library(folders, current_site(), served)
         if scope is not None:
-            raise HTTPException(422, f"unknown scope {scope!r}; the one known is 'site'")
+            raise HTTPException(
+                422, f"unknown scope {scope!r}; the one known is 'site'"
+            )
         try:
             site = current_site()
         except HTTPException:
             site = None
         listed = [m for m in map(_metadata, _files(pack)) if m and m["id"]]
         for m in listed:
-            file_site = Site(name=m["site"], anchor=m.pop("anchor"), frame=m.pop("frame"))
+            file_site = Site(
+                name=m["site"], anchor=m.pop("anchor"), frame=m.pop("frame")
+            )
             m["in_frame"] = site is not None and frame_refusal(file_site, site) is None
         return listed
 
@@ -190,10 +194,14 @@ def create_router(
         source = resolve(request.calibration)
         text = site_text()
         if site_toml.revision(text.encode("utf-8")) != request.revision:
-            raise HTTPException(409, "site.toml changed on disk since the page loaded it")
+            raise HTTPException(
+                409, "site.toml changed on disk since the page loaded it"
+            )
         site = current_site()
         shift = (request.dx_mm, request.dy_mm)
-        frame = site_frame.new_frame_id(site.frame_id, request.theta_deg, request.pivot, shift)
+        frame = site_frame.new_frame_id(
+            site.frame_id, request.theta_deg, request.pivot, shift
+        )
         note = site.anchor if request.note is None else request.note.strip()
         try:
             planned = site_frame.moved(
@@ -214,7 +222,11 @@ def create_router(
                 422,
                 {
                     "message": str(exc),
-                    "offer": None if offer is None else {"dx_mm": offer[0], "dy_mm": offer[1]},
+                    "offer": (
+                        None
+                        if offer is None
+                        else {"dx_mm": offer[0], "dy_mm": offer[1]}
+                    ),
                 },
             ) from exc
         summary = {
@@ -231,7 +243,14 @@ def create_router(
             raise HTTPException(405, "this editor cannot write site.toml")
         steps = []
         saved, path = save_new(planned)
-        steps.append({"step": "calibration", "status": "written", "detail": str(path), "id": saved.id})
+        steps.append(
+            {
+                "step": "calibration",
+                "status": "written",
+                "detail": str(path),
+                "id": saved.id,
+            }
+        )
         try:
             model = site_toml.site_model(site_toml.parse(text))
             model["frame"] = frame
@@ -245,16 +264,30 @@ def create_router(
             write_site(request.revision, site_toml.patched_text(text, model))
         except (site_toml.SiteTomlError, HTTPException) as exc:
             detail = exc.detail if isinstance(exc, HTTPException) else str(exc)
-            steps.append({"step": "site.toml", "status": "refused", "detail": str(detail)})
+            steps.append(
+                {"step": "site.toml", "status": "refused", "detail": str(detail)}
+            )
             return {**summary, "steps": steps, "ok": False}
-        steps.append({"step": "site.toml", "status": "written", "detail": f"frame {frame}"})
+        steps.append(
+            {"step": "site.toml", "status": "written", "detail": f"frame {frame}"}
+        )
         if request.serve and serve is not None:
             try:
                 serve(saved.id, False)
-                steps.append({"step": "serve", "status": "written", "detail": f"serving {saved.id8}, this run only"})
+                steps.append(
+                    {
+                        "step": "serve",
+                        "status": "written",
+                        "detail": f"serving {saved.id8}, this run only",
+                    }
+                )
             except (ValueError, OSError) as exc:
                 steps.append({"step": "serve", "status": "refused", "detail": str(exc)})
-        return {**summary, "steps": steps, "ok": all(s["status"] != "refused" for s in steps)}
+        return {
+            **summary,
+            "steps": steps,
+            "ok": all(s["status"] != "refused" for s in steps),
+        }
 
     @router.patch("/api/calibrations/{spec}")
     def change(spec: str, request: LibraryRequest):
@@ -283,14 +316,20 @@ def create_router(
         rects = None
         if boxes:
             try:
-                rects = {int(k): [int(v) for v in r] for k, r in json.loads(boxes).items()}
+                rects = {
+                    int(k): [int(v) for v in r] for k, r in json.loads(boxes).items()
+                }
             except (ValueError, TypeError, AttributeError) as exc:
                 raise HTTPException(
                     422, "boxes is JSON: station index to [x0, y0, x1, y1]"
                 ) from exc
             if any(len(r) != 4 or r[2] <= r[0] or r[3] <= r[1] for r in rects.values()):
-                raise HTTPException(422, "each box is [x0, y0, x1, y1] with x1 > x0, y1 > y0")
-        return site_coverage.coverage(cal, current_site(), rects, max(0, min(robots, 8)))
+                raise HTTPException(
+                    422, "each box is [x0, y0, x1, y1] with x1 > x0, y1 > y0"
+                )
+        return site_coverage.coverage(
+            cal, current_site(), rects, max(0, min(robots, 8))
+        )
 
     @router.post("/api/calibrations/{spec}/place")
     def place(spec: str, request: PlaceRequest):

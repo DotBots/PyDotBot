@@ -13,7 +13,11 @@ from dotbot.calibration.lighthouse2 import check_calibration_site, write_calibra
 from dotbot.calibration.station_boxes import frame_refusal, reboxed
 from dotbot.site import Site, derived_frame_id
 from dotbot.site_editor import EditorState, create_app
-from dotbot.tests.test_calibration_station_boxes import ARENA, free, placed  # noqa: F401
+from dotbot.tests.test_calibration_station_boxes import (  # noqa: F401
+    ARENA,
+    free,
+    placed,
+)
 from dotbot.tests.test_site_editor import local_client
 
 SITE_TOML = """\
@@ -40,14 +44,22 @@ def test_a_file_without_a_frame_derives_the_inria_2lh_id():
 def test_check_calibration_site_accepts_a_file_lacking_the_key(placed):  # noqa: F811
     assert placed.site.frame is None
     check_calibration_site(placed.site, ARENA, None)
-    stamped = dataclasses.replace(ARENA, frame=derived_frame_id("arena", ARENA.anchor), anchor="a new note")
+    stamped = dataclasses.replace(
+        ARENA, frame=derived_frame_id("arena", ARENA.anchor), anchor="a new note"
+    )
     check_calibration_site(placed.site, stamped, None)
     with pytest.raises(ValueError, match="is in frame"):
-        check_calibration_site(placed.site, dataclasses.replace(ARENA, frame="0badf00d"), None)
+        check_calibration_site(
+            placed.site, dataclasses.replace(ARENA, frame="0badf00d"), None
+        )
 
 
-def test_rebox_and_turn_accept_a_file_lacking_the_key(placed, tmp_path, monkeypatch):  # noqa: F811
-    stamped = dataclasses.replace(ARENA, frame=derived_frame_id("arena", ARENA.anchor), anchor="edited")
+def test_rebox_and_turn_accept_a_file_lacking_the_key(
+    placed, tmp_path, monkeypatch  # noqa: F811
+):  # noqa: F811
+    stamped = dataclasses.replace(
+        ARENA, frame=derived_frame_id("arena", ARENA.anchor), anchor="edited"
+    )
     assert frame_refusal(placed.site, stamped) is None
     boxed = reboxed(placed, stamped, {0: (0, 0, 1500, 4000)})
     assert boxed.site.frame is None and boxed.site.anchor == placed.site.anchor
@@ -56,12 +68,16 @@ def test_rebox_and_turn_accept_a_file_lacking_the_key(placed, tmp_path, monkeypa
     assert [c.id for c in site_turn.in_frame(stamped, [path])] == [placed.id]
 
 
-def test_the_controller_load_accepts_a_file_lacking_the_key(placed, tmp_path, monkeypatch):  # noqa: F811
+def test_the_controller_load_accepts_a_file_lacking_the_key(
+    placed, tmp_path, monkeypatch  # noqa: F811
+):  # noqa: F811
     from dotbot.controller import load_calibration
 
     monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
     write_calibration(placed)
-    stamped = dataclasses.replace(ARENA, frame=derived_frame_id("arena", ARENA.anchor), anchor="edited")
+    stamped = dataclasses.replace(
+        ARENA, frame=derived_frame_id("arena", ARENA.anchor), anchor="edited"
+    )
     assert load_calibration(placed.id8, site=stamped).id == placed.id
 
 
@@ -95,12 +111,20 @@ def test_editing_the_note_writes_the_derived_frame_first(editor):
     assert 'anchor = "the door corner, by the window"' in text
 
 
-def test_a_turn_with_a_shift_below_zero_is_refused_with_the_largest_legal_shift(editor, placed):  # noqa: F811
+def test_a_turn_with_a_shift_below_zero_is_refused_with_the_largest_legal_shift(
+    editor, placed  # noqa: F811
+):  # noqa: F811
     client, _, _ = editor
     revision = client.get("/api/site").json()["revision"]
     refused = client.post(
         "/api/frame",
-        json={"calibration": placed.id8, "theta_deg": 0, "pivot": [1500, 2000], "dx_mm": 5000, "revision": revision},
+        json={
+            "calibration": placed.id8,
+            "theta_deg": 0,
+            "pivot": [1500, 2000],
+            "dx_mm": 5000,
+            "revision": revision,
+        },
     )
     assert refused.status_code == 422
     detail = refused.json()["detail"]
@@ -108,12 +132,19 @@ def test_a_turn_with_a_shift_below_zero_is_refused_with_the_largest_legal_shift(
     assert 0 < detail["offer"]["dx_mm"] < 5000
 
 
-def test_the_frame_change_writes_the_file_the_site_and_serves_in_order(editor, placed):  # noqa: F811
+def test_the_frame_change_writes_the_file_the_site_and_serves_in_order(
+    editor, placed  # noqa: F811
+):  # noqa: F811
     client, pack, served = editor
     revision = client.get("/api/site").json()["revision"]
     body = client.post(
         "/api/frame",
-        json={"calibration": placed.id8, "theta_deg": 2, "pivot": [1500, 2000], "revision": revision},
+        json={
+            "calibration": placed.id8,
+            "theta_deg": 2,
+            "pivot": [1500, 2000],
+            "revision": revision,
+        },
     ).json()
     assert [s["step"] for s in body["steps"]] == ["calibration", "site.toml", "serve"]
     assert body["ok"] is True

@@ -286,7 +286,9 @@ def two_station_spin(home):
     return calibration, ms
 
 
-def test_coverage_prints_the_show_headline_and_follows_new_boxes(client, two_station_spin):
+def test_coverage_prints_the_show_headline_and_follows_new_boxes(
+    client, two_station_spin
+):
     calibration, ms = two_station_spin
     body = client.get(f"/api/calibrations/{calibration.id8}/coverage").json()
     expected = ms.error_map_from_calibration(calibration)
@@ -317,7 +319,9 @@ def test_coverage_prints_the_show_headline_and_follows_new_boxes(client, two_sta
 def test_a_tag_rename_keeps_the_id_and_the_file(client, home, spun):
     path = spun.path
     before = path.read_text()
-    body = client.patch(f"/api/calibrations/{spun.id8}", json={"tag": "monday class"}).json()
+    body = client.patch(
+        f"/api/calibrations/{spun.id8}", json={"tag": "monday class"}
+    ).json()
     assert body["id"] == spun.id and body["tag"] == "monday class"
     assert body["path"] == str(path)
     after = path.read_text()
