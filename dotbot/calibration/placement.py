@@ -301,7 +301,7 @@ def place_calibration(
         extra["links"] = list(calibration.links)
     return Calibration(
         **extra,
-        site=Site(name=site.name, anchor=site.anchor),
+        site=Site(name=site.name, anchor=site.anchor, frame=site.frame),
         valid_mm=tuple(int(v) for v in valid_mm),
         placements=placements,
         stations=stations,

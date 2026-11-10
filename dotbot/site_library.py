@@ -66,6 +66,7 @@ def _row(path: Path) -> dict | None:
         "path": str(path),
         "site": cal.site.name,
         "anchor": cal.site.anchor,
+        "frame": cal.site.frame,
         "fence": [int(v) for v in cal.valid_mm],
         "spin": spin_fingerprint(cal),
         "tracks": len(cal.tracks),
@@ -100,9 +101,10 @@ def library(folders: Iterable[Path], site: Site, served_id: str | None) -> dict:
     groups: dict[str, list[dict]] = {}
     not_placed: list[dict] = []
     for r in rows:
-        file_site = Site(name=r["site"], anchor=r["anchor"])
+        file_site = Site(name=r["site"], anchor=r["anchor"], frame=r["frame"])
         row = {
             **{k: v for k, v in r.items() if k != "anchor"},
+            "frame": Site(name=r["site"], anchor=r["anchor"], frame=r["frame"]).frame_id,
             "in_frame": frame_refusal(file_site, site) is None,
             "served": bool(served_id) and r["id"] == served_id,
         }

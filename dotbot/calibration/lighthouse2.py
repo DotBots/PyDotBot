@@ -704,6 +704,7 @@ def render_calibration(calibration: Calibration) -> str:
         "[site]",
         f'name = "{site.name}"',
         f'anchor = "{toml_escape(site.anchor)}"',
+        *([f'frame = "{site.frame}"'] if site.frame else []),
         "",
         "[validity]",
         f"valid_mm = {_toml_int_list(calibration.valid_mm)}",
@@ -798,6 +799,7 @@ def read_calibration_file(path: Path) -> Calibration:
     site = Site(
         name=site_data.get("name", SITE_DEFAULT),
         anchor=site_data.get("anchor", ""),
+        frame=site_data.get("frame"),
     )
     valid_mm = tuple(data.get("validity", {}).get("valid_mm", VALID_MM_DEFAULT))
 
@@ -1040,9 +1042,10 @@ def calibration_age_days(
 
 
 def check_calibration_site(file_site: Site, site: Site, path: Optional[Path]) -> None:
-    """Refuse a calibration made in another site, or against another anchor.
+    """Refuse a calibration made in another site, or in another frame.
 
-    Anchors are compared only when both are recorded.
+    Frames are compared by id, an id recorded or derived from the name and
+    anchor, and only when both sides name their frame.
     """
     where = path or "the calibration"
     if file_site.name != site.name:
@@ -1051,11 +1054,16 @@ def check_calibration_site(file_site: Site, site: Site, path: Optional[Path]) ->
             f"select site {file_site.name!r} (--site or DOTBOT_SITE) or pick a "
             f"calibration of {site.name!r}"
         )
-    if file_site.anchor and site.anchor and file_site.anchor != site.anchor:
+    if (
+        file_site.frame_known
+        and site.frame_known
+        and file_site.frame_id != site.frame_id
+    ):
         raise ValueError(
-            f"{where} records the anchor {file_site.anchor!r}, but site "
-            f"{site.name!r} has {site.anchor!r}: its frame is another one, so "
-            "recalibrate or correct the site's anchor"
+            f"{where} is in frame {file_site.frame_id} "
+            f"({file_site.anchor or 'no note'!s}), but site {site.name!r} is in "
+            f"frame {site.frame_id}: re-express the calibration in the site's "
+            "frame, or recalibrate"
         )
 
 

@@ -784,7 +784,9 @@ def solve_calibration(
     ]
     now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     calibration = Calibration(
-        site=Site(name=site.name, anchor=anchor),
+        site=Site(
+            name=site.name, anchor=anchor, frame=site.frame if joint.anchored else None
+        ),
         valid_mm=valid_mm,
         stations=stations,
         tracks=list(samples),
@@ -1048,7 +1050,7 @@ def align_to_calibration(
         for p in source.placements
     ]
     placed = Calibration(
-        site=Site(name=site.name, anchor=site.anchor),
+        site=Site(name=site.name, anchor=site.anchor, frame=site.frame),
         valid_mm=fence,
         placements=placements,
         stations=moved,

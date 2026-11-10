@@ -117,8 +117,11 @@ def test_a_free_mode_calibration_is_refused(free):
 def test_a_calibration_of_another_site_or_anchor_is_refused(placed):
     with pytest.raises(BoxesRefused, match="not in site hall's frame"):
         reboxed(placed, dataclasses.replace(ARENA, name="hall"), {0: (0, 0, 10, 10)})
-    with pytest.raises(BoxesRefused, match="anchor"):
+    with pytest.raises(BoxesRefused, match="is in frame"):
         reboxed(placed, dataclasses.replace(ARENA, anchor="moved"), {0: (0, 0, 10, 10)})
+    # The same anchor under a recorded frame id of another frame is refused too
+    with pytest.raises(BoxesRefused, match="is in frame"):
+        reboxed(placed, dataclasses.replace(ARENA, frame="0badf00d"), {0: (0, 0, 10, 10)})
 
 
 def test_an_unknown_station_nothing_changed_and_a_taken_tag_are_refused(placed):

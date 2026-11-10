@@ -203,7 +203,7 @@ def test_a_calibration_from_another_site_or_anchor_is_refused(tmp_path, home):
     assert load_calibration(FIXTURE_ID[:8], site=site).id == FIXTURE_ID
 
     moved = Site(name="c405-arena", anchor="the window wall", pack=pack)
-    with pytest.raises(ValueError, match="records the anchor"):
+    with pytest.raises(ValueError, match="is in frame"):
         load_calibration(FIXTURE_ID[:8], site=moved)
 
     path = str(pack / "calibrations" / CALIBRATION_NAME)

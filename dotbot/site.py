@@ -89,6 +89,8 @@ class Site:
 
     name: str = SITE_DEFAULT
     anchor: str = ""
+    # The frame's id when recorded; else derived from the name and anchor
+    frame: str | None = None
     extent_mm: tuple[int, int] | None = None
     areas: dict[str, Area] = field(default_factory=dict)
     pack: Path | None = None
@@ -98,6 +100,18 @@ class Site:
     walls: list[Wall] = field(default_factory=list)
     obstacles: list[Obstacle] = field(default_factory=list)
     objects: dict[str, SiteObject] = field(default_factory=dict)
+
+    @property
+    def frame_id(self) -> str:
+        """The id of the frame positions are in: the recorded one, else 8
+        hex digits of the name and anchor, so files made before the key
+        existed keep matching."""
+        return self.frame or derived_frame_id(self.name, self.anchor)
+
+    @property
+    def frame_known(self) -> bool:
+        """Whether anything names the frame: a recorded id or an anchor."""
+        return bool(self.frame or self.anchor)
 
     @property
     def error_limit_mm(self) -> float:
@@ -217,6 +231,7 @@ def site_from_table(name: str, table: Any, pack: Path | None = None) -> Site:
         name=name,
         pack=pack,
         anchor=getattr(table, "anchor", None) or "",
+        frame=getattr(table, "frame", None),
         extent_mm=(int(extent[0]), int(extent[1])) if extent else None,
         spin_radius_mm=getattr(table, "spin_radius_mm", None),
         lh2_error_limit_mm=getattr(table, "lh2_error_limit_mm", None),

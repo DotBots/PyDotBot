@@ -247,6 +247,8 @@ class SiteSection(_Strict):
     """
 
     anchor: str | None = None
+    # The frame's id, 8 hex digits; absent, it is derived from name and anchor
+    frame: str | None = Field(default=None, pattern=r"^[0-9a-f]{8}$")
     extent_mm: tuple[int, int] | None = None
     connection: ConnectionSection | None = None
     areas: dict[str, AreaSection] = Field(default_factory=dict)

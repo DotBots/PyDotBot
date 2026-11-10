@@ -80,6 +80,7 @@ def site_model(doc: TOMLDocument) -> dict[str, Any]:
     connection = doc.get("connection")
     return {
         "anchor": doc.get("anchor"),
+        "frame": doc.get("frame"),
         "extent_mm": [int(v) for v in extent] if extent is not None else None,
         "areas": areas,
         "connection": dict(connection) if connection is not None else None,
@@ -426,6 +427,8 @@ def patch(doc: TOMLDocument, model: dict[str, Any]) -> TOMLDocument:
     _check_names(areas)
     anchor = model.get("anchor")
     _set(doc, "anchor", anchor if anchor else None)
+    if "frame" in model:
+        _set(doc, "frame", model["frame"] or None)
     extent = model.get("extent_mm")
     if extent is None:
         _set(doc, "extent_mm", None)
@@ -462,10 +465,12 @@ def parse(text: str) -> TOMLDocument:
         raise SiteTomlError(f"not valid TOML: {exc}") from exc
 
 
-def anchored_text(text: str, anchor: str) -> str:
-    """`text` with its `anchor` set to `anchor` and nothing else changed."""
+def framed_text(text: str, anchor: str, frame: str | None) -> str:
+    """`text` with its `anchor` and `frame` id set and nothing else changed."""
     doc = parse(text)
     _set(doc, "anchor", anchor if anchor else None)
+    if frame is not None:
+        _set(doc, "frame", frame)
     result = tomlkit.dumps(doc)
     validate(result)
     return result
