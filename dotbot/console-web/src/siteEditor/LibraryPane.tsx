@@ -6,7 +6,7 @@ import { Icon } from "./icons";
 import { filtered, groupTitle, residuals, when } from "./library";
 import type { Library, LibraryRow, Rect } from "./types";
 
-export type LibraryAction = "preview" | "serve" | "push" | "compare" | "archive" | "restore";
+export type LibraryAction = "preview" | "serve" | "push" | "compare" | "archive" | "restore" | "place";
 
 type Filter = "room" | "free" | "archived";
 
@@ -135,6 +135,7 @@ const Row: React.FC<{
               item("restore", "restore", "Bring back from the archive")
             ) : (
               <>
+                {row.free && !row.in_frame && item("place", "pin", "Place in this room…")}
                 {item("preview", "view", "Preview on the plan")}
                 {live && item("serve", "served", row.served ? "Served now" : "Serve on this controller…", row.served || !row.in_frame, row.in_frame ? undefined : "Not placed in this room")}
                 {live && item("push", "ext", "Push in the console ↗", !row.in_frame)}

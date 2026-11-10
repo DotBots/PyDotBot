@@ -155,3 +155,51 @@ export const fetchPoints = () => json<RestorePoint[]>("api/points");
 export const savePoint = (name: string) => json<RestorePoint>("api/points", post({ name }));
 export const restorePoint = (id: string, revision: string, serve: boolean) =>
   json<SitePayload & { steps: ApplyStep[] }>(`api/points/${encodeURIComponent(id)}/restore`, post({ revision, serve }));
+
+export interface SiteRow {
+  name: string;
+  shown_path: string;
+  current?: boolean;
+  extent_mm?: [number, number] | null;
+  anchor?: string;
+  frame_id?: string;
+  areas?: number;
+  error?: string;
+}
+
+export interface SiteList {
+  current: string;
+  has_pack: boolean;
+  /** Where a new site's folder goes */
+  home: string;
+  sites: SiteRow[];
+}
+
+export type NewSiteStart = "empty" | "size" | "spin";
+
+export const fetchSites = () => json<SiteList>("api/sites");
+export const createSite = (body: { name: string; note: string; start: NewSiteStart; size_mm?: [number, number] | null; calibration?: string | null; persist: boolean }) =>
+  json<{ name: string; shown_path: string; calibration: string | null }>("api/sites", post({ ...body, use: true }));
+export const switchSite = (name: string, persist: boolean) =>
+  json<{ site: string; dropped: string | null }>("api/sites/current", { ...post({ name, persist }), method: "PUT" });
+
+/** A calibration as the plan draws it, in its own frame. */
+export interface CalibrationOverlay {
+  id: string;
+  id8: string;
+  /** Solved in its own frame: a spin not yet placed in a room */
+  free: boolean;
+  fence: [number, number, number, number];
+  stations: { index: number; rect: Rect; circles: { name: string; x: number; y: number; radius_mm: number }[] }[];
+  tag: string;
+  site: string;
+  frame_refusal: string | null;
+}
+
+export const fetchOverlay = (id: string) => json<CalibrationOverlay>(`api/calibrations/${encodeURIComponent(id)}`);
+/** Move a spin into this site by a turn and a shift; writes a new file. */
+export const placeCalibration = (id: string, move: { theta_deg: number; dx: number; dy: number }) =>
+  json<{ id: string; id8: string; source: string; path: string; push: string; warnings: string[] }>(
+    `api/calibrations/${encodeURIComponent(id)}/place`,
+    post({ theta_deg: move.theta_deg, dx_mm: move.dx, dy_mm: move.dy }),
+  );

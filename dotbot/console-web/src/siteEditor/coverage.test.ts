@@ -42,9 +42,11 @@ describe("the Stations kind's drawing", () => {
 
   it("reads no sign of a move when the spins agree, and flags one that does not", () => {
     const row = (spin: string, h0: number, apart: number) =>
-      ({ spin, geometry: { stations: { "0": { ...GEOMETRY.stations["0"], height_mm: h0 } }, apart_mm: { "0-1": apart } } }) as unknown as LibraryRow;
+      ({ spin, in_frame: true, geometry: { stations: { "0": { ...GEOMETRY.stations["0"], height_mm: h0 } }, apart_mm: { "0-1": apart } } }) as unknown as LibraryRow;
     expect(moved(row("a", 2423, 2620), [row("b", 2400, 2600), row("c", 2480, 2640)]).verdict).toBe("no sign");
     expect(moved(row("a", 3100, 2620), [row("b", 2400, 2600), row("c", 2480, 2640)]).verdict).toBe("moved?");
     expect(moved(row("a", 2423, 2620), []).verdict).toBe("one spin");
+    // A spin in another frame is not one of this room's
+    expect(moved(row("a", 2423, 2620), [{ ...row("b", 2400, 2600), in_frame: false }]).verdict).toBe("one spin");
   });
 });

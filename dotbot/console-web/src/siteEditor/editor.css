@@ -1991,3 +1991,149 @@ body {
   width: 26px;
   height: 16px;
 }
+
+/* new site: start choices, the no-site start screen */
+.se .choice {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 8px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12.5px;
+}
+.se .choice.on {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+}
+.se .choice input[type="radio"] {
+  margin-top: 3px;
+  accent-color: var(--accent);
+}
+.se .choice b {
+  display: block;
+  font-weight: 600;
+}
+.se .choice .s {
+  display: block;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+.se .badge {
+  font: 500 10px var(--font-mono);
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--hairline);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.se .start {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 32px 16px;
+  background: var(--canvas, var(--bg));
+}
+.se .start-card {
+  width: min(620px, 100%);
+  box-sizing: border-box;
+  padding: 20px 22px;
+}
+.se .start-card h1 {
+  margin: 0 0 6px;
+  font: 600 20px var(--font-ui);
+}
+.se .start-card .lead {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.se .steps-list {
+  margin: 0 0 16px;
+  padding-left: 20px;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+.se .start-card footer {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 14px;
+}
+
+/* a new room: three steps, the spin followed as tiles */
+.se .nr-step {
+  border-left: 2px solid var(--hairline);
+  padding: 2px 0 12px 14px;
+  margin-left: 9px;
+  position: relative;
+}
+.se .nr-step:last-child {
+  border-left-color: transparent;
+}
+.se .nr-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  margin-left: -26px;
+}
+.se .nr-n {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font: 600 11px var(--font-mono);
+  background: var(--surface);
+  border: 1.5px solid var(--hairline);
+  color: var(--muted);
+  flex: none;
+}
+.se .nr-step.on .nr-n {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.se .nr-step.done .nr-n {
+  border-color: var(--ok);
+  background: var(--ok);
+  color: #fff;
+}
+.se .nr-step.todo .nr-h b {
+  color: var(--muted);
+  font-weight: 500;
+}
+.se .nr-b {
+  margin-top: 6px;
+}
+.se .tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  gap: 4px;
+  margin-top: 6px;
+}
+.se .tile {
+  position: relative;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  padding: 4px 6px 7px;
+  font-size: 10.5px;
+  overflow: hidden;
+}
+.se .tile i {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  background: var(--warn);
+}
+.se .tile.full i {
+  background: var(--ok);
+}

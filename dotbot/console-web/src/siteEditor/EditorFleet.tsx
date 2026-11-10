@@ -4,7 +4,7 @@ import { TestbedControls } from "../TestbedControls";
 import { pressed, ACTION_KEY, CLOSE_KEY, typingIn } from "../shortcuts";
 import { targetsOf, type TestbedAction } from "../testbed";
 import { useTestbedConfirm } from "../testbedConfirm";
-import type { Site, UnifiedBot } from "../types";
+import type { Site, SpinRun, UnifiedBot } from "../types";
 import { useFleet } from "../useFleet";
 import { useOrchestration } from "../useOrchestration";
 
@@ -13,10 +13,12 @@ import { useOrchestration } from "../useOrchestration";
 export const EditorFleet: React.FC<{
   onBots: (bots: UnifiedBot[]) => void;
   onSite: (site: Site | null) => void;
+  onSpin?: (spin: SpinRun | null) => void;
   compact?: boolean;
-}> = ({ onBots, onSite, compact }) => {
-  const { bots, site } = useFleet();
+}> = ({ onBots, onSite, onSpin, compact }) => {
+  const { bots, site, spin } = useFleet();
   useEffect(() => onBots(bots), [bots, onBots]);
+  useEffect(() => onSpin?.(spin), [spin, onSpin]);
   useEffect(() => onSite(site), [site, onSite]);
   const orch = useOrchestration(() => {});
   const run = useCallback((action: TestbedAction) => orch.act(action, undefined, targetsOf(action, bots)), [orch.act, bots]);

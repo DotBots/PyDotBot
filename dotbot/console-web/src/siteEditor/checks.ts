@@ -16,7 +16,7 @@ export type GoalState = "ok" | "warn" | "fail" | "unknown" | "info" | "optional"
 export interface GoalAction {
   label: string;
   /** Where the fix lives in the editor. */
-  go: { kind?: EditKind; tool?: string; tab?: "library" | "outline"; select?: string; sheet?: "check" | "split" };
+  go: { kind?: EditKind; tool?: string; tab?: "library" | "outline"; select?: string; sheet?: "check" | "split" | "newroom" };
 }
 
 export interface Goal {
@@ -78,7 +78,21 @@ export function goals(i: GoalInputs): Goal[] {
     action: myChecks.length ? undefined : { label: "Capture with a robot…", go: { kind: "frame", tool: "capture" } },
   });
   if (!i.served) {
-    out.push({ id: "stations", group: "room", title: "Stations", state: i.servedId ? "unknown" : "fail", detail: i.servedId ? "the served file is not in this site's folders" : "no calibration served", action: { label: "Pick one…", go: { tab: "library" } } });
+    const free = i.rows.some((r) => r.free && !r.in_frame);
+    out.push({
+      id: "stations",
+      group: "room",
+      title: "Stations",
+      state: i.servedId ? "unknown" : "fail",
+      detail: i.servedId
+        ? "the served file is not in this site's folders"
+        : free
+          ? "a spin is measured but not placed in this room yet"
+          : i.rows.some((r) => r.in_frame)
+            ? "measured, but no calibration is served"
+            : "not measured yet: mount two stations and spin robots",
+      action: i.servedId || (!free && i.rows.some((r) => r.in_frame)) ? { label: "Pick one…", go: { tab: "library" } } : { label: free ? "Place the spin…" : "Mount and measure…", go: { sheet: "newroom" } },
+    });
   } else {
     const m = moved(i.served, i.rows);
     const st = i.served.stations.map((s) => `S${s.index}`).join(", ");

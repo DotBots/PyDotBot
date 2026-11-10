@@ -228,7 +228,8 @@ const SPREAD_OK_MM = 250;
 export function moved(shown: LibraryRow | null, rows: LibraryRow[]): Moved {
   if (!shown?.geometry) return { spins: 0, verdict: "one spin", ranges: [] };
   const seen = new Map<string, LibraryRow>();
-  for (const r of rows) if (r.geometry && !seen.has(r.spin)) seen.set(r.spin, r);
+  // This room's spins only: a file in another frame may be this one before a move
+  for (const r of rows) if (r.geometry && r.in_frame && !seen.has(r.spin)) seen.set(r.spin, r);
   seen.set(shown.spin, shown);
   const all = [...seen.values()];
   if (all.length < 2) return { spins: all.length, verdict: "one spin", ranges: [] };

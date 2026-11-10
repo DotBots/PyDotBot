@@ -9,7 +9,7 @@ import { ChipModel, configuredChip, servedChip } from "../shared/served";
 import { Tabs } from "../shared/Tabs";
 import { TitleBar } from "../shared/TitleBar";
 import { holds, typingIn } from "../shortcuts";
-import type { Site, UnifiedBot } from "../types";
+import type { Site, SpinRun, UnifiedBot } from "../types";
 import {
   dryRunBoxes,
   fetchChecks,
@@ -37,6 +37,8 @@ import type { Coverage } from "./coverage";
 import { forget, newDraft, pending, persist, reapply, redo, restore, step, undo, type Change, type Draft, type KeyValue, type Snap } from "./draft";
 import "./editor.css";
 import { EditorFleet } from "./EditorFleet";
+import { SitesSheet, StartScreen } from "./SitesSheet";
+import { mountOverlay, NewRoomPanel, placeOverlay, type PlacePreview } from "./NewRoomPanel";
 import { KV } from "./fields";
 import { FileView } from "./FileView";
 import { Icon, type IconName } from "./icons";
@@ -249,6 +251,16 @@ export const SiteEditorApp: React.FC = () => {
   const [present, setPresent] = useState(false);
   const [restoring, setRestoring] = useState<RestorePoint | null>(null);
   const [checksRefresh, setChecksRefresh] = useState(0);
+  const [sitesSheet, setSitesSheet] = useState<"new" | "switch" | null>(null);
+  const [spin, setSpin] = useState<SpinRun | null>(null);
+  const [placeParam] = useState(() => new URLSearchParams(window.location.search).get("place"));
+  const [placeId, setPlaceId] = useState<string | null>(placeParam);
+  const [newRoom, setNewRoom] = useState(!!placeParam);
+  const [placePreview, setPlacePreview] = useState<PlacePreview | null>(null);
+  // A spin running for this site, or just saved, opens the new room steps
+  useEffect(() => {
+    if (spin && (spin.phase === "spinning" || spin.phase === "solving" || spin.phase === "saved")) setNewRoom(true);
+  }, [spin?.id, spin?.phase]);
   useEffect(() => {
     if (!toast) return;
     const t = window.setTimeout(() => setToast(null), 9000);
@@ -358,6 +370,7 @@ export const SiteEditorApp: React.FC = () => {
   const frameHeld = frameChange ? bots.filter((b) => heldCalibrationId(b).toLowerCase() === frameChange.to_id.toLowerCase()).length : 0;
   const frameOpen = !!frameChange && (bots.length === 0 || frameHeld < bots.length);
   const editable = context?.can_write !== false;
+  const noSite = !!context?.no_site;
   const servedRowNow = rows.find((r) => r.id === servedId) ?? null;
   useEffect(() => {
     setServedCoverage(null);
@@ -426,6 +439,12 @@ export const SiteEditorApp: React.FC = () => {
     const go = a.go;
     if (go.tab) {
       setLeftTab(go.tab);
+      return;
+    }
+    if (go.sheet === "newroom") {
+      setNewRoom(true);
+      setRightTab("inspect");
+      if (rightAsRail) setDrawer("right");
       return;
     }
     if (go.sheet === "check") {
@@ -516,6 +535,12 @@ export const SiteEditorApp: React.FC = () => {
     if (action === "preview") setPreviewId(row.id === servedId ? null : row.id);
     else if (action === "serve") setServing(row);
     else if (action === "push") window.open(`/console?push=${row.id8}`, "_blank", "noopener");
+    else if (action === "place") {
+      setPlaceId(row.id);
+      setNewRoom(true);
+      setRightTab("inspect");
+      if (rightAsRail) setDrawer("right");
+    }
     else if (action === "compare") {
       const other = shown && shown.id !== row.id ? shown : rows.find((r) => r.served && r.id !== row.id);
       if (other) setComparing([other, row]);
@@ -795,7 +820,36 @@ export const SiteEditorApp: React.FC = () => {
         </button>
       </div>
       <div className="pane-body">
-        {rightTab === "inspect" && checking && servedId ? (
+        {rightTab === "inspect" && newRoom ? (
+          <NewRoomPanel
+            doc={draft.doc}
+            revision={draft.revision}
+            siteName={payload?.name ?? ""}
+            spin={spin}
+            placeId={placeId}
+            freeRows={library?.not_placed.filter((r) => r.free) ?? []}
+            bots={bots}
+            live={live}
+            editable={editable}
+            consoleHref={consoleHref}
+            onPlaceId={setPlaceId}
+            onPreview={setPlacePreview}
+            onClose={() => (setNewRoom(false), setPlacePreview(null))}
+            onWritten={(p, placed, served) => {
+              if (p) onSaved(p);
+              else fetchSite().then(onSaved, () => {});
+              fetchContext().then(setContext, () => {});
+              loadLibrary();
+              setNewRoom(false);
+              setPlaceId(null);
+              setPlacePreview(null);
+              setToast({
+                text: `Placed in ${payload?.name}: ${placed?.slice(0, 8)} written${served ? " and served" : ""}. Robots get it when you push it.`,
+                push: placed ? placed.slice(0, 8) : undefined,
+              });
+            }}
+          />
+        ) : rightTab === "inspect" && checking && servedId ? (
           <CheckMarkPanel
             bots={bots}
             robotId={typeof checking === "string" ? checking : null}
@@ -935,7 +989,7 @@ export const SiteEditorApp: React.FC = () => {
           Save{unsaved ? ` · ${unsaved}` : ""} {width >= 1200 && <span className="kbd">⌘S</span>}
         </button>
         )}
-        {live && <EditorFleet onBots={setBots} onSite={setFleetSite} compact={narrow} />}
+        {live && <EditorFleet onBots={setBots} onSite={setFleetSite} onSpin={setSpin} compact={narrow} />}
         {width >= 1360 && (
           <Tabs<"dark" | "light">
             label="Theme"
@@ -966,6 +1020,16 @@ export const SiteEditorApp: React.FC = () => {
                 <Icon name="view" /> {theme === "dark" ? "Light theme" : "Dark theme"}
               </button>
             )}
+            {live && editable && (
+              <>
+                <button type="button" className="mi" role="menuitem" onClick={() => (setSitesSheet("new"), setMenu(false))}>
+                  <Icon name="plus" /> New site…
+                </button>
+                <button type="button" className="mi" role="menuitem" onClick={() => (setSitesSheet("switch"), setMenu(false))}>
+                  <Icon name="pin" /> Switch site…
+                </button>
+              </>
+            )}
             <button type="button" className="mi" role="menuitem" onClick={() => startPresent()}>
               <Icon name="present" /> Present, for a projector
             </button>
@@ -982,7 +1046,7 @@ export const SiteEditorApp: React.FC = () => {
           </div>
         </>
       )}
-      {(error || notice) && (
+      {((error && !noSite) || notice) && (
         <div
           data-testid="notice"
           role={error || notice?.tone === "err" ? "alert" : "status"}
@@ -1014,6 +1078,9 @@ export const SiteEditorApp: React.FC = () => {
           </span>
         </div>
       )}
+      {noSite ? (
+        <StartScreen siteName={context?.site_name ?? ""} spinId={placeParam} editable={editable} onDone={() => window.location.reload()} />
+      ) : (
       <div className="body">
         {leftAsRail ? (
           <Rail
@@ -1054,7 +1121,11 @@ export const SiteEditorApp: React.FC = () => {
                 onBoxEdit={shown?.in_frame ? (index, rect) => editBoxes({ [index]: rect }) : undefined}
                 underlay={kind === "stations" ? stationsUnderlay(coverageMode, coverage && coverage.id === shown?.id ? coverage : null, draft.doc.extent_mm ?? [1000, 1000], theme === "light", coverageStale) : undefined}
                 overlay={
-                  kind === "stations"
+                  newRoom && placePreview
+                    ? placeOverlay(placePreview)
+                    : newRoom && draft.doc.extent_mm && !servedId
+                      ? mountOverlay(draft.doc.extent_mm)
+                      : kind === "stations"
                     ? stationsOverlay(coverage && coverage.id === shown?.id ? coverage : null, showNext && coverageMode === "error", probe?.at ?? null)
                     : kind === "frame" && moves(frameMove) && (tool === "turn" || tool === "capture")
                       ? frameGhost(frameMove, draft.doc.extent_mm ?? [1000, 1000])
@@ -1255,6 +1326,8 @@ export const SiteEditorApp: React.FC = () => {
           </div>
         )}
       </div>
+      )}
+      {!noSite && (
       <div data-testid="status-bar" className="status">
         {leftProblems > 0 && (
           <span style={{ color: "var(--err)" }} title={blocking.map((p) => p.title).join("; ")}>
@@ -1282,6 +1355,7 @@ export const SiteEditorApp: React.FC = () => {
           </span>
         )}
       </div>
+      )}
       {reviewing && draft && payload && (
         <ReviewSheet
           base={draft.base}
@@ -1312,6 +1386,9 @@ export const SiteEditorApp: React.FC = () => {
             setFitSignal((n) => n + 1);
           }}
         />
+      )}
+      {sitesSheet && (
+        <SitesSheet tab={sitesSheet} spinId={spin?.phase === "saved" ? (spin.result?.id ?? null) : null} onClose={() => setSitesSheet(null)} onDone={() => window.location.reload()} />
       )}
       {restoring && draft && (
         <>

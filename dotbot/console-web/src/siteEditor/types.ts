@@ -30,6 +30,9 @@ export interface EditorContext {
   controller?: { version: string; port: number };
   /** False on a page opened from another machine: it may only view. */
   can_write?: boolean;
+  /** The controller's site has no site pack: there is nothing to edit yet. */
+  no_site?: boolean;
+  site_name?: string;
 }
 
 export interface LibraryStation {
@@ -55,6 +58,8 @@ export interface LibraryRow {
   reading: string;
   in_frame: boolean;
   served: boolean;
+  /** A spin in its own frame, zero at its robots' top-left: placed in a room before use */
+  free?: boolean;
   /** Where the stations stand, estimated from the homographies. */
   geometry?: {
     stations: Record<string, { x_mm: number; y_mm: number; height_mm: number; off_square_deg: number }>;
