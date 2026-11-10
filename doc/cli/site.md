@@ -20,6 +20,12 @@ detail.
 | See one site in full | `dotbot site show [<name>]` |
 | Share a site | `dotbot site export <name>` |
 | Make a site around a spin calibration's robots | `dotbot site init <name> --from-calibration <id>` |
+| Edit a site's floor, areas and calibrations in the browser | `dotbot site edit [<name>]` |
+| Start a new site and edit it | `dotbot site new <name>` |
+| Turn the frame on the floor or move zero | `dotbot site turn [<name>] --rotate DEG --shift X,Y` |
+
+The [site editor guide](../guides/site-editor.md) covers the editor itself;
+the console opens the same editor on the controller's site.
 
 Onboarding at a site that publishes a pack is one command, then the controller:
 
@@ -191,8 +197,50 @@ dotbot site init spun --from-calibration 6b1a1c96 --size 3000x4000 # the field c
 | `--size WxH` | The site's size in mm, with the field in its middle and staging below it; refused when they do not fit (at least the field's width, and its height plus 1200 mm). |
 | `-f`, `--force` | Replace the `site.toml` of a site of that name. |
 
+## `edit`
+
+Serves the [site editor](../guides/site-editor.md) on `127.0.0.1` for a site
+pack, the active site by default, and opens it in a browser (`--headless`
+prints the URL instead; `--port` picks the port). With no controller behind
+it, it edits the files only: no robots, nothing served. A controller serves
+the same editor at `/controller/site-editor/` on its own site.
+
+```bash
+dotbot site edit                 # the active site
+dotbot site edit lab --headless  # print the URL
+```
+
+## `new`
+
+Writes a new pack, a field with floor round it and a staging strip below as
+`config init` writes one, then opens the editor on it. The pack goes in
+`sites/<name>/` beside the project's `dotbot.toml` when one is in use, else
+in `~/.dotbot/sites/<name>/`; it is not made the active site. `--field` sets
+the starter field (`2m`, `2x3m`, `1500mm`). The editor's **New site…** writes
+a pack too, empty, of a known size or around a spin, and switches the
+controller to it.
+
+## `turn`
+
+Turns a site's frame on the floor (`--rotate DEG` about `--about X,Y`, the
+middle of the extent by default) or moves its zero (`--shift X,Y`, in mm of
+the frame as it is now), as a new frame. No number in `site.toml` changes,
+since the areas move with the frame; `site.toml` takes a new `frame` id and
+each calibration of the site (or each `--calibration`) is saved again in the
+new frame under a new id. It sends nothing: serve and push the new files
+once they look right. `--anchor` replaces the note on where zero is. When
+zero is a mark on the floor it asks first; `-y` does not ask. When a shift
+would put a robot's spin centre below zero, the refusal names the largest
+shift that fits.
+
+```bash
+dotbot site turn --rotate 2                # turn 2 degrees about the middle
+dotbot site turn --shift 0,40 -y           # zero moves 40 mm down
+```
+
 ## See also
 
+- [The site editor](../guides/site-editor.md) - the same work in the browser.
 - [Configuration reference: sites](../reference/configuration.md#sites) - `site.toml`, area roles, the two homes.
 - [`dotbot config`](config.md) - `config show` names where the site, conn and swarm id came from.
 - [LH2 calibration](../guides/lh2-calibration.md) - calibrating a site.
