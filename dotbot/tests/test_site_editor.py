@@ -112,7 +112,7 @@ def test_a_site_the_schema_refuses_is_a_422_and_the_file_is_untouched(client, pa
 def test_the_preview_is_the_file_as_it_would_be_written(client, pack):
     body = _loaded(client)
     body["site"]["anchor"] = "the door"
-    preview = client.post("/api/preview", json=body["site"]).json()
+    preview = client.post("/api/preview", json={"site": body["site"]}).json()
     assert preview["changed"] is True
     assert 'anchor = "the door"' in preview["text"]
     assert (pack / "site.toml").read_text() == ARENA
@@ -382,3 +382,43 @@ def test_a_save_that_leaves_out_the_objects_keeps_them(client, pack):
     )
     assert response.status_code == 200
     assert "[objects.pad]" in (pack / "site.toml").read_text()
+
+
+def test_a_hand_edited_text_is_what_the_save_patches(client, pack):
+    body = _loaded(client)
+    edited = ARENA.replace("# the 2 x 2 m square at the top", "# typed on the page")
+    edited = edited.replace("# encloses every area below", "# and a note")
+    site = client.post("/api/parse", json={"text": edited}).json()["site"]
+    for area in site["areas"]:
+        area["was"] = area["name"]
+    response = client.put(
+        "/api/site",
+        json={"revision": body["revision"], "site": site, "text": edited},
+    )
+    assert response.status_code == 200
+    assert (pack / "site.toml").read_text() == edited
+
+
+def test_a_hand_edited_text_that_does_not_read_is_refused(client, pack):
+    body = _loaded(client)
+    preview = client.post(
+        "/api/preview", json={"site": body["site"], "text": "extent_mm = ["}
+    )
+    assert preview.status_code == 422
+    assert "does not read" in preview.json()["detail"]
+    assert client.post("/api/parse", json={"text": "extent_mm = ["}).status_code == 422
+    parsed = client.post("/api/parse", json={"text": ARENA}).json()
+    assert parsed["site"]["extent_mm"] == [2000, 4000]
+
+
+def test_the_revision_follows_an_edit_made_elsewhere(client, pack):
+    before = client.get("/api/revision").json()["revision"]
+    assert before == client.get("/api/site").json()["revision"]
+    (pack / "site.toml").write_text(ARENA + "\n# edited by hand\n")
+    assert client.get("/api/revision").json()["revision"] != before
+
+
+def test_open_runs_the_named_editor_on_site_toml(client, pack, monkeypatch):
+    monkeypatch.setenv("DOTBOT_EDITOR", "true --wait")
+    body = client.post("/api/open").json()
+    assert body["command"] == f"true --wait {pack / 'site.toml'}"

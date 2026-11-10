@@ -13,6 +13,9 @@ from __future__ import annotations
 
 import ipaddress
 import os
+import shlex
+import subprocess
+import sys
 import tempfile
 import threading
 from dataclasses import dataclass, field
@@ -79,6 +82,13 @@ class SiteModel(BaseModel):
 class SaveRequest(BaseModel):
     revision: str
     site: SiteModel
+    # site.toml as edited by hand on the page, patched instead of the file
+    text: str | None = None
+
+
+class PreviewRequest(BaseModel):
+    site: SiteModel
+    text: str | None = None
 
 
 class ApplyRequest(BaseModel):
@@ -87,6 +97,7 @@ class ApplyRequest(BaseModel):
 
     revision: str
     site: SiteModel | None = None
+    text: str | None = None
     # The calibration to save with new boxes, and the boxes
     boxes_of: str | None = None
     boxes: site_placement.BoxesRequest | None = None
@@ -190,6 +201,25 @@ def _model_dict(model: SiteModel) -> dict:
     }
 
 
+def editor_command(path: Path) -> list[str]:
+    """How to open `path` in the user's editor: DOTBOT_EDITOR when set, else
+    the desktop's default for text files."""
+    chosen = os.environ.get("DOTBOT_EDITOR")
+    if chosen:
+        return [*shlex.split(chosen), str(path)]
+    if sys.platform == "darwin":
+        return ["open", "-t", str(path)]
+    if sys.platform.startswith("win"):
+        return ["cmd", "/c", "start", "", str(path)]
+    return ["xdg-open", str(path)]
+
+
+def _shown_path(path: Path) -> str:
+    home = str(Path.home())
+    text = str(path)
+    return "~" + text[len(home) :] if text.startswith(home + os.sep) else text
+
+
 def create_app(
     state: EditorState,
     page_dir: Path | None = EDITOR_DIR,
@@ -224,6 +254,7 @@ def create_app(
             "name": state.name,
             "path": str(state.path),
             "revision": site_toml.revision(data),
+            "shown_path": _shown_path(state.path),
             "text": text,
             "site": site,
             "calibrations": state.calibrations(),
@@ -239,11 +270,56 @@ def create_app(
     def get_site():
         return body(*read())
 
+    def base_of(text: str, edited: str | None) -> str:
+        if edited is None:
+            return text
+        try:
+            site_toml.site_model(site_toml.parse(edited))
+        except site_toml.SiteTomlError as exc:
+            raise HTTPException(422, f"the edited site.toml does not read: {exc}") from exc
+        return edited
+
     @app.post("/api/preview")
-    def preview(model: SiteModel):
+    def preview(request: PreviewRequest):
         _, text = read()
-        result = patched(text, model)
+        result = patched(base_of(text, request.text), request.site)
         return {"text": result, "changed": result != text}
+
+    @app.post("/api/parse")
+    def parse(request: dict):
+        """A hand-edited site.toml as the page's site model, or why it does not read."""
+        text = request.get("text")
+        if not isinstance(text, str):
+            raise HTTPException(422, "send the file's text as {text}")
+        try:
+            return {"site": site_toml.site_model(site_toml.parse(text))}
+        except site_toml.SiteTomlError as exc:
+            raise HTTPException(422, str(exc)) from exc
+
+    @app.get("/api/revision")
+    def get_revision():
+        data, _ = read()
+        return {"revision": site_toml.revision(data)}
+
+    @app.post("/api/open")
+    def open_in_editor():
+        command = editor_command(state.path)
+        try:
+            subprocess.Popen(  # noqa: S603
+                command,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        except OSError as exc:
+            raise HTTPException(500, f"could not run {command[0]}: {exc}") from exc
+        shown = (
+            subprocess.list2cmdline(command)
+            if sys.platform.startswith("win")
+            else shlex.join(command)
+        )
+        return {"command": shown, "path": str(state.path)}
 
     def keep_and_write(old: bytes, text: str) -> None:
         site_history.snapshot(state.name, old)
@@ -251,14 +327,16 @@ def create_app(
         if on_saved is not None:
             on_saved()
 
-    def write_model(revision: str, model: SiteModel) -> tuple[bytes, str, bool]:
+    def write_model(
+        revision: str, model: SiteModel, edited: str | None = None
+    ) -> tuple[bytes, str, bool]:
         with saving:
             data, text = read()
             if site_toml.revision(data) != revision:
                 raise HTTPException(
                     409, f"{state.path} changed on disk since the page loaded it"
                 )
-            result = patched(text, model)
+            result = patched(base_of(text, edited), model)
             if result == text:
                 return data, text, False
             keep_and_write(data, result)
@@ -266,7 +344,9 @@ def create_app(
 
     @app.put("/api/site")
     def save(request: SaveRequest):
-        data, text, written = write_model(request.revision, request.site)
+        data, text, written = write_model(
+            request.revision, request.site, request.text
+        )
         return {**body(data, text), "written": written}
 
     @app.post("/api/apply")
@@ -274,7 +354,7 @@ def create_app(
         steps = []
         revision = request.revision
         if request.site is not None:
-            data, text, written = write_model(revision, request.site)
+            data, text, written = write_model(revision, request.site, request.text)
             revision = site_toml.revision(data)
             steps.append(
                 {
