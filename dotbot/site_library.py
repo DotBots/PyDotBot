@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import os
 import tempfile
+import tomllib
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -90,10 +91,40 @@ def _row(path: Path) -> dict | None:
     return row
 
 
+def _unreadable(path: Path) -> dict | None:
+    """Why `path` gives no row: its schema_version, when the file parses,
+    and the reader's refusal; None when it reads after all."""
+    try:
+        lighthouse2.read_calibration_file(path)
+    except (OSError, ValueError) as exc:
+        error = str(exc)
+    else:
+        return None
+    schema = None
+    try:
+        with open(path, "rb") as handle:
+            schema = tomllib.load(handle).get("schema_version")
+    except (OSError, tomllib.TOMLDecodeError):
+        pass
+    return {
+        "path": str(path),
+        "name": path.name,
+        "schema": schema if isinstance(schema, int) else None,
+        "error": error,
+    }
+
+
 def library(folders: Iterable[Path], site: Site, served_id: str | None) -> dict:
-    """The library of `site`'s calibration `folders`, `served_id` pinned first."""
+    """The library of `site`'s calibration `folders`, `served_id` pinned
+    first; `unreadable` lists the files this build cannot read, with why."""
     folders = list(folders)
-    rows = [r for r in (_row(p) for p in site_files(folders)) if r is not None]
+    rows, unreadable = [], []
+    for path in site_files(folders):
+        row = _row(path)
+        if row is not None:
+            rows.append(row)
+        elif (why := _unreadable(path)) is not None:
+            unreadable.append(why)
     archived = [
         r
         for r in (
@@ -137,6 +168,7 @@ def library(folders: Iterable[Path], site: Site, served_id: str | None) -> dict:
             )
         ],
         "not_placed": sorted(not_placed, key=lambda x: x["created_at"], reverse=True),
+        "unreadable": unreadable,
         "archived": sorted(
             ({k: v for k, v in r.items() if k != "anchor"} for r in archived),
             key=lambda x: x["created_at"],

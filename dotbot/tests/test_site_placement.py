@@ -241,6 +241,27 @@ def test_the_site_library_groups_box_layouts_by_spin(client, spun, placed):
     assert row["in_frame"] is True and row["served"] is False
     assert row["reading"] == "S0 x 0-1000, y 0-2000"
     assert row["stations"][0]["box"] == [0, 0, 1000, 2000]
+    assert library["unreadable"] == []
+
+
+def test_the_site_library_names_the_files_this_build_cannot_read(client, placed, home):
+    old = home / "arena" / "calibration-old.toml"
+    old.write_text('schema_version = 2\n\n[metadata]\nid = "0123456789abcdef"\n')
+    broken = home / "arena" / "calibration-broken.toml"
+    broken.write_text("[metadata\n")
+    library = client.get("/api/calibrations?scope=site").json()
+    assert library["count"] == 1
+    assert [r["id"] for r in library["groups"][0]["rows"]] == [placed.id]
+    assert [(u["name"], u["schema"]) for u in library["unreadable"]] == [
+        ("calibration-broken.toml", None),
+        ("calibration-old.toml", 2),
+    ]
+    by_name = {u["name"]: u for u in library["unreadable"]}
+    assert by_name["calibration-old.toml"]["path"] == str(old)
+    assert "unsupported calibration schema_version 2" in (
+        by_name["calibration-old.toml"]["error"]
+    )
+    assert by_name["calibration-broken.toml"]["error"]
 
 
 def test_an_unknown_library_scope_is_refused(client):
