@@ -271,12 +271,35 @@ def test_the_error_map_predicts_the_spread_of_solves():
         e = np.array(errors[s])
         e -= e.mean(axis=0)
         info[cover[s]] += 1 / np.mean(np.sum(e**2, axis=2), axis=0)
-    predicted = reference.error_map.sigma_mm.ravel()
+    predicted = reference.error_map.fused_mm.ravel()
     seen = ~np.isnan(predicted) & (info > 0)
     ratio = np.median(predicted[seen] / (1 / np.sqrt(info[seen])))
     assert 1 / 1.5 < ratio < 1.5
     assert reference.error_map.cells_over_10mm == 0
-    assert reference.error_map.worst_mm == pytest.approx(np.nanmax(predicted))
+    assert reference.error_map.fused_worst_mm == pytest.approx(np.nanmax(predicted))
+
+
+def test_the_error_map_is_the_station_kept_never_the_fused_one():
+    a, b = two_stations()
+    joint = ms.solve_joint(F.spins([a, b], floor_grid([a, b]), noise=1.0, seed=4))
+    em = joint.error_map
+    seen = ~np.isnan(em.sigma_mm)
+    assert np.all(em.sigma_mm[seen] >= em.fused_mm[seen] - 1e-9)
+    assert em.worst_mm == pytest.approx(np.nanmax(em.sigma_mm))
+    assert np.any(em.sigma_mm[seen] > em.fused_mm[seen] + 1e-6)
+    assert em.worst_mm >= em.fused_worst_mm - 1e-9
+
+
+def test_where_the_boxes_share_a_centre_the_error_is_a_bound():
+    a, b = two_stations()
+    samples = F.samples(F.spins([a, b], floor_grid([a, b]), noise=1.0, seed=4))
+    calibration, _, _ = conics.solve_calibration(samples, Site(name="arena"))
+    for station in calibration.stations:
+        station.valid_mm = calibration.valid_mm
+    em = ms.error_map_from_calibration(calibration)
+    seen = ~np.isnan(em.sigma_mm)
+    assert em.undecided[seen].all() and em.worst_is_bound
+    assert np.all(em.sigma_mm[seen] > em.fused_mm[seen])
 
 
 def test_the_error_map_grows_away_from_the_spins():
@@ -501,7 +524,7 @@ def test_the_report_names_stations_links_and_the_error_map(tmp_path):
     text = "\n".join(live)
     assert "station 0 (channel 1)" in text and "station 1 (channel 2)" in text
     assert "station 0 (channel 1) - station 1 (channel 2):" in text
-    assert "predicted error (100 mm cells): worst" in text
+    assert "predicted error (100 mm cells), station kept: worst" in text
     path = tmp_path / "cal.toml"
     path.write_text(render_calibration(calibration), encoding="utf-8")
     offline = ms.multi_station_report(read_calibration_file(path))

@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from dotbot.calibration import station_rule
 from dotbot.calibration.conics import (
     TRACK_AXIS_RATIO_MIN,
     CircleKey,
@@ -120,10 +121,14 @@ class StationGraph:
 
 @dataclass
 class ErrorMap:
-    """Predicted 1-sigma position error on a floor grid, mm.
+    """Predicted 1-sigma position error on a floor grid, mm, of the station
+    a robot keeps there (`station_rule`).
 
     Cell (row, col) is centred on `origin_mm + (col + 0.5, row + 0.5) *
-    cell_mm`; NaN where no station's rectangle covers it.
+    cell_mm`; NaN where no station's rectangle covers it. Where `undecided`,
+    the boxes do not pick the station and the cell holds the worse of the
+    candidates, a bound. `fused_mm` combines every covering station, which
+    no robot does.
     """
 
     origin_mm: tuple[float, float]
@@ -131,6 +136,21 @@ class ErrorMap:
     sigma_mm: np.ndarray
     worst_mm: float
     cells_over_10mm: int
+    fused_mm: np.ndarray | None = None
+    undecided: np.ndarray | None = None
+
+    @property
+    def fused_worst_mm(self) -> float:
+        if self.fused_mm is None or np.all(np.isnan(self.fused_mm)):
+            return float("nan")
+        return float(np.nanmax(self.fused_mm))
+
+    @property
+    def worst_is_bound(self) -> bool:
+        """Whether the worst cell is one where the boxes do not decide."""
+        if self.undecided is None or np.all(np.isnan(self.sigma_mm)):
+            return False
+        return bool(self.undecided.ravel()[np.nanargmax(self.sigma_mm)])
 
     def centre(self, row: int, col: int) -> tuple[float, float]:
         return (
@@ -624,7 +644,12 @@ def _error_map(
     gy = y0 + (np.arange(rows) + 0.5) * cell_mm
     XX, YY = np.meshgrid(gx, gy)
     info = np.zeros((rows, cols))
-    for s, (rx0, ry0, rx1, ry1) in rectangles.items():
+    # Per station: its own sigma, and its squared distance to its box's
+    # centre, inf where its box does not hold the cell
+    own: dict[int, np.ndarray] = {}
+    d2: dict[int, np.ndarray] = {}
+    for s, rect in rectangles.items():
+        rx0, ry0, rx1, ry1 = rect
         inside = (XX >= rx0) & (XX <= rx1) & (YY >= ry0) & (YY <= ry1)
         if not inside.any():
             continue
@@ -636,9 +661,23 @@ def _error_map(
         var = np.einsum("nij,jk,nik->n", G, S, G)
         var = np.maximum(var, 1e-12)
         info[inside] += 1.0 / var
-    sigma = np.full((rows, cols), np.nan)
+        own[s] = np.full((rows, cols), np.nan)
+        own[s][inside] = np.sqrt(var)
+        cx, cy = station_rule.centre(rect)
+        d2[s] = np.where(inside, (XX - cx) ** 2 + (YY - cy) ** 2, np.inf)
+    fused = np.full((rows, cols), np.nan)
     covered = info > 0
-    sigma[covered] = 1.0 / np.sqrt(info[covered])
+    fused[covered] = 1.0 / np.sqrt(info[covered])
+    sigma = np.full((rows, cols), np.nan)
+    undecided = np.zeros((rows, cols), dtype=bool)
+    if own:
+        stations = sorted(own)
+        dist = np.stack([d2[s] for s in stations])
+        errs = np.stack([own[s] for s in stations])
+        least = dist.min(axis=0)
+        kept = (dist == least) & np.isfinite(least)
+        undecided = kept.sum(axis=0) > 1
+        sigma = np.where(covered, np.max(np.where(kept, errs, -np.inf), axis=0), np.nan)
     worst = float(np.nanmax(sigma)) if covered.any() else float("nan")
     return ErrorMap(
         origin_mm=(float(x0), float(y0)),
@@ -646,6 +685,8 @@ def _error_map(
         sigma_mm=sigma,
         worst_mm=worst,
         cells_over_10mm=int(np.sum(sigma[covered] > ERROR_MAP_LIMIT_MM)),
+        fused_mm=fused,
+        undecided=undecided,
     )
 
 
@@ -1353,9 +1394,10 @@ def _error_map_lines(error_map: ErrorMap | None) -> list[str]:
     if error_map is None or error_map.covered == 0:
         return []
     worst = error_map.worst_cell
+    bound = ", a bound: the boxes do not decide there" if error_map.worst_is_bound else ""
     return [
-        f"predicted error ({error_map.cell_mm:.0f} mm cells): worst "
-        f"{error_map.worst_mm:.1f} mm near ({worst[0]:.0f}, {worst[1]:.0f}) mm, "
+        f"predicted error ({error_map.cell_mm:.0f} mm cells), station kept: worst "
+        f"{error_map.worst_mm:.1f} mm near ({worst[0]:.0f}, {worst[1]:.0f}) mm{bound}, "
         f"{error_map.cells_over_10mm} of {error_map.covered} cells over "
         f"{ERROR_MAP_LIMIT_MM:.0f} mm"
     ]
