@@ -24,7 +24,7 @@ const Row: React.FC<{
 }> = ({ row, extent, shown, picked, held, live, archived, onPick, onAction, onRename }) => {
   const boxes = Object.fromEntries(row.stations.map((s) => [s.index, s.box])) as Record<number, Rect>;
   const own: [number, number] = row.in_frame ? extent : [row.fence[2], row.fence[3]];
-  const [menu, setMenu] = useState(false);
+  const [menu, setMenu] = useState<{ top?: number; bottom?: number; left: number } | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [problem, setProblem] = useState("");
   const input = useRef<HTMLInputElement | null>(null);
@@ -40,7 +40,7 @@ const Row: React.FC<{
       title={title}
       onClick={(e) => {
         e.stopPropagation();
-        setMenu(false);
+        setMenu(null);
         if (action === "rename") setRenaming(row.tag);
         else onAction(action, row);
       }}
@@ -107,10 +107,14 @@ const Row: React.FC<{
             type="button"
             className="btn xs ghost"
             aria-label={`Actions for ${row.id8}`}
-            aria-expanded={menu}
+            aria-expanded={!!menu}
             onClick={(e) => {
               e.stopPropagation();
-              setMenu((m) => !m);
+              if (menu) return setMenu(null);
+              // Fixed to the button, so the pane's scroll never clips it
+              const b = (e.currentTarget as HTMLElement).getBoundingClientRect();
+              const left = Math.max(8, Math.min(b.right - 250, window.innerWidth - 258));
+              setMenu(b.bottom + 300 > window.innerHeight ? { bottom: window.innerHeight - b.top + 4, left } : { top: b.bottom + 4, left });
             }}
           >
             <Icon name="more" size={13} />
@@ -125,8 +129,8 @@ const Row: React.FC<{
       </div>
       {menu && (
         <>
-          <div style={{ position: "fixed", inset: 0, zIndex: 40 }} onClick={(e) => (e.stopPropagation(), setMenu(false))} />
-          <div className="pop menu" role="menu" style={{ position: "absolute", right: 6, top: 30, zIndex: 41, minWidth: 230 }} onClick={(e) => e.stopPropagation()}>
+          <div style={{ position: "fixed", inset: 0, zIndex: 40 }} onClick={(e) => (e.stopPropagation(), setMenu(null))} />
+          <div className="pop menu" role="menu" style={{ ...menu, width: 250, zIndex: 41 }} onClick={(e) => e.stopPropagation()}>
             {archived ? (
               item("restore", "restore", "Bring back from the archive")
             ) : (
