@@ -485,6 +485,29 @@ def test_a_check_is_appended_and_no_calibration_is_rewritten(
     )
 
 
+def test_an_assumed_check_is_stored_with_the_site_revision(
+    client, tmp_path, monkeypatch
+):
+    from dotbot.calibration import lighthouse2
+
+    monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path / "home")
+    revision = client.get("/api/revision").json()["revision"]
+    posted = client.post(
+        "/api/checks",
+        json={
+            "calibration": "4640cfde014c7232",
+            "mark_mm": [500, 600],
+            "measured_mm": [502.4, 598.1],
+            "robot": "c999",
+            "assumed": True,
+            "revision": revision,
+        },
+    ).json()
+    assert posted["assumed"] is True and posted["site_revision"] == revision
+    (stored,) = client.get("/api/checks").json()["checks"]
+    assert stored["assumed"] is True and stored["site_revision"] == revision
+
+
 def test_a_restore_point_puts_site_toml_back(client, pack, tmp_path, monkeypatch):
     from dotbot.calibration import lighthouse2
 

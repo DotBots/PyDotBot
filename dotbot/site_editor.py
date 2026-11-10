@@ -122,6 +122,10 @@ class CheckRequest(BaseModel):
     robot: str
     predicted_mm: float | None = None
     note: str = ""
+    # The fix taken as the robot's without a measurement on the mark
+    assumed: bool = False
+    # The site.toml revision the check was made against
+    revision: str | None = None
 
 
 class PointRequest(BaseModel):
@@ -541,6 +545,8 @@ def create_app(
             request.robot,
             request.predicted_mm,
             request.note,
+            assumed=request.assumed,
+            site_revision=request.revision,
         )
 
     @app.get("/api/provenance")

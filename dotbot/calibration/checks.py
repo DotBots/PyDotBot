@@ -37,8 +37,12 @@ def append_check(
     predicted_mm: float | None = None,
     note: str = "",
     now: datetime | None = None,
+    assumed: bool = False,
+    site_revision: str | None = None,
 ) -> dict:
-    """Append one check and return it as written."""
+    """Append one check and return it as written; `assumed` marks a fix
+    taken as the robot's without a measurement on the mark, `site_revision`
+    the site.toml it was checked against."""
     now = now or datetime.now(timezone.utc)
     error = math.dist(mark_mm, measured_mm)
     entry = {
@@ -65,6 +69,12 @@ def append_check(
     if note.strip():
         entry["note"] = note.strip()
         lines.append(f'note = "{lighthouse2.toml_escape(note.strip())}"')
+    if assumed:
+        entry["assumed"] = True
+        lines.append("assumed = true")
+        if site_revision:
+            entry["site_revision"] = site_revision
+            lines.append(f'site_revision = "{lighthouse2.toml_escape(site_revision)}"')
     path = checks_path(site)
     path.parent.mkdir(parents=True, exist_ok=True)
     head = (
@@ -103,7 +113,10 @@ def check_line(check: dict | None) -> str:
         return "checked on a mark: not recorded"
     mark = check.get("mark_mm", [0, 0])
     robot = str(check.get("robot", ""))
-    return (
+    line = (
         f"checked on a mark: {float(check.get('error_mm', 0)):.1f} mm at "
         f"({mark[0]:g}, {mark[1]:g}) by …{robot[-6:]}, {check.get('at', '')}"
     )
+    if check.get("assumed"):
+        line += " (assumed the robot held it: unverified)"
+    return line

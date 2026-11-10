@@ -74,3 +74,34 @@ def test_the_provenance_names_the_last_check_on_a_mark():
         "  checked on a mark: 3.1 mm at (500, 600) by …8E8AAD, 2026-11-09T21:48:00Z"
         in lines
     )
+
+
+def test_an_assumed_check_round_trips_and_says_so(tmp_path, monkeypatch):
+    from dotbot.calibration import checks, lighthouse2
+
+    monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path / "home")
+    now = datetime(2026, 11, 10, 9, 30, tzinfo=timezone.utc)
+    entry = checks.append_check(
+        "arena",
+        "4640cfde014c7232",
+        (500, 600),
+        (502.4, 598.1),
+        "222a34f9458e8aad",
+        now=now,
+        assumed=True,
+        site_revision="ab" * 32,
+    )
+    assert entry["assumed"] is True and entry["site_revision"] == "ab" * 32
+    text = checks.checks_path("arena").read_text()
+    assert "assumed = true\n" in text and f'site_revision = "{"ab" * 32}"\n' in text
+    (stored,) = checks.read_checks("arena")
+    assert stored["assumed"] is True and stored["site_revision"] == "ab" * 32
+    assert checks.check_line(stored) == (
+        "checked on a mark: 3.1 mm at (500, 600) by …8E8AAD, 2026-11-10T09:30:00Z"
+        " (assumed the robot held it: unverified)"
+    )
+    measured = checks.append_check(
+        "arena", "4640cfde014c7232", (0, 0), (1, 0), "c999", now=now
+    )
+    assert "assumed" not in measured and "site_revision" not in measured
+    assert "unverified" not in checks.check_line(measured)
