@@ -59,6 +59,13 @@ export interface GoalInputs {
  * the site's limit and twice what was predicted there. */
 export const checkPasses = (c: CheckRecord, limitMm: number) => c.error_mm <= Math.max(limitMm, 2 * (c.predicted_mm ?? 0));
 
+/** The one step that gets a calibration served when none is: serve one
+ * already in this room's frame, else place a measured spin, else measure. */
+export function serveStep(rows: LibraryRow[]): GoalAction {
+  if (rows.some((r) => r.in_frame)) return { label: "Pick one…", go: { tab: "library" } };
+  return { label: rows.some((r) => r.free) ? "Place the spin…" : "Mount and measure…", go: { sheet: "newroom" } };
+}
+
 export function goals(i: GoalInputs): Goal[] {
   const out: Goal[] = [];
   const ext = i.doc.extent_mm;
@@ -80,15 +87,16 @@ export function goals(i: GoalInputs): Goal[] {
     state: agreed ? "ok" : "warn",
     detail: agreed
       ? "a robot on a taped mark agreed with the frame"
-      : myChecks.length
-        ? "the last check on a mark was off: check the tape, or capture zero again"
-        : i.doc.anchor
-          ? "a note says where it is; not checked with a robot on a taped mark yet"
-          : "no note says where zero is in the room",
-    action: agreed ? undefined : { label: "Capture with a robot…", go: { kind: "frame", tool: "capture" } },
+      : !i.servedId
+        ? "captured with a robot once a calibration is served"
+        : myChecks.length
+          ? "the last check on a mark was off: check the tape, or capture zero again"
+          : i.doc.anchor
+            ? "a note says where it is; not checked with a robot on a taped mark yet"
+            : "no note says where zero is in the room",
+    action: agreed || !i.servedId ? undefined : { label: "Capture with a robot…", go: { kind: "frame", tool: "capture" } },
   });
   if (!i.served) {
-    const free = i.rows.some((r) => r.free && !r.in_frame);
     out.push({
       id: "stations",
       group: "room",
@@ -96,12 +104,12 @@ export function goals(i: GoalInputs): Goal[] {
       state: i.servedId ? "unknown" : "fail",
       detail: i.servedId
         ? "the served file is not in this site's folders"
-        : free
-          ? "a spin is measured but not placed in this room yet"
-          : i.rows.some((r) => r.in_frame)
-            ? "measured, but no calibration is served"
+        : i.rows.some((r) => r.in_frame)
+          ? "measured in this room, but no calibration is served"
+          : i.rows.some((r) => r.free)
+            ? "a spin is measured but not placed in this room yet"
             : "not measured yet: mount two stations and spin robots",
-      action: i.servedId || (!free && i.rows.some((r) => r.in_frame)) ? { label: "Pick one…", go: { tab: "library" } } : { label: free ? "Place the spin…" : "Mount and measure…", go: { sheet: "newroom" } },
+      action: i.servedId ? { label: "Pick one…", go: { tab: "library" } } : serveStep(i.rows),
     });
   } else {
     const m = moved(i.served, i.rows);
@@ -171,6 +179,7 @@ export function goals(i: GoalInputs): Goal[] {
         ? `${i.servedId.slice(0, 8)}, in a new frame: push it before a run`
         : `${i.servedId.slice(0, 8)}${i.served?.tag ? ` "${i.served.tag}"` : ""}, in this room's frame`,
     summary: i.servedId ? ["Serving ", i.servedId.slice(0, 8)] : undefined,
+    action: i.servedId ? undefined : serveStep(i.rows),
   });
   if (i.live) {
     const held = i.robots.map((r) => heldBy(r, i.servedId));

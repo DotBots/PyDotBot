@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Badge } from "../shared/Badge";
 import type { UnifiedBot } from "../types";
 import { postFrame, type FrameAnswer } from "./api";
+import type { GoalAction } from "./checks";
 import { KV, NumField, Sec, TextField } from "./fields";
 import { frameTwin, moves, zeroAt, type FrameMove } from "./frameMove";
 import { Icon } from "./icons";
@@ -41,6 +42,9 @@ export interface FramePanelProps {
   live: boolean;
   onReview: (answer: Extract<FrameAnswer, { ok: true }>["result"]) => void;
   onMode: (m: "turn" | "capture") => void;
+  /** With nothing served: the step that serves a calibration. */
+  nextStep?: GoalAction;
+  onAction?: (a: GoalAction) => void;
 }
 
 export const FramePanel: React.FC<FramePanelProps> = (props) => {
@@ -104,9 +108,17 @@ export const FramePanel: React.FC<FramePanelProps> = (props) => {
 
   if (!props.calibrationId) {
     return (
-      <div className="callout" style={{ marginTop: 12 }}>
+      <div className="callout" style={{ marginTop: 12 }} data-testid="frame-unserved">
         <div className="h">No calibration served</div>
-        Moving the frame re-expresses the served calibration; serve one first, from the Calibrations tab.
+        {props.mode === "capture" ? "Capturing zero" : "Moving zero"} re-expresses the served calibration in a new frame, so one has to be served first. This panel picks up as
+        soon as one is.
+        {props.nextStep && (
+          <div className="acts">
+            <button type="button" className="btn sm primary" onClick={() => props.onAction?.(props.nextStep!)} data-testid="frame-serve-step">
+              {props.nextStep.label}
+            </button>
+          </div>
+        )}
       </div>
     );
   }

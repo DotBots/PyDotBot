@@ -25,7 +25,7 @@ import {
   type RestorePoint,
 } from "./api";
 import { CheckMarkPanel } from "./CheckMarkPanel";
-import { goals as goalsOf, verdict as verdictOf, type CheckRecord, type GoalAction } from "./checks";
+import { goals as goalsOf, serveStep, verdict as verdictOf, type CheckRecord, type GoalAction } from "./checks";
 import { ChecksPane } from "./ChecksPane";
 import { CompareSheet } from "./CompareSheet";
 import { FramePanel } from "./FramePanel";
@@ -455,6 +455,7 @@ export const SiteEditorApp: React.FC = () => {
     if (go.mode) setCoverageMode(go.mode);
     if (go.tab) {
       setLeftTab(go.tab);
+      if (leftAsRail) setDrawer("left");
       return;
     }
     if (go.sheet === "newroom") {
@@ -900,6 +901,8 @@ export const SiteEditorApp: React.FC = () => {
             live={live}
             onReview={setFrameReview}
             onMode={(m) => setTool(m)}
+            nextStep={serveStep(rows)}
+            onAction={goalAction}
           />
         ) : rightTab === "inspect" && kind === "stations" && !selected.some((k) => k.startsWith("robot:")) ? (
           <StationsPanel

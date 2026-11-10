@@ -253,6 +253,24 @@ describe("the editor shell", () => {
   });
 });
 
+describe("capturing zero", () => {
+  it("leaves no dead end with nothing served: the capture panel names the step that serves one", async () => {
+    stubFetch({
+      "api/context": () => new Response(JSON.stringify({ ...CONTEXT, served: null }), { status: 200 }),
+      "api/calibrations": () => new Response(JSON.stringify({ ...LIBRARY, served: null, serving: null, groups: [{ ...LIBRARY.groups[0], rows: inFrame.map((r) => ({ ...r, served: false })) }] }), { status: 200 }),
+    });
+    render(<SiteEditorApp />);
+    await waitFor(() => expect(screen.getByTestId("goal-served").textContent).toContain("nothing is served"));
+    expect(screen.getByTestId("goal-zero").querySelector("button")).toBeNull();
+    keyDown("1");
+    keyDown("c");
+    await waitFor(() => expect(screen.getByTestId("frame-serve-step").textContent).toBe("Pick one…"));
+    fireEvent.click(screen.getByTestId("frame-serve-step"));
+    expect(screen.getByRole("tab", { name: /Calibrations/ }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByTestId("library-serve-hint").textContent).toContain("Serve this…");
+  });
+});
+
 describe("the collapse order", () => {
   it("folds the left pane into a rail below 1100 px and the right one below 980 px", async () => {
     stubFetch();

@@ -237,6 +237,12 @@ export const LibraryPane: React.FC<{
       )}
       {filter === "room" && (
         <>
+          {live && !library.serving && inRoom > 0 && !query && (
+            <div className="callout" style={{ marginTop: 12 }} data-testid="library-serve-hint">
+              <div className="h">Nothing is served</div>
+              Click a file to preview it on the plan, then Serve this… in the bar above the plan.
+            </div>
+          )}
           {library.serving && !query && (
             <>
               <div className="grp">Serving now</div>

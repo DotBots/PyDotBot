@@ -57,3 +57,27 @@ describe("the ready verdict", () => {
     expect(verdict(goals(over)).title).toBe("Not ready · 1 to fix");
   });
 });
+
+describe("with nothing served", () => {
+  const FREE = { ...SERVED, id: "6e13c58faad5d3f7", id8: "6e13c58f", in_frame: false, served: false, free: true } as LibraryRow;
+  const IN_FRAME = { ...SERVED, served: false } as LibraryRow;
+  const unserved = (rows: LibraryRow[]): GoalInputs => ({ ...inputs([bot("A1")]), served: null, servedId: null, rows, coverage: null });
+  const goal = (i: GoalInputs, id: string) => goals(i).find((g) => g.id === id)!;
+
+  it("offers serving one already in this room's frame before placing a spin", () => {
+    const i = unserved([FREE, IN_FRAME]);
+    expect(goal(i, "stations").action).toEqual({ label: "Pick one…", go: { tab: "library" } });
+    expect(goal(i, "served").action).toEqual({ label: "Pick one…", go: { tab: "library" } });
+  });
+
+  it("leads to measuring when the site has no calibration at all", () => {
+    expect(goal(unserved([]), "stations").action).toEqual({ label: "Mount and measure…", go: { sheet: "newroom" } });
+    expect(goal(unserved([FREE]), "served").action).toEqual({ label: "Place the spin…", go: { sheet: "newroom" } });
+  });
+
+  it("does not offer capturing zero, which needs a served calibration", () => {
+    const zero = goal(unserved([IN_FRAME]), "zero");
+    expect(zero.action).toBeUndefined();
+    expect(zero.detail).toMatch(/served/);
+  });
+});
