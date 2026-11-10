@@ -460,6 +460,8 @@ class Controller:
             notify=self._notify_calibration_session,
             site=self.site,
             on_held=self.note_held_calibrations,
+            spin_client_factory=self._spin_client,
+            notify_spin=self._notify_calibration_spin,
         )
         self.api = api
         if settings.csv_data_output is not None:
@@ -1252,6 +1254,26 @@ class Controller:
             username=self.settings.mqtt_username,
             password=self.settings.mqtt_password,
         )
+
+    def _spin_client(self, radius_mm: float):
+        """The swarmit client of a spin; on a simulator, robots that turn in
+        place where they stand."""
+        if self.settings.adapter in ("dotbot-simulator", "sailbot-simulator"):
+            from dotbot.calibration.simulated import SimulatedSpinClient
+
+            def positions():
+                return {
+                    address: (bot.lh2_position.x, bot.lh2_position.y)
+                    for address, bot in list(self.dotbots.items())
+                    if bot.lh2_position is not None
+                }
+
+            return SimulatedSpinClient(positions, radius_mm)
+        return self._swarmit_client()
+
+    async def _notify_calibration_spin(self, state):
+        """A `calibration_spin` event per step of a spin; null when none."""
+        self.set_event("calibration_spin", "calibration_spin", state)
 
     def _outstanding_point(self):
         """The index and frame coordinates the session is capturing, for the simulator."""

@@ -33,6 +33,7 @@ from dotbot.camera.service import STREAM_MEDIA_TYPE
 from dotbot.logger import LOGGER
 from dotbot.same_origin import same_origin
 from dotbot.models import (
+    DotBotCalibrationSpinModel,
     MAX_TRAIL_SIZE,
     DotBotBackgroundMapModel,
     DotBotBodyModel,
@@ -745,6 +746,44 @@ async def calibration_file_push(request: DotBotCalibrationFilePushModel):
 async def calibration_session_abandon():
     """Calibration-session HTTP DELETE handler."""
     return await api.controller.calibration_session.abandon()
+
+
+@api.get(
+    path="/controller/calibration/spin",
+    dependencies=[Depends(same_origin)],
+    summary="Return the spin calibration run, or null when there is none",
+    tags=["calibration"],
+)
+async def calibration_spin_state():
+    """Spin state HTTP GET handler."""
+    return api.controller.calibration_session.spin_state()
+
+
+@api.post(
+    path="/controller/calibration/spin",
+    dependencies=[Depends(same_origin)],
+    summary="Spin robots in place, solve their circles and save a calibration",
+    tags=["calibration"],
+)
+async def calibration_spin_start(request: DotBotCalibrationSpinModel):
+    """Spin start HTTP POST handler: returns once the robots are checked;
+    the run goes on in the background as `calibration_spin` events."""
+    return await _calibration(
+        api.controller.calibration_session.start_spin(
+            request.devices, request.tag, request.append, request.radius_mm
+        )
+    )
+
+
+@api.delete(
+    path="/controller/calibration/spin",
+    dependencies=[Depends(same_origin)],
+    summary="Forget a finished spin run; its saved file stays",
+    tags=["calibration"],
+)
+async def calibration_spin_dismiss():
+    """Spin dismiss HTTP DELETE handler."""
+    return await _calibration(api.controller.calibration_session.dismiss_spin())
 
 
 async def _calibration(awaitable):

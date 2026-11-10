@@ -148,3 +148,132 @@ class SimulatedCaptureClient:
                 yield from self.press(point[1])
                 continue
             time.sleep(0.02)
+
+
+# A second station, looking at the floor from the other side
+STATION_MATRIX_B = np.array(
+    [
+        [-150.0, -2600.0, 3100.0],
+        [2100.0, -250.0, 1500.0],
+        [-0.07, -0.08, 1.0],
+    ],
+    dtype=np.float64,
+)
+SPIN_READS = 120
+SPIN_START_DELAY_S = 1.0
+SPIN_CHUNK_GAP_S = 0.01
+
+
+def spin_counts(
+    centre_mm: tuple[float, float], radius_mm: float, station: int
+) -> list[tuple[int, int]]:
+    """The counts `station` reads from a sensor turning once counter
+    clockwise round `centre_mm`."""
+    matrix = STATION_MATRIX if station == 0 else STATION_MATRIX_B
+    angles = np.linspace(0.0, 2 * np.pi, SPIN_READS, endpoint=False)
+    # Counter clockwise as drawn, with y down
+    floor = np.stack(
+        [
+            centre_mm[0] + radius_mm * np.cos(angles),
+            centre_mm[1] - radius_mm * np.sin(angles),
+        ],
+        axis=1,
+    )
+    cameras = apply_homography(np.linalg.inv(matrix), floor)
+    out = []
+    for x, y in cameras:
+        counts = counts_for_camera_point(float(x), float(y), station)
+        out.append((round(counts.count1), round(counts.count2)))
+    return out
+
+
+class SimulatedSpinClient:
+    """The swarmit client surface a spin uses, simulated: every robot
+    `positions` returns runs calibrate-spin, and once started turns in place
+    where it stands, seen by two stations."""
+
+    def __init__(
+        self,
+        positions: Callable[[], dict[str, tuple[float, float]]],
+        radius_mm: float,
+        stations: tuple[int, ...] = SIMULATED_STATIONS,
+    ):
+        self._positions = positions
+        self._radius_mm = radius_mm
+        self._stations = stations
+        self._running: dict[str, float] = {}
+        self._sent: set[str] = set()
+        self._run = 0
+
+    def __enter__(self) -> SimulatedSpinClient:
+        return self
+
+    def __exit__(self, *exc: Any) -> bool:
+        return False
+
+    def refresh_device_info(self, devices: list[str] | None = None) -> None:
+        pass
+
+    def status(self) -> dict[str, Any]:
+        out = {}
+        for address in self._positions():
+            info = SimpleNamespace(
+                info_version=4,
+                image_name="calibrate-spin",
+                image_digest="",
+                lh2_site_name="",
+                lh2_calibration_id="",
+            )
+            state = "Running" if address in self._running else "Bootloader"
+            out[address] = SimpleNamespace(
+                info_gen=1, info=info, status=SimpleNamespace(name=state)
+            )
+        return out
+
+    def start(self, devices: list[str]) -> None:
+        self._run = (self._run + 1) % 256
+        for device in devices:
+            self._running[device] = time.monotonic()
+            self._sent.discard(device)
+
+    def stop(self, devices: list[str]) -> None:
+        for device in devices:
+            self._running.pop(device, None)
+
+    def events_of(self, device: str, centre: tuple[float, float]) -> list[dict]:
+        """The log events of one robot's spin."""
+        from dotbot.calibration.spin import SPIN_CHUNK_RECORDS, SPIN_TAG
+
+        records = bytearray()
+        for station in self._stations:
+            for count1, count2 in spin_counts(centre, self._radius_mm, station):
+                records.append(station)
+                records += count1.to_bytes(4, "little")
+                records += count2.to_bytes(4, "little")
+        size = 9 * SPIN_CHUNK_RECORDS
+        chunks = [records[off : off + size] for off in range(0, len(records), size)]
+        return [
+            {
+                "addr": device,
+                "data_hex": bytes(
+                    [SPIN_TAG, self._run, index, len(chunks), *chunk]
+                ).hex(),
+            }
+            for index, chunk in enumerate(chunks)
+        ]
+
+    def watch_log_events(self):
+        while True:
+            now = time.monotonic()
+            positions = self._positions()
+            for device, started in list(self._running.items()):
+                if device in self._sent or now - started < SPIN_START_DELAY_S:
+                    continue
+                self._sent.add(device)
+                centre = positions.get(device)
+                if centre is None:
+                    continue
+                for event in self.events_of(device, centre):
+                    yield event
+                    time.sleep(SPIN_CHUNK_GAP_S)
+            time.sleep(0.05)

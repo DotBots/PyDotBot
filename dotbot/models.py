@@ -597,6 +597,16 @@ class DotBotCalibrationPushModel(BaseModel):
     devices: List[str] = []
 
 
+class DotBotCalibrationSpinModel(BaseModel):
+    """A spin: the robots (none is every robot that can spin), a tag, and
+    a free-mode calibration to add this round to."""
+
+    devices: List[str] = []
+    tag: str = ""
+    append: Optional[str] = None
+    radius_mm: Optional[float] = None
+
+
 class DotBotCalibrationFilePushModel(BaseModel):
     """A saved calibration, by id, tag or path, and the robots to push it to;
     at least one robot, since nothing is pushed to a fleet unticked."""
