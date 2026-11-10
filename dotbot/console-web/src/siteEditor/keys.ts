@@ -1,4 +1,5 @@
 import { ACTION_KEY, SHORTCUTS_KEY, type ShortcutGroup } from "../shortcuts";
+import type { IconName } from "./icons";
 
 // The editor's keys, stated once. Stop, the panes and the shortcuts list keep
 // the console's keys and meanings; the console's Start, Go and pose mode are
@@ -24,6 +25,7 @@ export type Tool =
   | "dock"
   | "landmark"
   | "camera"
+  | "probe"
   | "measure";
 
 /** Each kind's tools, by the key that picks them. */
@@ -33,7 +35,7 @@ export const TOOLS: Record<EditKind, Partial<Record<string, Tool>>> = {
   areas: { V: "select", A: "area", M: "measure" },
   walls: { V: "select", W: "wall", O: "obstacle", M: "measure" },
   objects: { V: "select", C: "charger", D: "dock", L: "landmark", K: "camera", M: "measure" },
-  stations: { V: "select", M: "measure" },
+  stations: { V: "select", I: "probe", M: "measure" },
 };
 
 /** Keys the editor shares with the console, with the console's meaning. */
@@ -72,7 +74,22 @@ export const TOOL_LABEL: Record<Tool, string> = {
   dock: "Dock",
   landmark: "Landmark",
   camera: "Camera position",
+  probe: "Point inspector",
   measure: "Measure",
+};
+
+/** Each tool's icon. */
+export const TOOL_ICON: Record<Tool, IconName> = {
+  select: "select",
+  area: "rect",
+  wall: "wall",
+  obstacle: "obstacle",
+  charger: "charger",
+  dock: "dock",
+  landmark: "landmark",
+  camera: "camera",
+  probe: "probe",
+  measure: "measure",
 };
 
 /** The kind and tool a key press asks for in `kind`, or null. */
@@ -92,6 +109,10 @@ export const EDITOR_SHORTCUTS: ShortcutGroup[] = [
       { keys: ["drag"], does: "Pan" },
       { keys: ["ctrl", "scroll"], does: "Zoom about the pointer" },
       { keys: ["click a thing"], does: "Select it and switch to its kind" },
+      { keys: ["shift", "click"], does: "Add to the selection, or take out" },
+      { keys: ["shift", "drag"], does: "Select everything of this kind in a rectangle" },
+      { keys: ["alt", "drag"], does: "Move or draw without snapping" },
+      { keys: ["arrows"], does: "Nudge the selection or a picked edge 10 mm (Alt 1, Shift 100)" },
       { keys: ["Escape"], does: "Back to View; cancels a drawing, never commits it" },
       { keys: ["1 to 5"], does: "Frame, Areas, Walls, Objects, Stations" },
       { keys: ["Delete"], does: "Delete the selection" },

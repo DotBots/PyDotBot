@@ -215,7 +215,7 @@ describe("the editor shell", () => {
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "arena" } });
     fireEvent.keyDown(screen.getByLabelText("Name"), { key: "Enter" });
     keyDown("s", { ctrlKey: true });
-    await waitFor(() => expect(screen.getByTestId("review-diff").textContent).toContain("+ [areas.pen]"));
+    await waitFor(() => expect(screen.getByTestId("review-diff").textContent).toContain("+[areas.pen]"));
     expect(screen.getByTestId("review").textContent).toContain("Saving never touches robots");
     fireEvent.click(screen.getByTestId("review-save"));
     await waitFor(() => expect(screen.getByTestId("review-result").textContent).toContain("written"));

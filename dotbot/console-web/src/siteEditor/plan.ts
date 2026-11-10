@@ -1,6 +1,6 @@
 import type { Camera, ViewGeom } from "../zoom";
 import type { Area } from "../types";
-import type { Doc, DocArea, Point } from "./model";
+import type { Doc, Point } from "./model";
 
 // The plan's geometry: frame millimetres to the drawn box's pixels and back,
 // through the console's camera, and the edits a drag makes.
@@ -28,14 +28,16 @@ export const SNAP_MM = 10;
 /** `v` on the snap grid, or as it is when snapping is off. */
 export const snap = (v: number, on: boolean, step = SNAP_MM) => (on ? Math.round(v / step) * step : Math.round(v));
 
-export type Handle = "nw" | "ne" | "sw" | "se";
+export type Handle = "nw" | "ne" | "sw" | "se" | "n" | "e" | "s" | "w";
 
-/** `area` with `handle` dragged to `p`; the far corner stays put. */
-export function resized(area: DocArea, handle: Handle, p: Point): DocArea {
-  const x0 = handle === "nw" || handle === "sw" ? p[0] : area.x;
-  const x1 = handle === "ne" || handle === "se" ? p[0] : area.x + area.w;
-  const y0 = handle === "nw" || handle === "ne" ? p[1] : area.y;
-  const y1 = handle === "sw" || handle === "se" ? p[1] : area.y + area.h;
+export const HANDLES: Handle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
+
+/** `area` with `handle` dragged to `p`; the far side stays put. */
+export function resized<T extends { x: number; y: number; w: number; h: number }>(area: T, handle: Handle, p: Point): T {
+  const x0 = handle.includes("w") ? p[0] : area.x;
+  const x1 = handle.includes("e") ? p[0] : area.x + area.w;
+  const y0 = handle.includes("n") ? p[1] : area.y;
+  const y1 = handle.includes("s") ? p[1] : area.y + area.h;
   return {
     ...area,
     x: Math.min(x0, x1),
@@ -81,4 +83,160 @@ export function coincident(rects: { label: string; rect: [number, number, number
     groups.set(k, [...(groups.get(k) ?? []), r.label]);
   }
   return [...groups.values()].filter((g) => g.length > 1);
+}
+
+/** Where `handle` of a rectangle is. */
+export function handleAt(r: { x: number; y: number; w: number; h: number }, h: Handle): Point {
+  const x = h.includes("w") ? r.x : h.includes("e") ? r.x + r.w : r.x + r.w / 2;
+  const y = h.includes("n") ? r.y : h.includes("s") ? r.y + r.h : r.y + r.h / 2;
+  return [x, y];
+}
+
+export type Bounds = [number, number, number, number];
+
+/** The rectangle an entity spans, frame mm; null for a key the doc lacks. */
+export function boundsOf(doc: Doc, key: string): Bounds | null {
+  const a = doc.areas.find((e) => e.key === key);
+  if (a) return [a.x, a.y, a.x + a.w, a.y + a.h];
+  const o = doc.objects.find((e) => e.key === key);
+  if (o) return [o.x, o.y, o.x, o.y];
+  const b = [...doc.walls, ...doc.obstacles].find((e) => e.key === key);
+  if (b && b.points.length) {
+    const xs = b.points.map((p) => p[0]);
+    const ys = b.points.map((p) => p[1]);
+    return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+  }
+  return null;
+}
+
+/** Keys of the entities of `keys`' kinds lying wholly inside `r`. */
+export function keysWithin(doc: Doc, r: Bounds, prefixes: string[]): string[] {
+  const all = [...doc.areas, ...doc.walls, ...doc.obstacles, ...doc.objects].map((e) => e.key);
+  return all.filter((k) => {
+    if (!prefixes.some((p) => k.startsWith(p))) return false;
+    const b = boundsOf(doc, k);
+    return !!b && b[0] >= r[0] && b[1] >= r[1] && b[2] <= r[2] && b[3] <= r[3];
+  });
+}
+
+/** `doc` with every entity of `keys` moved by (dx, dy). */
+export function movedAll(doc: Doc, keys: string[], dx: number, dy: number): Doc {
+  return keys.reduce((d, k) => moved(d, k, dx, dy), doc);
+}
+
+/** `doc` with one edge or corner of an area moved by (dx, dy); the far side stays. */
+export function edgeMoved(doc: Doc, key: string, handle: Handle, dx: number, dy: number): Doc {
+  return {
+    ...doc,
+    areas: doc.areas.map((a) => {
+      if (a.key !== key) return a;
+      const [hx, hy] = handleAt(a, handle);
+      return resized(a, handle, [hx + dx, hy + dy]);
+    }),
+  };
+}
+
+export type Arrange = "left" | "right" | "top" | "bottom" | "centre-x" | "centre-y" | "spread-x" | "spread-y";
+
+export const ARRANGE_LABEL: Record<Arrange, string> = {
+  left: "Align lefts",
+  right: "Align rights",
+  top: "Align tops",
+  bottom: "Align bottoms",
+  "centre-x": "Centre on x",
+  "centre-y": "Centre on y",
+  "spread-x": "Distribute along x",
+  "spread-y": "Distribute along y",
+};
+
+/** `doc` with the entities of `keys` lined up or spread out as `how` says. */
+export function arranged(doc: Doc, keys: string[], how: Arrange): Doc {
+  const boxes = keys.map((k) => [k, boundsOf(doc, k)] as const).filter((e): e is [string, Bounds] => e[1] !== null);
+  if (boxes.length < 2) return doc;
+  const cx = (b: Bounds) => (b[0] + b[2]) / 2;
+  const cy = (b: Bounds) => (b[1] + b[3]) / 2;
+  if (how === "spread-x" || how === "spread-y") {
+    const c = how === "spread-x" ? cx : cy;
+    const sorted = [...boxes].sort((a, b) => c(a[1]) - c(b[1]));
+    const first = c(sorted[0][1]);
+    const gap = (c(sorted[sorted.length - 1][1]) - first) / (sorted.length - 1);
+    return sorted.reduce((d, [k, b], i) => {
+      const delta = Math.round(first + i * gap - c(b));
+      return how === "spread-x" ? moved(d, k, delta, 0) : moved(d, k, 0, delta);
+    }, doc);
+  }
+  const target = {
+    left: Math.min(...boxes.map(([, b]) => b[0])),
+    right: Math.max(...boxes.map(([, b]) => b[2])),
+    top: Math.min(...boxes.map(([, b]) => b[1])),
+    bottom: Math.max(...boxes.map(([, b]) => b[3])),
+    "centre-x": cx(boxes[0][1]),
+    "centre-y": cy(boxes[0][1]),
+  }[how];
+  return boxes.reduce((d, [k, b]) => {
+    switch (how) {
+      case "left":
+        return moved(d, k, target - b[0], 0);
+      case "right":
+        return moved(d, k, target - b[2], 0);
+      case "top":
+        return moved(d, k, 0, target - b[1]);
+      case "bottom":
+        return moved(d, k, 0, target - b[3]);
+      case "centre-x":
+        return moved(d, k, Math.round(target - cx(b)), 0);
+      default:
+        return moved(d, k, 0, Math.round(target - cy(b)));
+    }
+  }, doc);
+}
+
+export interface SnapTarget {
+  value: number;
+  label: string;
+}
+
+/** The edges a moving point may snap to on each axis: the floor's, and
+ * every area's but those being moved. */
+export function snapTargets(doc: Doc, skip: string[]): { x: SnapTarget[]; y: SnapTarget[] } {
+  const x: SnapTarget[] = [];
+  const y: SnapTarget[] = [];
+  if (doc.extent_mm) {
+    x.push({ value: 0, label: "the floor's left edge" }, { value: doc.extent_mm[0], label: "the floor's right edge" });
+    y.push({ value: 0, label: "the floor's top edge" }, { value: doc.extent_mm[1], label: "the floor's bottom edge" });
+  }
+  for (const a of doc.areas) {
+    if (skip.includes(a.key)) continue;
+    x.push({ value: a.x, label: `${a.name}'s left edge` }, { value: a.x + a.w, label: `${a.name}'s right edge` });
+    y.push({ value: a.y, label: `${a.name}'s top edge` }, { value: a.y + a.h, label: `${a.name}'s bottom edge` });
+  }
+  for (const o of doc.objects) {
+    if (skip.includes(o.key)) continue;
+    x.push({ value: o.x, label: `${o.name}` });
+    y.push({ value: o.y, label: `${o.name}` });
+  }
+  return { x, y };
+}
+
+/** `p` snapped: to the nearest target within `reach` mm on each axis, else
+ * to the 10 mm grid; with `on` false, left as it is. Says what it snapped to. */
+export function snapPoint(
+  p: Point,
+  targets: { x: SnapTarget[]; y: SnapTarget[] },
+  reach: number,
+  on: boolean,
+): { point: Point; to: string } {
+  if (!on) return { point: [Math.round(p[0]), Math.round(p[1])], to: "off" };
+  const pick = (v: number, ts: SnapTarget[]) => {
+    let best: SnapTarget | null = null;
+    for (const t of ts) if (Math.abs(t.value - v) <= reach && (!best || Math.abs(t.value - v) < Math.abs(best.value - v))) best = t;
+    return best;
+  };
+  const tx = pick(p[0], targets.x);
+  const ty = pick(p[1], targets.y);
+  const to = [tx?.label, ty?.label].filter((s, i, all) => s && all.indexOf(s) === i).join(" and ");
+  return {
+    point: [tx ? tx.value : snap(p[0], true), ty ? ty.value : snap(p[1], true)],
+    to: to || `grid ${SNAP_MM} mm`,
+  };
 }

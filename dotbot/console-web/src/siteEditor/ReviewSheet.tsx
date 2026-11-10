@@ -1,11 +1,12 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 import { Badge } from "../shared/Badge";
 import { applySave, fetchHistory, HttpError, previewSite, restoreVersion, type ApplyStep } from "./api";
 import { lineDiff } from "./diff";
 import { changes, type Change } from "./draft";
-import { button, label10 } from "./fields";
+import { Icon } from "./icons";
 import { siteModel, type Doc } from "./model";
+import type { Problem } from "./rules";
 import type { SitePayload } from "./types";
 
 // Review and save: what each write changes, in three parts, then one ordered
@@ -16,14 +17,21 @@ export interface ReviewSheetProps {
   doc: Doc;
   revision: string;
   baseText: string;
+  /** The hand-edited site.toml the draft is patched onto, if any. */
+  text: string | null;
+  path: string;
   /** A controller reloads site.toml as soon as it is written. */
   live: boolean;
   /** The draft conflicts left by the last re-apply, if any. */
   conflicts: Change[];
+  /** The rules the draft breaks; a blocking one keeps Save off. */
+  problems: Problem[];
   onClose: () => void;
   onSaved: (payload: SitePayload) => void;
   /** The file changed meanwhile: the page reloads it and re-applies the draft. */
   onStale: () => Promise<void>;
+  /** Shows a broken rule's thing on the plan. */
+  onShow?: (key: string) => void;
 }
 
 type Phase =
@@ -32,179 +40,226 @@ type Phase =
   | { kind: "done"; steps: ApplyStep[]; ok: boolean; payload: SitePayload; before: string }
   | { kind: "error"; message: string };
 
-const VERB: Record<Change["what"], string> = { added: "adds", changed: "changes", removed: "removes" };
+const VERB: Record<Change["what"], string> = { added: "Adds", changed: "Changes", removed: "Removes" };
 
-export const ReviewSheet: React.FC<ReviewSheetProps> = ({ base, doc, revision, baseText, live, conflicts, onClose, onSaved, onStale }) => {
+const clean = (e: unknown) => (e as Error).message.replace(/^\d+: /, "");
+
+export const ReviewSheet: React.FC<ReviewSheetProps> = (props) => {
+  const { base, doc, revision, baseText, live, conflicts, onClose, onSaved, onStale } = props;
   const list = changes(base, doc);
   const [text, setText] = useState<string | null>(null);
   const [problem, setProblem] = useState("");
   const [phase, setPhase] = useState<Phase>({ kind: "review" });
   const [undone, setUndone] = useState("");
+  const saveRef = useRef<HTMLButtonElement | null>(null);
+  const blockers = props.problems.filter((p) => p.blocking);
 
   useEffect(() => {
-    previewSite(siteModel(doc)).then(
-      (r) => setText(r.text),
-      (e: Error) => setProblem(e.message.replace(/^\d+: /, "")),
+    let live = true;
+    previewSite(siteModel(doc), props.text).then(
+      (r) => live && (setText(r.text), setProblem("")),
+      (e) => live && setProblem(clean(e)),
     );
-  }, [doc]);
+    return () => {
+      live = false;
+    };
+  }, [doc, props.text]);
+
+  useEffect(() => {
+    saveRef.current?.focus();
+  }, []);
 
   const save = async () => {
     setPhase({ kind: "saving" });
     try {
-      const result = await applySave(revision, siteModel(doc));
+      const result = await applySave(revision, siteModel(doc), props.text);
       setPhase({ kind: "done", steps: result.steps, ok: result.ok, payload: result, before: revision });
       onSaved(result);
     } catch (e) {
       if (e instanceof HttpError && e.status === 409) {
         await onStale();
         setPhase({ kind: "error", message: "site.toml changed on disk since this page loaded it. The page reloaded it and re-applied your draft; review the changes again." });
-      } else setPhase({ kind: "error", message: (e as Error).message.replace(/^\d+: /, "") });
+      } else setPhase({ kind: "error", message: clean(e) });
     }
   };
 
   const undoWrite = async (done: Extract<Phase, { kind: "done" }>) => {
-    const kept = (await fetchHistory()).find((v) => v.revision === done.before);
-    if (!kept) return setUndone("No kept version matches the file before this save.");
-    const back = await restoreVersion(kept.id, done.payload.revision);
-    onSaved(back);
-    setUndone(`site.toml is back as it was (${kept.at}); the write itself is kept in the history too.`);
+    try {
+      const kept = (await fetchHistory()).find((v) => v.revision === done.before);
+      if (!kept) return setUndone("No kept version matches the file before this save.");
+      const back = await restoreVersion(kept.id, done.payload.revision);
+      onSaved(back);
+      setUndone(`site.toml is back as it was (kept ${kept.at}); the undone write is kept in the history too.`);
+    } catch (e) {
+      setUndone(`Could not undo: ${clean(e)}`);
+    }
   };
 
   const diff = text === null ? [] : lineDiff(baseText, text);
-  const blocking = problem !== "";
+  const blocked = problem !== "" || blockers.length > 0;
+  const nothing = list.length === 0 && (props.text === null || props.text === baseText);
+  const busy = phase.kind === "saving";
+  const file = props.path.split("/").slice(-2).join("/");
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Review and save"
-      data-testid="review"
-      onKeyDown={(e) => {
-        if (e.key === "Escape") {
-          e.stopPropagation();
-          onClose();
-        }
-      }}
-      style={{ position: "fixed", inset: 0, zIndex: 40, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
-    >
+    <>
+      <div className="scrim" onClick={busy ? undefined : onClose} />
       <div
-        style={{
-          width: "min(760px, 100%)",
-          maxHeight: "min(86vh, 900px)",
-          display: "flex",
-          flexDirection: "column",
-          background: "var(--surface)",
-          border: "1px solid var(--hairline)",
-          borderRadius: 12,
-          overflow: "hidden",
-          color: "var(--text)",
+        className="sheet wide"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Review and save"
+        data-testid="review"
+        onKeyDown={(e) => {
+          if (e.key === "Escape" && !busy) {
+            e.stopPropagation();
+            onClose();
+          }
         }}
       >
-        <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--hairline)", display: "flex", alignItems: "center", gap: 8 }}>
-          <b style={{ fontSize: 14 }}>Review and save</b>
-          <span style={{ fontSize: 12, color: "var(--muted)" }}>writes files only</span>
-          <span style={{ flex: 1 }} />
-          <button type="button" aria-label="Close" onClick={onClose} style={{ ...button(), padding: "2px 8px" }}>
-            ✕
-          </button>
+        <button type="button" className="btn icon ghost x" aria-label="Close" onClick={onClose} disabled={busy}>
+          <Icon name="x" size={14} />
+        </button>
+        <h2>
+          {phase.kind === "done" ? (phase.ok ? "Saved" : "Saved in part") : "Review and save"}
+          <Badge>writes files only</Badge>
+        </h2>
+        <div className="sub">
+          {phase.kind === "done"
+            ? "Each step below ran in order; a refused step stops the ones after it."
+            : "What Save writes, in the order it writes it. Nothing here moves a robot or changes what the controller serves."}
         </div>
-        <div style={{ overflowY: "auto", padding: 16, display: "grid", gap: 16 }}>
-          {conflicts.length > 0 && (
-            <div data-testid="review-conflicts" style={{ fontSize: 12, lineHeight: 1.5, border: "1px solid color-mix(in srgb, var(--warn) 50%, transparent)", borderRadius: 8, padding: "8px 10px" }}>
-              <b>Changed on disk too, so the file's version was kept:</b> {conflicts.map((c) => c.label).join(", ")}.
+        {conflicts.length > 0 && phase.kind !== "done" && (
+          <div className="callout warn" data-testid="review-conflicts">
+            <div className="h">
+              <Icon name="warn" size={14} /> Changed on disk too
             </div>
-          )}
-          <section style={{ display: "grid", gap: 8 }}>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <span style={label10}>1 · site.toml</span>
-              {live && <Badge tone="warn">applies live</Badge>}
+            The file's version was kept for {conflicts.map((c) => c.label).join(", ")}; the rest of your draft is re-applied on top.
+          </div>
+        )}
+        {blockers.length > 0 && phase.kind !== "done" && (
+          <div className="callout err" role="alert" data-testid="review-blockers" style={{ marginTop: 10 }}>
+            <div className="h">
+              <Icon name="err" size={14} /> Save stays off until this is fixed
             </div>
-            {list.length === 0 ? (
-              <div style={{ fontSize: 12, color: "var(--muted)" }}>Nothing changed.</div>
-            ) : (
-              <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, lineHeight: 1.6 }}>
-                {list.map((c) => (
-                  <li key={c.key}>
-                    {VERB[c.what]} {c.label}
-                  </li>
-                ))}
-              </ul>
-            )}
-            {problem && (
-              <div role="alert" data-testid="review-problem" style={{ fontSize: 12, color: "var(--err)", lineHeight: 1.5 }}>
-                ⊗ The file would refuse this: {problem}
+            {blockers.map((p) => (
+              <div key={p.title + p.keys.join()} style={{ marginTop: 4 }}>
+                <b>{p.title}.</b> {p.detail}{" "}
+                {props.onShow && (
+                  <button type="button" className="btn xs" onClick={() => props.onShow?.(p.keys[0])}>
+                    Show it
+                  </button>
+                )}
               </div>
+            ))}
+          </div>
+        )}
+        <div className="part">
+          <div className="ph">
+            <Icon name="file" size={15} />
+            <span>1 · site.toml</span>
+            <span className="mono muted" style={{ fontWeight: 400, fontSize: 11 }}>
+              {file}
+            </span>
+            <span className="sp" />
+            {live && (
+              <Badge tone="warn" title="The controller reloads site.toml as soon as it is written: its console redraws the areas at once">
+                applies live
+              </Badge>
             )}
-            {diff.length > 0 && (
-              <pre
-                data-testid="review-diff"
-                style={{ margin: 0, padding: 10, borderRadius: 8, background: "var(--canvas)", font: "11.5px/1.5 var(--font-mono)", overflowX: "auto", maxHeight: 280 }}
-              >
-                {diff.map((l, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      color: l.op === "+" ? "var(--ok)" : l.op === "-" ? "var(--err)" : "var(--muted)",
-                      whiteSpace: "pre",
-                    }}
-                  >
-                    {l.op === "…" ? "…" : `${l.op} ${l.text}`}
+          </div>
+          <div className="pb">
+            {nothing ? (
+              "Nothing changed."
+            ) : (
+              <>
+                {list.map((c) => (
+                  <div key={c.key}>
+                    {VERB[c.what]} <b>{c.label}</b>
                   </div>
                 ))}
-              </pre>
+                {props.text !== null && <div>Keeps your edits to the file's text, comments included.</div>}
+              </>
             )}
-          </section>
-          <section style={{ display: "grid", gap: 6 }}>
-            <span style={label10}>2 · Calibration</span>
-            <div style={{ fontSize: 12, color: "var(--muted)" }}>Nothing new: no station box was edited.</div>
-          </section>
-          <section style={{ display: "grid", gap: 6 }}>
-            <span style={label10}>3 · Robots</span>
-            <div style={{ fontSize: 12, lineHeight: 1.5 }}>
-              Saving never touches robots. Serving a calibration and pushing it are separate steps.
+          </div>
+          {problem && (
+            <div className="callout err" role="alert" data-testid="review-problem" style={{ marginTop: 8 }}>
+              <div className="h">
+                <Icon name="err" size={14} /> site.toml would refuse this
+              </div>
+              {problem}
             </div>
-          </section>
-          {phase.kind === "done" && (
-            <section data-testid="review-result" style={{ display: "grid", gap: 6 }}>
-              <span style={label10}>Result</span>
-              {phase.steps.map((s) => (
-                <div key={s.step} style={{ fontSize: 12, lineHeight: 1.5 }}>
-                  <Badge tone={s.status === "refused" ? "err" : "ok"}>{s.status}</Badge> {s.step}: {s.detail}
+          )}
+          {diff.length > 0 && (
+            <div className="diff" data-testid="review-diff">
+              {diff.map((l, i) => (
+                <div key={i} className={`ln${l.op === "+" ? " add" : l.op === "-" ? " del" : " ctx"}`}>
+                  <span className="g">{l.op === "…" ? "⋯" : l.op === " " ? "" : l.op}</span>
+                  <span>{l.op === "…" ? "" : l.text}</span>
                 </div>
               ))}
-              {phase.steps.some((s) => s.step === "site.toml" && s.status === "written") && !undone && (
-                <div>
-                  <button type="button" style={button()} onClick={() => undoWrite(phase)}>
-                    Undo the site.toml write
-                  </button>
-                </div>
-              )}
-              {undone && <div style={{ fontSize: 12 }}>{undone}</div>}
-            </section>
-          )}
-          {phase.kind === "error" && (
-            <div role="alert" data-testid="review-error" style={{ fontSize: 12, color: "var(--err)", lineHeight: 1.5 }}>
-              {phase.message}
             </div>
           )}
+          {text === null && !problem && !nothing && <div className="note" style={{ marginTop: 6 }}>Working out the file as it would be written…</div>}
         </div>
-        <div style={{ padding: "12px 16px", borderTop: "1px solid var(--hairline)", display: "flex", gap: 8, justifyContent: "flex-end" }}>
-          <button type="button" style={button()} onClick={onClose}>
+        <div className="part">
+          <div className="ph">
+            <Icon name="stations" size={15} />
+            <span>2 · A new calibration</span>
+          </div>
+          <div className="pb">Nothing new: no station box was edited.</div>
+        </div>
+        <div className="part">
+          <div className="ph">
+            <Icon name="robot" size={15} />
+            <span>3 · Robots</span>
+          </div>
+          <div className="pb">Saving never touches robots. Serving a calibration and pushing it to robots are separate steps.</div>
+        </div>
+        {phase.kind === "done" && (
+          <div className="part" data-testid="review-result">
+            <div className="ph">
+              <Icon name="check" size={15} /> Result
+            </div>
+            {phase.steps.map((s) => (
+              <div className="rstep" key={s.step}>
+                <span style={{ color: s.status === "refused" ? "var(--err)" : s.status === "written" ? "var(--ok)" : "var(--muted)" }}>
+                  <Icon name={s.status === "refused" ? "err" : s.status === "written" ? "check" : "info"} size={15} />
+                </span>
+                <span>
+                  {s.step} {s.status}
+                  <span className="s">{s.detail}</span>
+                </span>
+              </div>
+            ))}
+            {phase.steps.some((s) => s.step === "site.toml" && s.status === "written") && !undone && (
+              <div className="acts">
+                <button type="button" className="btn sm" onClick={() => undoWrite(phase)}>
+                  <Icon name="undo" size={13} /> Undo the site.toml write
+                </button>
+              </div>
+            )}
+            {undone && <div className="note" style={{ marginTop: 6 }}>{undone}</div>}
+          </div>
+        )}
+        {phase.kind === "error" && (
+          <div className="callout err" role="alert" data-testid="review-error" style={{ marginTop: 10 }}>
+            {phase.message}
+          </div>
+        )}
+        <footer>
+          <span className="note">Undo works after Save: the last 20 versions of site.toml are kept.</span>
+          <span className="sp" style={{ flex: 1 }} />
+          <button type="button" className="btn" onClick={onClose} disabled={busy}>
             {phase.kind === "done" ? "Close" : "Cancel"}
           </button>
           {phase.kind !== "done" && (
-            <button
-              type="button"
-              data-testid="review-save"
-              disabled={blocking || list.length === 0 || phase.kind === "saving"}
-              style={button("primary", blocking || list.length === 0 || phase.kind === "saving")}
-              onClick={save}
-            >
-              {phase.kind === "saving" ? "Saving…" : "Save site.toml"}
+            <button ref={saveRef} type="button" data-testid="review-save" className="btn primary" disabled={blocked || nothing || busy} onClick={save}>
+              {busy ? "Saving…" : "Save site.toml"}
             </button>
           )}
-        </div>
+        </footer>
       </div>
-    </div>
+    </>
   );
 };

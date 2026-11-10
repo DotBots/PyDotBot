@@ -2,22 +2,17 @@ import React, { useState } from "react";
 
 import { Badge } from "../shared/Badge";
 import { FixThumb } from "./FixThumb";
+import { Icon } from "./icons";
 import { filtered, groupTitle, residuals, when } from "./library";
 import type { Library, LibraryRow, Rect } from "./types";
-
-const label10 = {
-  fontSize: 10,
-  letterSpacing: ".5px",
-  textTransform: "uppercase",
-  color: "var(--muted)",
-} as const;
 
 const Row: React.FC<{
   row: LibraryRow;
   extent: [number, number];
   shown: boolean;
-  onPick: (row: LibraryRow) => void;
-}> = ({ row, extent, shown, onPick }) => {
+  picked: boolean;
+  onPick: (row: LibraryRow, additive: boolean) => void;
+}> = ({ row, extent, shown, picked, onPick }) => {
   const boxes = Object.fromEntries(row.stations.map((s) => [s.index, s.box])) as Record<number, Rect>;
   const own: [number, number] = row.in_frame ? extent : [row.fence[2], row.fence[3]];
   return (
@@ -26,37 +21,29 @@ const Row: React.FC<{
       tabIndex={0}
       data-testid={`library-row-${row.id8}`}
       aria-current={shown}
-      onClick={() => onPick(row)}
+      className={`crow${picked ? " pick" : shown ? " cur" : ""}`}
+      title={`${row.id}\n${row.path}`}
+      onClick={(e) => onPick(row, e.shiftKey)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          onPick(row);
+          onPick(row, e.shiftKey);
         }
-      }}
-      style={{
-        display: "flex",
-        gap: 9,
-        padding: "8px 8px",
-        borderRadius: 7,
-        cursor: "pointer",
-        background: shown ? "var(--elevated)" : "transparent",
-        border: `1px solid ${shown ? "var(--accent)" : "transparent"}`,
       }}
     >
       <FixThumb boxes={boxes} extent={own} />
-      <div style={{ minWidth: 0, display: "grid", gap: 2 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-          <span style={{ font: "600 12px var(--font-mono)" }}>{row.id8}</span>
-          <span style={{ fontSize: 11.5, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {row.tag || "(no tag)"}
-          </span>
+      <div className="ci">
+        <div className="a">
+          <span className="id">{row.id8}</span>
+          <span className="tg">{row.tag || "no tag"}</span>
+          <span className="sp" />
           {row.served && <Badge tone="ok">serving</Badge>}
           {shown && !row.served && <Badge>previewing</Badge>}
         </div>
-        <div style={{ fontSize: 11.5, lineHeight: 1.4 }}>
-          {row.in_frame ? row.reading : `${row.fence[2]} × ${row.fence[3]} mm · ${residuals(row)} · own frame`}
+        <div className="b">{row.in_frame ? row.reading : `own frame · ${row.fence[2]} × ${row.fence[3]} mm`}</div>
+        <div className="c">
+          measured {when(row.created_at)} UTC · residual {residuals(row)}
         </div>
-        <div style={{ fontSize: 10.5, color: "var(--muted)" }}>measured {when(row.created_at)} UTC</div>
       </div>
     </div>
   );
@@ -69,68 +56,81 @@ export const LibraryPane: React.FC<{
   error: string;
   extent: [number, number] | null;
   shownId: string | null;
-  onPick: (row: LibraryRow) => void;
-}> = ({ library, error, extent, shownId, onPick }) => {
+  picked?: string[];
+  onPick: (row: LibraryRow, additive: boolean) => void;
+  onRetry?: () => void;
+}> = ({ library, error, extent, shownId, picked = [], onPick, onRetry }) => {
   const [query, setQuery] = useState("");
-  if (error) return <div style={{ padding: 12, fontSize: 12, color: "var(--err)" }}>{error}</div>;
-  if (!library) return <div style={{ padding: 12, fontSize: 12, color: "var(--muted)" }}>Reading the calibrations…</div>;
+  if (error)
+    return (
+      <div className="callout err" style={{ marginTop: 12 }} role="alert">
+        <div className="h">
+          <Icon name="err" size={14} /> The calibrations could not be read
+        </div>
+        {error}
+        {onRetry && (
+          <div className="acts">
+            <button type="button" className="btn sm" onClick={onRetry}>
+              Try again
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  if (!library) return <div className="note" style={{ marginTop: 12 }}>Reading the calibrations…</div>;
   const view = filtered(library, query);
   const floor: [number, number] = extent ?? [1000, 1000];
   const row = (r: LibraryRow) => (
-    <Row key={r.path} row={r} extent={floor} shown={r.id === shownId} onPick={onPick} />
+    <Row key={r.path} row={r} extent={floor} shown={r.id === shownId} picked={picked.includes(r.id)} onPick={onPick} />
   );
+  const nothing = view.groups.length === 0 && view.not_placed.length === 0;
   return (
-    <div data-testid="library" style={{ padding: 10, display: "grid", gap: 4 }}>
-      <input
-        aria-label="Search calibrations"
-        placeholder="id, tag or what the boxes do"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        style={{
-          font: "12px var(--font-ui)",
-          padding: "6px 9px",
-          borderRadius: 7,
-          border: "1px solid var(--hairline)",
-          background: "var(--canvas)",
-          color: "var(--text)",
-          marginBottom: 6,
-        }}
-      />
-      {library.serving && (
+    <div data-testid="library">
+      <label className="search">
+        <Icon name="search" size={14} />
+        <input aria-label="Search calibrations" placeholder="id, tag or what the boxes do" value={query} onChange={(e) => setQuery(e.target.value)} />
+        {query && (
+          <button type="button" className="btn xs ghost" onClick={() => setQuery("")} aria-label="Clear the search">
+            <Icon name="x" size={11} />
+          </button>
+        )}
+      </label>
+      {library.count === 0 && (
+        <div className="callout" style={{ marginTop: 12 }}>
+          <div className="h">No calibration for this site yet</div>
+          Spin robots in the console's Calibrate tab to measure the stations; the files it saves appear here.
+        </div>
+      )}
+      {library.serving && !query && (
         <>
-          <div style={label10}>Serving now</div>
+          <div className="grp">Serving now</div>
           {row(library.serving)}
         </>
       )}
       {view.groups.map((g) => (
         <React.Fragment key={g.spin}>
-          <div data-testid="library-group" style={{ ...label10, marginTop: 10 }}>
+          <div data-testid="library-group" className="grp">
             {groupTitle(g)}
           </div>
           {g.rows.length > 1 && (
-            <div style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.5 }}>
-              One measurement: the same homographies, so the stations are where they were. The
-              files differ only in where each station is trusted.
-            </div>
+            <div className="grpnote">One measurement, so the stations are where they were; the files differ only in where each station is trusted.</div>
           )}
-          {g.rows.filter((r) => !r.served).map(row)}
+          {g.rows.filter((r) => query || !r.served).map(row)}
         </React.Fragment>
       ))}
       {view.not_placed.length > 0 && (
         <>
-          <div data-testid="library-not-placed" style={{ ...label10, marginTop: 10 }}>
+          <div data-testid="library-not-placed" className="grp">
             Not placed in this room yet · {view.not_placed.length} spin{view.not_placed.length === 1 ? "" : "s"}
           </div>
-          <div style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.5 }}>
-            Each in its own frame; reframe one into this room to use it.
-          </div>
+          <div className="grpnote">Each in its own frame, measured before this room's zero was set; reframe one into this room to use it.</div>
           {view.not_placed.map(row)}
         </>
       )}
-      <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 10, lineHeight: 1.5 }}>
-        Click previews a file; the served one stays in the top bar. Thumbnails show who gives
-        the fix by the robots' rule: a station's colour where its box decides, grey where the
-        boxes do not.
+      {nothing && library.count > 0 && <div className="note" style={{ marginTop: 12 }}>Nothing matches "{query}".</div>}
+      <div className="note" style={{ marginTop: 14 }}>
+        Click a file to preview it on the plan; the served one stays named in the top bar. Thumbnails show who gives the fix: a
+        station's colour where its box decides, grey where the boxes do not.
       </div>
     </div>
   );

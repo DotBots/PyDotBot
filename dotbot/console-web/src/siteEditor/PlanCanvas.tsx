@@ -6,24 +6,43 @@ import { areaColor } from "../areaColor";
 import { siteViewMarginMm, withMargin } from "../frame";
 import { gridStepMm } from "../grid";
 import { DEFAULT_ROBOT_DRAWING } from "../robotDrawing";
+import { ringDash, spinRings } from "../shared/spinRings";
+import { facing } from "../siteObjects";
 import type { Area, SpinCircle, UnifiedBot } from "../types";
 import {
   clampCam,
   FRAME_CAMERA,
+  scaleForFraction,
   steppedScale,
   viewCentre,
   viewGeom,
   wheelDeltaPx,
   wheelScale,
   zoomAbout,
+  zoomFraction,
   ZOOM_MAX_FLOOR,
   ZOOM_MAX_PX_PER_MM,
   type Camera,
   type ViewGeom,
 } from "../zoom";
+import { Icon } from "./icons";
 import type { EditKind, Tool } from "./keys";
 import { freshKey, freshName, type Doc, type DocObject, type ObjectKind, type Point } from "./model";
-import { canvasToMm, coincident, moved, pxPerMmAt, resized, snap, spanned, toBox, type Handle } from "./plan";
+import {
+  canvasToMm,
+  coincident,
+  handleAt,
+  HANDLES,
+  keysWithin,
+  movedAll,
+  pxPerMmAt,
+  resized,
+  snapPoint,
+  snapTargets,
+  spanned,
+  toBox,
+  type Handle,
+} from "./plan";
 import type { Rect } from "./types";
 
 export interface PlanLayers {
@@ -35,14 +54,21 @@ export interface PlanLayers {
 
 export const DEFAULT_LAYERS: PlanLayers = { grid: true, robots: true, boxes: true, circles: true };
 
-/** The kind an entity key belongs to on the plan. */
+/** The kind an entity key belongs to on the plan; robots belong to none. */
 export function kindOfKey(key: string): EditKind {
   if (key.startsWith("area:")) return "areas";
   if (key.startsWith("wall:") || key.startsWith("obstacle:")) return "walls";
   if (key.startsWith("object:")) return "objects";
   if (key.startsWith("box:")) return "stations";
+  if (key.startsWith("robot:")) return "view";
   return "frame";
 }
+
+const KIND_PREFIXES: Partial<Record<EditKind, string[]>> = {
+  areas: ["area:"],
+  walls: ["wall:", "obstacle:"],
+  objects: ["object:"],
+};
 
 const OBJECT_TOOLS: Partial<Record<Tool, ObjectKind>> = {
   charger: "charger",
@@ -51,20 +77,38 @@ const OBJECT_TOOLS: Partial<Record<Tool, ObjectKind>> = {
   camera: "camera",
 };
 
-const OBJECT_GLYPH: Record<ObjectKind, string> = { charger: "⚡", dock: "D", landmark: "◆", camera: "◉" };
+const OBJECT_ICON: Record<ObjectKind, "charger" | "dock" | "landmark" | "camera"> = {
+  charger: "charger",
+  dock: "dock",
+  landmark: "landmark",
+  camera: "camera",
+};
 
 type Drag =
   | { type: "pan"; from: Point; cam: Camera; moved: boolean }
-  | { type: "move"; key: string; from: Point; moved: boolean }
+  | { type: "move"; keys: string[]; from: Point; moved: boolean }
   | { type: "resize"; key: string; handle: Handle }
   | { type: "area"; from: Point; to: Point }
+  | { type: "marquee"; from: Point; to: Point; base: string[] }
   | { type: "measure"; from: Point; to: Point };
+
+/** What an overlay drawn on the plan needs: frame mm to the box's pixels. */
+export interface PlanPaint {
+  px: (p: Point) => Point;
+  pxLen: (mm: number) => number;
+  /** One screen pixel, in the box's own units at this zoom. */
+  chrome: number;
+  /** A label's size factor: `chrome` times the label scale. */
+  label: number;
+}
 
 interface PlanCanvasProps {
   doc: Doc;
   kind: EditKind;
   tool: Tool;
-  selected: string | null;
+  selected: string[];
+  /** The area edge or corner arrows move, if one is picked. */
+  edge: { key: string; handle: Handle } | null;
   /** False on a page that may not write: everything selects, nothing moves. */
   editable: boolean;
   boxes: { index: number; rect: Rect }[];
@@ -73,14 +117,37 @@ interface PlanCanvasProps {
   robots: UnifiedBot[];
   /** Labels on the plan scaled up, for a projector. */
   labelScale?: number;
-  onSelect: (key: string | null) => void;
+  /** Drawn under the areas, e.g. who gives the fix. */
+  underlay?: (paint: PlanPaint) => React.ReactNode;
+  /** Drawn over everything, e.g. suggested spins. */
+  overlay?: (paint: PlanPaint) => React.ReactNode;
+  /** A floating card the page shows over the plan, e.g. a legend. */
+  children?: React.ReactNode;
+  onSelect: (keys: string[]) => void;
+  onEdge: (edge: { key: string; handle: Handle } | null) => void;
   onEdit: (doc: Doc) => void;
   onCursor?: (mm: Point | null) => void;
+  /** What the last drag snapped to, for the status bar. */
+  onSnap?: (to: string) => void;
+  /** A click with the point inspector, or null when it leaves. */
+  onProbe?: (mm: Point | null, at: Point | null) => void;
   /** A one-shot tool finished; back to Select. */
   onToolDone: () => void;
+  onShortcuts?: () => void;
+  /** Bumped by the page to fit the floor again. */
+  fitSignal?: number;
 }
 
 const MIN_AREA_MM = 20;
+const SNAP_REACH_PX = 8;
+
+/** The scale bar's length: the longest round length under `maxPx` on screen. */
+export function scaleBar(perMm: number, maxPx = 130): { mm: number; px: number } {
+  const ladder = [10, 20, 50, 100, 200, 250, 500, 1000, 2000, 5000];
+  let mm = ladder[0];
+  for (const c of ladder) if (c * perMm <= maxPx) mm = c;
+  return { mm, px: mm * perMm };
+}
 
 export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
   const { doc, kind, tool, selected, editable } = props;
@@ -103,6 +170,11 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
   const chrome = 1 / cam.scale;
   const label = (props.labelScale ?? 1) * chrome;
   const shown = preview ?? doc;
+  const sel = (key: string) => selected.includes(key);
+
+  useEffect(() => {
+    if (props.fitSignal) setCam(FRAME_CAMERA);
+  }, [props.fitSignal]);
 
   useLayoutEffect(() => {
     const el = wrapRef.current;
@@ -119,13 +191,16 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
     const r = wrapRef.current?.getBoundingClientRect();
     return [e.clientX - (r?.left ?? 0), e.clientY - (r?.top ?? 0)];
   };
-  const mmAt = (e: { clientX: number; clientY: number; altKey?: boolean }): Point => {
-    const [x, y] = canvasToMm(local(e), cam, viewport, geom);
-    const on = !e.altKey;
-    return [snap(x, on), snap(y, on)];
+  const rawMm = (e: { clientX: number; clientY: number }): Point => canvasToMm(local(e), cam, viewport, geom);
+  const reach = perMm > 0 ? SNAP_REACH_PX / perMm : 0;
+  const snapped = (e: { clientX: number; clientY: number; altKey?: boolean }, skip: string[] = []) => {
+    const s = snapPoint(rawMm(e), snapTargets(doc, skip), reach, !e.altKey);
+    return s;
   };
+  const mmAt = (e: { clientX: number; clientY: number; altKey?: boolean }, skip: string[] = []): Point => snapped(e, skip).point;
   const px = (p: Point) => toBox(p, viewport, geom);
   const pxLen = (mm: number) => (mm / viewport.w) * geom.boxW;
+  const paint: PlanPaint = { px, pxLen, chrome, label };
 
   // Ctrl or Cmd with the wheel zooms about the pointer; the wheel alone pans
   const wheelRef = useRef<(e: WheelEvent) => void>(() => {});
@@ -153,12 +228,12 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
       const key = freshKey(doc, k);
       const entry = { key, name: null, points: poly, comment: null, was: null };
       props.onEdit(k === "wall" ? { ...doc, walls: [...doc.walls, entry] } : { ...doc, obstacles: [...doc.obstacles, entry] });
-      props.onSelect(key);
+      props.onSelect([key]);
     }
     setPoly([]);
   }, [poly, tool, doc, props]);
 
-  // Enter ends a wall or obstacle; Esc drops it and never commits it
+  // Enter ends a wall or obstacle; Esc drops a drawing and never commits it
   useEffect(() => {
     if (poly.length === 0 && !drag) return;
     const onKey = (e: KeyboardEvent) => {
@@ -180,35 +255,56 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
     const name = freshName(`${k}-1`, doc.objects.map((o) => o.name));
     const obj: DocObject = { key, name, kind: k, x: at[0], y: at[1], heading_deg: 0, comment: null, was: null };
     props.onEdit({ ...doc, objects: [...doc.objects, obj] });
-    props.onSelect(key);
+    props.onSelect([key]);
     props.onToolDone();
+  };
+
+  const capture = (e: React.PointerEvent) => {
+    try {
+      wrapRef.current?.setPointerCapture?.(e.pointerId);
+    } catch {
+      // a synthetic pointer has nothing to capture
+    }
   };
 
   const onFloorDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
-    wrapRef.current?.setPointerCapture?.(e.pointerId);
+    capture(e);
     const at = mmAt(e);
     if (editable && tool === "area") return setDrag({ type: "area", from: at, to: at });
     if (tool === "measure") return setDrag({ type: "measure", from: at, to: at });
+    if (tool === "probe") return props.onProbe?.(rawMm(e), local(e));
     if (editable && (tool === "wall" || tool === "obstacle")) return setPoly((p) => [...p, at]);
     const objectKind = OBJECT_TOOLS[tool];
     if (editable && objectKind) return placeObject(at, objectKind);
+    if (e.shiftKey && tool === "select") {
+      const p = rawMm(e);
+      return setDrag({ type: "marquee", from: p, to: p, base: selected });
+    }
     setDrag({ type: "pan", from: local(e), cam, moved: false });
   };
 
   const onEntityDown = (e: React.PointerEvent, key: string) => {
     if (e.button !== 0 || tool !== "select") return;
     e.stopPropagation();
-    wrapRef.current?.setPointerCapture?.(e.pointerId);
-    props.onSelect(key);
+    capture(e);
+    props.onEdge(null);
+    if (e.shiftKey) {
+      props.onSelect(sel(key) ? selected.filter((k) => k !== key) : [...selected.filter((k) => kindOfKey(k) === kindOfKey(key)), key]);
+      return;
+    }
+    const keys = sel(key) ? selected : [key];
+    if (!sel(key)) props.onSelect([key]);
     const own = kindOfKey(key) === kind;
-    if (editable && own && !key.startsWith("box:")) setDrag({ type: "move", key, from: mmAt(e), moved: false });
+    const movable = keys.filter((k) => !k.startsWith("box:") && !k.startsWith("robot:"));
+    if (editable && own && movable.length) setDrag({ type: "move", keys: movable, from: mmAt(e, movable), moved: false });
   };
 
   const onHandleDown = (e: React.PointerEvent, key: string, handle: Handle) => {
     if (e.button !== 0) return;
     e.stopPropagation();
-    wrapRef.current?.setPointerCapture?.(e.pointerId);
+    capture(e);
+    props.onEdge({ key, handle });
     setDrag({ type: "resize", key, handle });
   };
 
@@ -226,38 +322,55 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
         setCam(clampCam({ ...drag.cam, tx: drag.cam.tx + dx, ty: drag.cam.ty + dy }, geom));
       }
     } else if (drag.type === "move") {
-      const dx = at[0] - drag.from[0];
-      const dy = at[1] - drag.from[1];
+      const s = snapped(e, drag.keys);
+      const dx = s.point[0] - drag.from[0];
+      const dy = s.point[1] - drag.from[1];
       if (dx || dy || drag.moved) {
         setDrag({ ...drag, moved: true });
-        setPreview(moved(doc, drag.key, dx, dy));
+        setPreview(movedAll(doc, drag.keys, dx, dy));
+        props.onSnap?.(s.to);
       }
     } else if (drag.type === "resize") {
-      setPreview({ ...doc, areas: doc.areas.map((a) => (a.key === drag.key ? resized(a, drag.handle, at) : a)) });
+      const s = snapped(e, [drag.key]);
+      props.onSnap?.(s.to);
+      setPreview({ ...doc, areas: doc.areas.map((a) => (a.key === drag.key ? resized(a, drag.handle, s.point) : a)) });
+    } else if (drag.type === "marquee") {
+      setDrag({ ...drag, to: rawMm(e) });
     } else {
-      setDrag({ ...drag, to: at });
+      const s = snapped(e);
+      props.onSnap?.(s.to);
+      setDrag({ ...drag, to: s.point });
     }
   };
 
   const onUp = () => {
-    if (drag?.type === "pan" && !drag.moved && tool === "select") props.onSelect(null);
+    if (drag?.type === "pan" && !drag.moved && tool === "select") {
+      props.onSelect([]);
+      props.onEdge(null);
+    }
     if (drag?.type === "area") {
       const r = spanned(drag.from, drag.to);
       if (r.w >= MIN_AREA_MM && r.h >= MIN_AREA_MM) {
         const key = freshKey(doc, "area");
         const name = freshName("area", doc.areas.map((a) => a.name));
         props.onEdit({ ...doc, areas: [...doc.areas, { key, name, ...r, role: null, comment: null, was: null }] });
-        props.onSelect(key);
+        props.onSelect([key]);
         props.onToolDone();
       }
+    }
+    if (drag?.type === "marquee") {
+      const r = spanned(drag.from, drag.to);
+      const prefixes = KIND_PREFIXES[kind] ?? ["area:", "wall:", "obstacle:", "object:"];
+      const inside = keysWithin(doc, [r.x, r.y, r.x + r.w, r.y + r.h], prefixes);
+      props.onSelect([...new Set([...drag.base, ...inside])]);
     }
     if (preview) props.onEdit(preview);
     setPreview(null);
     setDrag(null);
   };
 
-  const zoomBy = (presses: number) =>
-    setCam((c) => zoomAbout(c, steppedScale(c.scale, presses, maxScale), viewCentre(geom), geom));
+  const zoomTo = (scale: number) => setCam((c) => zoomAbout(c, scale, viewCentre(geom), geom));
+  const zoomBy = (presses: number) => zoomTo(steppedScale(cam.scale, presses, maxScale));
 
   // --- drawing ---------------------------------------------------------
 
@@ -275,8 +388,27 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
       gridLines.push(<line key={`gy${y}`} x1={fx} y1={gy} x2={fx + fw} y2={gy} stroke="var(--grid)" strokeWidth={chrome} />);
     }
   }
+  // Ruler labels every half metre (or metre on a large floor), outside the floor
+  const rulerStep = extent[0] > 3000 || extent[1] > 3000 ? 1000 : 500;
+  const ruler: React.ReactNode[] = [];
+  const rl = (mm: number) => (mm === 0 ? "0 m" : `${mm / 1000}${mm % 1000 === 0 ? " m" : ""}`);
+  for (let x = 0; x <= extent[0]; x += rulerStep) {
+    const [rx] = px([x, 0]);
+    ruler.push(
+      <text key={`rx${x}`} className="tl" x={rx + (x === 0 ? 10 : 3) * chrome} y={fy - 7 * chrome} fontSize={9.5 * label}>
+        {rl(x)}
+      </text>,
+    );
+  }
+  for (let y = rulerStep; y <= extent[1]; y += rulerStep) {
+    const [, ry] = px([0, y]);
+    ruler.push(
+      <text key={`ry${y}`} className="tl" x={fx - 8 * chrome} y={ry + 3 * chrome} fontSize={9.5 * label} textAnchor="end">
+        {rl(y)}
+      </text>,
+    );
+  }
 
-  const sel = (key: string) => key === selected;
   const interactive = tool === "select";
   const outlines = coincident([
     { label: "floor", rect: [0, 0, extent[0], extent[1]] },
@@ -288,8 +420,9 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
     const [x, y] = px([a.x, a.y]);
     const colour = areaColor({ x: a.x, y: a.y, w: a.w, h: a.h, name: a.name, role: a.role ?? undefined }, shown.areas.map((b) => ({ ...b, role: b.role ?? undefined })));
     const on = sel(a.key);
+    const dim = kind !== "view" && kind !== "areas" && !on;
     return (
-      <g key={a.key} data-testid={`area-${a.name}`}>
+      <g key={a.key} data-testid={`area-${a.name}`} opacity={dim ? 0.55 : 1}>
         <rect
           x={x}
           y={y}
@@ -302,9 +435,9 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
           style={{ cursor: interactive ? (kind === "areas" ? "move" : "pointer") : undefined, pointerEvents: interactive ? "all" : "none" }}
           onPointerDown={(e) => onEntityDown(e, a.key)}
         />
-        <text x={x + 10 * chrome} y={y + 15 * label} fontSize={11 * label} fill={colour} style={{ pointerEvents: "none" }}>
+        <text className="halo" x={x + 8 * chrome} y={y + 14 * label} fontSize={11 * label} fill={colour} strokeWidth={3 * chrome} style={{ pointerEvents: "none" }}>
           {a.name}
-          {a.role ? ` · ${a.role}` : ""}
+          {a.role && a.role !== a.name ? ` · ${a.role}` : ""}
         </text>
       </g>
     );
@@ -317,6 +450,8 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
       points: pts,
       stroke: on ? "var(--accent)" : "var(--text)",
       strokeWidth: (on ? 3.5 : 2.5) * chrome,
+      strokeLinecap: "round" as const,
+      strokeLinejoin: "round" as const,
       fill: closed ? "color-mix(in srgb, var(--text) 18%, transparent)" : "none",
       style: { cursor: interactive ? "pointer" : undefined, pointerEvents: (interactive ? "all" : "none") as React.CSSProperties["pointerEvents"] },
       onPointerDown: (e: React.PointerEvent) => onEntityDown(e, b.key),
@@ -326,8 +461,8 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
 
   const objectNodes = shown.objects.map((o) => {
     const [x, y] = px([o.x, o.y]);
-    const s = 16 * chrome;
-    const rad = ((o.heading_deg ?? 0) * Math.PI) / 180;
+    const s = 22 * chrome;
+    const [hx, hy] = facing(o.heading_deg ?? 0);
     const on = sel(o.key);
     return (
       <g
@@ -336,12 +471,21 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
         style={{ cursor: interactive ? "pointer" : undefined, pointerEvents: interactive ? "all" : "none" }}
         onPointerDown={(e) => onEntityDown(e, o.key)}
       >
-        <rect x={x - s / 2} y={y - s / 2} width={s} height={s} rx={3 * chrome} fill="var(--elevated)" stroke={on ? "var(--accent)" : "var(--muted)"} strokeWidth={(on ? 2 : 1) * chrome} />
-        <line x1={x} y1={y} x2={x + Math.sin(rad) * s} y2={y + Math.cos(rad) * s} stroke="var(--muted)" strokeWidth={1.5 * chrome} />
-        <text x={x} y={y + 4 * chrome} fontSize={10 * chrome} textAnchor="middle" fill="var(--text)" style={{ pointerEvents: "none" }}>
-          {OBJECT_GLYPH[o.kind]}
-        </text>
-        <text x={x + s * 0.7} y={y - s * 0.6} fontSize={10 * label} fill="var(--muted)" style={{ pointerEvents: "none" }}>
+        <line x1={x} y1={y} x2={x + hx * s} y2={y + hy * s} stroke={on ? "var(--accent)" : "var(--muted)"} strokeWidth={1.5 * chrome} />
+        <rect
+          x={x - s / 2}
+          y={y - s / 2}
+          width={s}
+          height={s}
+          rx={5 * chrome}
+          fill="var(--elevated)"
+          stroke={on ? "var(--accent)" : "var(--muted)"}
+          strokeWidth={(on ? 2 : 1) * chrome}
+        />
+        <g transform={`translate(${x - 7 * chrome} ${y - 7 * chrome}) scale(${(14 * chrome) / 24})`} color="var(--text)" style={{ pointerEvents: "none" }}>
+          <Icon name={OBJECT_ICON[o.kind]} size={24} className="" />
+        </g>
+        <text className="tl halo" x={x} y={y + s / 2 + 12 * label} fontSize={10 * label} textAnchor="middle" fill="var(--muted)" strokeWidth={3 * chrome} style={{ pointerEvents: "none" }}>
           {o.name}
         </text>
       </g>
@@ -355,8 +499,9 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
         const [x1, y1] = px([b.rect[2], b.rect[3]]);
         const on = sel(`box:${b.index}`);
         const hue = `var(--st-${b.index % 2})`;
+        const strong = kind === "stations" || on;
         return (
-          <g key={`box-${b.index}`} data-testid={`box-${b.index}`}>
+          <g key={`box-${b.index}`} data-testid={`box-${b.index}`} opacity={strong ? 1 : 0.6}>
             <rect
               x={x0 + inset}
               y={y0 + inset}
@@ -370,8 +515,8 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
               onPointerDown={(e) => onEntityDown(e, `box:${b.index}`)}
             />
             {kind === "stations" && (
-              <text x={x0 + inset + 4 * chrome} y={y1 - inset - 5 * chrome} fontSize={11 * label} fill={hue}>
-                S{b.index}
+              <text className="halo" x={x0 + inset + 5 * chrome} y={y1 - inset - 6 * chrome} fontSize={11 * label} fill={hue} fontWeight={600} strokeWidth={3 * chrome}>
+                S{b.index} box
               </text>
             )}
           </g>
@@ -380,27 +525,43 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
     : null;
 
   const circleNodes = props.layers.circles
-    ? props.circles.map((c, i) => {
+    ? spinRings(props.circles).map((c, i) => {
         const [x, y] = px([c.x, c.y]);
         const r = pxLen(c.radius_mm);
-        const hue = `var(--st-${c.station % 2})`;
         return (
-          <g key={`c${i}`} style={{ pointerEvents: "none" }}>
-            <circle cx={x} cy={y} r={r} fill="none" stroke={hue} strokeOpacity={0.75} strokeWidth={chrome} />
-            <circle cx={x} cy={y} r={1.5 * chrome} fill={hue} />
+          <g key={`c${i}`} data-testid="spin-ring" style={{ pointerEvents: "none" }} opacity={kind === "stations" || kind === "view" ? 1 : 0.5}>
+            {c.stations.map((st, k) => {
+              const dash = ringDash(k, c.stations.length, 2 * Math.PI * r);
+              return (
+                <circle
+                  key={st}
+                  cx={x}
+                  cy={y}
+                  r={r}
+                  fill="none"
+                  stroke={`var(--st-${st % 2})`}
+                  strokeOpacity={0.85}
+                  strokeWidth={chrome}
+                  strokeDasharray={dash.dasharray}
+                  strokeDashoffset={dash.offset}
+                />
+              );
+            })}
+            <circle cx={x} cy={y} r={1.5 * chrome} fill="var(--muted)" />
           </g>
         );
       })
     : null;
 
-  const selectedArea = kind === "areas" && editable ? shown.areas.find((a) => a.key === selected) : undefined;
+  const selectedAreas = kind === "areas" && editable && tool === "select" ? shown.areas.filter((a) => sel(a.key)) : [];
   const handles =
-    selectedArea && tool === "select"
-      ? (["nw", "ne", "sw", "se"] as Handle[]).map((h) => {
-          const x = h.endsWith("w") ? selectedArea.x : selectedArea.x + selectedArea.w;
-          const y = h.startsWith("n") ? selectedArea.y : selectedArea.y + selectedArea.h;
-          const [hx, hy] = px([x, y]);
+    selectedAreas.length === 1
+      ? HANDLES.map((h) => {
+          const a = selectedAreas[0];
+          const [hx, hy] = px(handleAt(a, h));
           const s = 9 * chrome;
+          const picked = props.edge?.key === a.key && props.edge.handle === h;
+          const cursor = h === "n" || h === "s" ? "ns-resize" : h === "e" || h === "w" ? "ew-resize" : h === "nw" || h === "se" ? "nwse-resize" : "nesw-resize";
           return (
             <rect
               key={h}
@@ -409,27 +570,63 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
               y={hy - s / 2}
               width={s}
               height={s}
-              fill="var(--surface)"
+              rx={1.5 * chrome}
+              fill={picked ? "var(--accent)" : "var(--surface)"}
               stroke="var(--accent)"
               strokeWidth={1.5 * chrome}
-              style={{ cursor: h === "nw" || h === "se" ? "nwse-resize" : "nesw-resize" }}
-              onPointerDown={(e) => onHandleDown(e, selectedArea.key, h)}
-            />
+              style={{ cursor }}
+              onPointerDown={(e) => onHandleDown(e, a.key, h)}
+            >
+              <title>Drag to resize; click, then use the arrow keys to nudge this edge</title>
+            </rect>
           );
         })
       : null;
+  const sizePill =
+    selectedAreas.length === 1 && (drag?.type === "resize" || drag?.type === "move")
+      ? (() => {
+          const a = selectedAreas[0];
+          const [x, y] = px([a.x + a.w / 2, a.y + a.h]);
+          const t = `${Math.round(a.w)} × ${Math.round(a.h)}`;
+          return (
+            <g style={{ pointerEvents: "none" }}>
+              <rect x={x - 34 * chrome} y={y + 7 * chrome} width={68 * chrome} height={17 * chrome} rx={4 * chrome} fill="var(--accent)" />
+              <text x={x} y={y + 19.5 * chrome} fontSize={10.5 * chrome} textAnchor="middle" fill="#fff" fontFamily="var(--font-mono)" fontWeight={600}>
+                {t}
+              </text>
+            </g>
+          );
+        })()
+      : null;
 
-  const draft = (() => {
+  const drawing = (() => {
     if (drag?.type === "area") {
       const r = spanned(drag.from, drag.to);
       const [x, y] = px([r.x, r.y]);
       return (
         <g>
           <rect x={x} y={y} width={pxLen(r.w)} height={pxLen(r.h)} fill="color-mix(in srgb, var(--accent) 10%, transparent)" stroke="var(--accent)" strokeWidth={1.5 * chrome} />
-          <text x={x + pxLen(r.w) / 2} y={y - 6 * chrome} fontSize={11 * label} textAnchor="middle" fill="var(--text)">
+          <text className="halo" x={x + pxLen(r.w) / 2} y={y - 6 * chrome} fontSize={11 * label} textAnchor="middle" fill="var(--text)" fontFamily="var(--font-mono)" strokeWidth={3 * chrome}>
             {r.w} × {r.h} mm
           </text>
         </g>
+      );
+    }
+    if (drag?.type === "marquee") {
+      const r = spanned(drag.from, drag.to);
+      const [x, y] = px([r.x, r.y]);
+      return (
+        <rect
+          data-testid="marquee"
+          x={x}
+          y={y}
+          width={pxLen(r.w)}
+          height={pxLen(r.h)}
+          fill="color-mix(in srgb, var(--accent) 7%, transparent)"
+          stroke="var(--accent)"
+          strokeDasharray={`${4 * chrome} ${3 * chrome}`}
+          strokeWidth={chrome}
+        />
       );
     }
     if (drag?.type === "measure") {
@@ -439,8 +636,8 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
       return (
         <g data-testid="measure">
           <line x1={x0} y1={y0} x2={x1} y2={y1} stroke="var(--text)" strokeWidth={1.5 * chrome} strokeDasharray={`${4 * chrome} ${3 * chrome}`} />
-          <text x={(x0 + x1) / 2 + 6 * chrome} y={(y0 + y1) / 2 - 6 * chrome} fontSize={12 * label} fill="var(--text)">
-            {Math.round(d)} mm
+          <text className="halo" x={(x0 + x1) / 2 + 6 * chrome} y={(y0 + y1) / 2 - 6 * chrome} fontSize={12 * label} fill="var(--text)" fontFamily="var(--font-mono)" strokeWidth={3 * chrome}>
+            {Math.round(d)} mm · Δx {Math.round(drag.to[0] - drag.from[0])} · Δy {Math.round(drag.to[1] - drag.from[1])}
           </text>
         </g>
       );
@@ -452,21 +649,32 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
     return null;
   })();
 
-  // Zero and the axes, in the Frame kind
+  // Zero: a ringed point, and its axes in the Frame kind
   const [zx, zy] = px([0, 0]);
   const axis = 80 * chrome;
-  const frameNodes =
-    kind === "frame" ? (
-      <g data-testid="zero" style={{ pointerEvents: "none" }}>
-        <circle cx={zx} cy={zy} r={7 * chrome} fill="none" stroke="var(--text)" strokeWidth={1.5 * chrome} />
-        <line x1={zx} y1={zy} x2={zx + axis} y2={zy} stroke="var(--text)" strokeWidth={1.5 * chrome} />
-        <line x1={zx} y1={zy} x2={zx} y2={zy + axis} stroke="var(--text)" strokeWidth={1.5 * chrome} />
-        <text x={zx + axis + 4 * chrome} y={zy + 4 * chrome} fontSize={11 * label} fill="var(--text)">x</text>
-        <text x={zx - 3 * chrome} y={zy + axis + 12 * chrome} fontSize={11 * label} fill="var(--text)">y</text>
-      </g>
-    ) : (
-      <circle cx={zx} cy={zy} r={4 * chrome} fill="none" stroke="var(--muted)" strokeWidth={chrome} style={{ pointerEvents: "none" }} />
-    );
+  const frameNodes = (
+    <g data-testid={kind === "frame" ? "zero" : undefined} style={{ pointerEvents: "none" }}>
+      <circle cx={zx} cy={zy} r={6 * chrome} fill="var(--canvas)" stroke="var(--text)" strokeWidth={1.4 * chrome} />
+      <circle cx={zx} cy={zy} r={2 * chrome} fill="var(--text)" />
+      {kind === "frame" && (
+        <>
+          <line x1={zx + 6 * chrome} y1={zy} x2={zx + axis} y2={zy} stroke="var(--text)" strokeWidth={1.5 * chrome} />
+          <path d={`M${zx + axis},${zy} l${-7 * chrome},${-4 * chrome} v${8 * chrome}z`} fill="var(--text)" />
+          <line x1={zx} y1={zy + 6 * chrome} x2={zx} y2={zy + axis} stroke="var(--text)" strokeWidth={1.5 * chrome} />
+          <path d={`M${zx},${zy + axis} l${-4 * chrome},${-7 * chrome} h${8 * chrome}z`} fill="var(--text)" />
+          <text className="halo" x={zx + axis + 5 * chrome} y={zy + 4 * chrome} fontSize={11 * label} fill="var(--text)" strokeWidth={3 * chrome}>
+            x
+          </text>
+          <text className="halo" x={zx + 6 * chrome} y={zy + axis + 4 * chrome} fontSize={11 * label} fill="var(--text)" strokeWidth={3 * chrome}>
+            y
+          </text>
+          <text className="tl halo" x={zx + 10 * chrome} y={zy - 9 * chrome} fontSize={10 * label} strokeWidth={3 * chrome}>
+            zero (0, 0)
+          </text>
+        </>
+      )}
+    </g>
+  );
 
   // Robots, positioned as the console's animator places them
   const markers = useRef(new Map<string, HTMLElement>());
@@ -483,131 +691,157 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
       el.style.translate = `${x}px ${y}px`;
     }
   });
+  const onRobotDown = useCallback(
+    (e: React.PointerEvent, id: string) => {
+      if (e.button !== 0) return;
+      e.stopPropagation();
+      props.onSelect([`robot:${id}`]);
+    },
+    [props.onSelect],
+  );
+  const selectedRobot = selected.find((k) => k.startsWith("robot:"))?.slice(6);
 
   const cursor =
-    tool === "select" ? (drag?.type === "pan" && drag.moved ? "grabbing" : "default") : tool === "measure" ? "crosshair" : "copy";
+    tool === "select" ? (drag?.type === "pan" && drag.moved ? "grabbing" : "default") : tool === "measure" || tool === "probe" ? "crosshair" : "copy";
+  const bar = scaleBar(perMm);
+  const frac = zoomFraction(cam.scale, maxScale);
 
   return (
-    <div
-      ref={wrapRef}
-      data-testid="plan"
-      onPointerDown={onFloorDown}
-      onPointerMove={onMove}
-      onPointerUp={onUp}
-      onPointerLeave={() => props.onCursor?.(null)}
-      onDoubleClick={() => poly.length && finishPoly()}
-      style={{
-        position: "relative",
-        flex: 1,
-        minWidth: 0,
-        minHeight: 0,
-        overflow: "hidden",
-        background: "var(--canvas)",
-        cursor,
-        touchAction: "none",
-        userSelect: "none",
-      }}
-    >
+    <div style={{ position: "relative", flex: 1, minWidth: 0, minHeight: 0, display: "flex" }}>
       <div
+        ref={wrapRef}
+        data-testid="plan"
+        onPointerDown={onFloorDown}
+        onPointerMove={onMove}
+        onPointerUp={onUp}
+        onPointerLeave={() => {
+          props.onCursor?.(null);
+          setHover(null);
+        }}
+        onDoubleClick={() => poly.length && finishPoly()}
         style={{
-          position: "absolute",
-          inset: 0,
-          transform: `translate(${cam.tx}px, ${cam.ty}px) scale(${cam.scale})`,
-          transformOrigin: "50% 50%",
-          [MARKER_SCALE_VAR as string]: chrome,
+          position: "relative",
+          flex: 1,
+          minWidth: 0,
+          minHeight: 0,
+          overflow: "hidden",
+          background: "var(--canvas)",
+          cursor,
+          touchAction: "none",
+          userSelect: "none",
+          boxShadow: kind !== "view" ? "inset 0 0 0 1px color-mix(in srgb, var(--text) 10%, transparent)" : undefined,
         }}
       >
-        <div style={{ position: "absolute", left: "50%", top: "50%", width: geom.boxW, height: geom.boxH, transform: "translate(-50%, -50%)" }}>
-          <svg width={geom.boxW} height={geom.boxH} style={{ position: "absolute", inset: 0, overflow: "visible" }}>
-            <path
-              d={`M0,0H${geom.boxW}V${geom.boxH}H0Z M${fx},${fy}V${fy + fh}H${fx + fw}V${fy}Z`}
-              fill="var(--outside)"
-              fillRule="evenodd"
-              style={{ pointerEvents: "none" }}
-            />
-            <rect x={fx} y={fy} width={fw} height={fh} fill="var(--surface)" style={{ pointerEvents: "none" }} />
-            {gridLines}
-            <rect data-testid="floor" x={fx} y={fy} width={fw} height={fh} fill="none" stroke="var(--muted)" strokeWidth={chrome} style={{ pointerEvents: "none" }} />
-            {circleNodes}
-            {boxNodes}
-            {areaNodes}
-            {shown.walls.map((w) => barrier(w, false))}
-            {shown.obstacles.map((o) => barrier(o, true))}
-            {objectNodes}
-            {frameNodes}
-            {handles}
-            {draft}
-          </svg>
-          <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }} data-testid="robots">
-            {robots.map((b) => (
-              <BotMarker
-                key={b.id}
-                bot={b}
-                selected={false}
-                hovered={false}
-                solid={1}
-                perMm={perMm}
-                drawing={DEFAULT_ROBOT_DRAWING}
-                botCount={robots.length}
-                batteryBars={false}
-                colorMode={DEFAULT_BODY_COLOR_MODE}
-                attach={attach}
-                onPointerDown={() => {}}
-                onHover={setHoverBot}
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            transform: `translate(${cam.tx}px, ${cam.ty}px) scale(${cam.scale})`,
+            transformOrigin: "50% 50%",
+            [MARKER_SCALE_VAR as string]: chrome,
+          }}
+        >
+          <div style={{ position: "absolute", left: "50%", top: "50%", width: geom.boxW, height: geom.boxH, transform: "translate(-50%, -50%)" }}>
+            <svg width={geom.boxW} height={geom.boxH} style={{ position: "absolute", inset: 0, overflow: "visible" }}>
+              <path
+                d={`M${-geom.boxW * 4},${-geom.boxH * 4}H${geom.boxW * 5}V${geom.boxH * 5}H${-geom.boxW * 4}Z M${fx},${fy}V${fy + fh}H${fx + fw}V${fy}Z`}
+                fill="var(--outside)"
+                fillRule="evenodd"
+                style={{ pointerEvents: "none" }}
               />
-            ))}
+              {gridLines}
+              {ruler}
+              {props.underlay?.(paint)}
+              <rect data-testid="floor" x={fx} y={fy} width={fw} height={fh} fill="none" stroke="var(--muted)" strokeWidth={chrome} style={{ pointerEvents: "none" }} />
+              <text className="tl halo" x={fx + fw / 2} y={fy + fh + 16 * label} fontSize={10 * label} textAnchor="middle" strokeWidth={3 * chrome}>
+                floor {extent[0]} × {extent[1]} mm
+              </text>
+              {circleNodes}
+              {boxNodes}
+              {areaNodes}
+              {shown.walls.map((w) => barrier(w, false))}
+              {shown.obstacles.map((o) => barrier(o, true))}
+              {objectNodes}
+              {frameNodes}
+              {props.overlay?.(paint)}
+              {handles}
+              {sizePill}
+              {drawing}
+            </svg>
+            <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }} data-testid="robots">
+              {robots.map((b) => (
+                <div key={b.id} style={{ pointerEvents: tool === "select" ? "auto" : "none" }}>
+                  <BotMarker
+                    bot={b}
+                    selected={b.id === selectedRobot}
+                    hovered={false}
+                    solid={1}
+                    perMm={perMm}
+                    drawing={DEFAULT_ROBOT_DRAWING}
+                    botCount={robots.length}
+                    batteryBars={false}
+                    colorMode={DEFAULT_BODY_COLOR_MODE}
+                    attach={attach}
+                    onPointerDown={onRobotDown}
+                    onHover={setHoverBot}
+                  />
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
+      {props.children}
       {outlines.length > 0 && (
-        <div
-          data-testid="coincident-chip"
-          title="These are drawn once: their rectangles are the same"
-          style={{
-            position: "absolute",
-            left: 12,
-            bottom: 12,
-            maxWidth: "calc(100% - 140px)",
-            fontSize: 11,
-            padding: "4px 9px",
-            borderRadius: 7,
-            border: "1px solid var(--hairline)",
-            background: "var(--surface)",
-            color: "var(--muted)",
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-          }}
-        >
+        <div className="float chipc" data-testid="coincident-chip" title="These rectangles are the same, so they are drawn as one outline">
+          <Icon name="rect" size={13} />
           One rectangle: {outlines[0].join(" = ")}
         </div>
       )}
-      <div style={{ position: "absolute", right: 12, bottom: 12, display: "flex", gap: 4 }} onPointerDown={(e) => e.stopPropagation()}>
-        {[
-          ["−", () => zoomBy(-1), "Zoom out"],
-          ["+", () => zoomBy(1), "Zoom in"],
-          ["◎", () => setCam(FRAME_CAMERA), "Fit the floor"],
-        ].map(([text, act, title]) => (
-          <button
-            key={title as string}
-            type="button"
-            title={title as string}
-            aria-label={title as string}
-            onClick={act as () => void}
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: 7,
-              border: "1px solid var(--hairline)",
-              background: "var(--surface)",
-              color: "var(--text)",
-              cursor: "pointer",
-            }}
-          >
-            {text as string}
-          </button>
-        ))}
+      <div className="float zoom" onPointerDown={(e) => e.stopPropagation()}>
+        <button type="button" className="zb" title="Zoom out" aria-label="Zoom out" onClick={() => zoomBy(-1)}>
+          −
+        </button>
+        <div
+          className="track"
+          role="slider"
+          aria-label="Zoom"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(frac * 100)}
+          tabIndex={0}
+          style={{ cursor: "pointer" }}
+          onPointerDown={(e) => {
+            const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            zoomTo(scaleForFraction((e.clientX - r.left) / r.width, maxScale));
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowRight" || e.key === "ArrowUp") zoomBy(1);
+            else if (e.key === "ArrowLeft" || e.key === "ArrowDown") zoomBy(-1);
+            else return;
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+        >
+          <i style={{ width: `${frac * 100}%` }} />
+          <b style={{ left: `${frac * 100}%` }} />
+        </div>
+        <button type="button" className="zb" title="Zoom in" aria-label="Zoom in" onClick={() => zoomBy(1)}>
+          +
+        </button>
       </div>
+      <button type="button" className="float fitbtn" title="Fit the floor" aria-label="Fit the floor" onClick={() => setCam(FRAME_CAMERA)}>
+        <Icon name="fit" size={17} />
+      </button>
+      <div className="scale" data-testid="scale-bar" aria-hidden>
+        <i style={{ width: bar.px }} />
+        {bar.mm >= 1000 ? `${bar.mm / 1000} m` : `${bar.mm} mm`}
+      </div>
+      {props.onShortcuts && (
+        <button type="button" className="float shortbtn" onClick={props.onShortcuts} title="Every key of this page (?)">
+          <span className="k2">?</span> shortcuts
+        </button>
+      )}
     </div>
   );
 };
