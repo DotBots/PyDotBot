@@ -40,6 +40,8 @@
   --ok: var(--s-Running);
   --warn: var(--s-Programming);
   --err: var(--s-Stopping);
+  /* The floor outside a site's extent, shaded on the editor's plan. */
+  --outside: rgba(0, 0, 0, 0.24);
 
   --font-ui: "IBM Plex Sans", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
@@ -56,6 +58,7 @@
   --hairline: rgba(0, 0, 0, 0.07);
   --tyre: #5a6270;
   --footprint-casing: rgba(255, 255, 255, 0.9);
+  --outside: rgba(15, 23, 42, 0.05);
 }
 
 * {
