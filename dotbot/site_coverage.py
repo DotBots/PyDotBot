@@ -15,7 +15,7 @@ from collections.abc import Mapping, Sequence
 import numpy as np
 
 from dotbot.calibration import multi_station as ms
-from dotbot.calibration import station_geometry
+from dotbot.calibration import station_geometry, station_rule
 from dotbot.calibration.lighthouse2 import Calibration
 from dotbot.site import Site
 
@@ -37,6 +37,31 @@ def _model(calibration: Calibration) -> ms.CoverageModel | None:
 
 def _flat(grid: np.ndarray, digits: int = 3) -> list[float | None]:
     return [None if not math.isfinite(v) else round(float(v), digits) for v in grid.ravel()]
+
+
+def _per_station(model: ms.CoverageModel, rects, headline: ms.ErrorMap) -> dict:
+    """Each station's worst predicted error on the headline's cells, where it
+    may give the fix (alone, or as a candidate where the boxes do not decide)."""
+    rows, cols = headline.sigma_mm.shape
+    out = {}
+    for s in model.stations:
+        if s not in rects:
+            continue
+        own = model.error_map({s: rects[s]}, headline.cell_mm, (
+            headline.origin_mm[0],
+            headline.origin_mm[1],
+            headline.origin_mm[0] + cols * headline.cell_mm,
+            headline.origin_mm[1] + rows * headline.cell_mm,
+        )).sigma_mm
+        worst = None
+        for row in range(rows):
+            for col in range(cols):
+                x, y = headline.centre(row, col)
+                v = own[row, col]
+                if math.isfinite(v) and s in station_rule.candidates(rects, x, y):
+                    worst = v if worst is None else max(worst, v)
+        out[str(s)] = None if worst is None else round(float(worst), 3)
+    return out
 
 
 def coverage(
@@ -87,6 +112,7 @@ def coverage(
         "cells": int(np.sum(np.isfinite(headline.sigma_mm))),
         "cells_over_limit": int(np.sum(headline.sigma_mm > limit)),
         "cell_mm": headline.cell_mm,
+        "per_station": _per_station(model, rects, headline),
     }
     xs = [r[0] for r in rects.values()] + [r[2] for r in rects.values()]
     ys = [r[1] for r in rects.values()] + [r[3] for r in rects.values()]
