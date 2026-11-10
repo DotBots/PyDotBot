@@ -277,6 +277,8 @@ class ControllerSettings:
     # The calibration a restart serves: the config's, without the command line
     lh2_calibration_next: Optional[str] = None
     lh2_calibration_next_source: str = ""
+    # The file a "serve at the next start" from the site editor writes to
+    lh2_calibration_persist_path: Optional[str] = None
     lh2_calibration_max_age_days: int = LH2_CALIBRATION_MAX_AGE_DAYS
     stale_after_s: float = STALE_AFTER_S
     lost_after_s: float = LOST_AFTER_S
@@ -411,6 +413,12 @@ class Controller:
         # Released held batches the robot has not advertised yet, by batch id
         self.released_batches: Dict[str, int] = {}
         self.site = settings.site or Site()
+        # What this run started serving, and from where, for the editor
+        self._started_with = (
+            {"spec": settings.lh2_calibration, "source": settings.lh2_calibration_source}
+            if settings.lh2_calibration
+            else None
+        )
         self.calibration = None
         self.lh2_calibration = []
         if settings.lh2_calibration:
@@ -487,11 +495,55 @@ class Controller:
             "mode": "controller",
             "served": served,
             "next_start": next_start,
+            "started_with": getattr(self, "_started_with", None),
+            "persist_path": settings.lh2_calibration_persist_path,
             "controller": {
                 "version": pydotbot_version(),
                 "port": settings.controller_http_port,
             },
         }
+
+    def serve(self, spec: str, persist: bool = False) -> dict:
+        """Serve the calibration `spec` names from now on, and with `persist`
+        also at the next start; ValueError when it does not resolve or is not
+        in the site's frame. Robots keep what they hold until a push."""
+        from dotbot.calibration.lighthouse2 import check_calibration_site
+
+        calibration = load_calibration(spec, site=self.site)
+        check_calibration_site(calibration.site, self.site, calibration.path)
+        before = self.calibration.id[:8] if self.calibration is not None else None
+        settings = self.settings
+        if persist:
+            if not settings.lh2_calibration_persist_path:
+                raise ValueError("this controller has no config file to write to")
+            from pathlib import Path
+
+            from dotbot.cli._config_write import set_value
+
+            set_value(
+                Path(settings.lh2_calibration_persist_path),
+                ("run", "controller", "lh2_calibration"),
+                calibration.id8,
+            )
+            settings.lh2_calibration_next = calibration.id8
+            settings.lh2_calibration_next_source = settings.lh2_calibration_persist_path
+        self.calibration = calibration
+        self.lh2_calibration = calibration.stations
+        self._solved_stations = {st.index for st in calibration.stations}
+        self._held_warned.clear()
+        settings.lh2_calibration = calibration.id8
+        settings.lh2_calibration_source = "the site editor" + (
+            "" if persist else ", for this run"
+        )
+        self.logger.info(
+            "Calibration served from the site editor",
+            calibration_id=calibration.id,
+            before=before,
+            persist=persist,
+        )
+        model = DotBotSiteModel.from_site(self.site, calibration)
+        self.set_event("site", "site", model.model_dump(mode="json"))
+        return self.editor_context()
 
     def note_held_calibrations(self, held: Mapping[str, str]) -> None:
         """Record the calibration ids robots report holding, by address."""
