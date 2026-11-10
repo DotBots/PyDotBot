@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 import { parseDeg, parseMm, showMm, type Parsed } from "./units";
 
@@ -9,6 +9,14 @@ function useEditable<T>(value: T, format: (v: T) => string) {
   const [text, setText] = useState(format(value));
   useEffect(() => setText(format(value)), [value]);
   return [text, setText] as const;
+}
+
+/** Runs `apply` when the field goes away with a typed value not yet applied:
+ * a click elsewhere can replace the inspector before the field's blur. */
+function useApplyOnUnmount(apply: () => void) {
+  const ref = useRef(apply);
+  ref.current = apply;
+  useEffect(() => () => ref.current(), []);
 }
 
 export const TextField: React.FC<{
@@ -28,6 +36,7 @@ export const TextField: React.FC<{
     if (text === value || problem) return;
     onApply(text);
   };
+  useApplyOnUnmount(apply);
   return (
     <div title={hint}>
       <span className="lbl">{label}</span>
@@ -86,6 +95,12 @@ export const NumField: React.FC<{
     if (p.value !== value) onApply(p.value);
     setText(show(p.value));
   };
+  useApplyOnUnmount(() => {
+    if (value !== null && text !== show(value)) {
+      const p = parse(text);
+      if ("value" in p && (min === undefined || p.value >= min) && (max === undefined || p.value <= max) && p.value !== value) onApply(p.value);
+    }
+  });
   return (
     <div style={{ minWidth: 0 }} title={hint}>
       {!prefix && <span className="lbl">{label}</span>}
@@ -153,6 +168,7 @@ export const TextArea: React.FC<{
   placeholder?: string;
 }> = ({ label, value, onApply, disabled, placeholder }) => {
   const [text, setText] = useEditable(value, (v) => v);
+  useApplyOnUnmount(() => text !== value && onApply(text));
   return (
     <div>
       <span className="lbl">{label}</span>
