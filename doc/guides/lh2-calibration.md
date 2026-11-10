@@ -111,6 +111,13 @@ stations both see **ties** them into one frame. This is experimental; the
 [`swarm` reference](../cli/swarm.md#spin-calibration-experimental) has every
 flag.
 
+The console runs the same spin without a terminal: its Localization tab spins
+the selected robots (or every robot on the `calibrate-spin` app), shows each
+robot's reads arriving and what the solve kept and left out, and hands the
+result to the [site editor](site-editor.md#a-new-room) to place in the room.
+It does not flash: robots on another app are named, and the spin refuses
+until they run `calibrate-spin`.
+
 1. **Collect.** Spread the robots about 250 mm apart over the area, where the
    stations overlap, and spin them:
 
@@ -206,10 +213,16 @@ and when robots hold calibrations for stations it did not solve. A moved
 station keeps its channel, so age is the only reminder that one might have
 moved.
 
+The [site editor](site-editor.md) shows the same on its plan, with which
+station gives each robot its fix and the predicted error there, and its
+**Check on a mark** compares a robot's position with a taped mark and keeps
+the result.
+
 A calibration belongs to the site it was made in. The controller refuses one
-from another site, and one whose recorded anchor differs from the site's. To
+from another site, and one recorded in another frame than the site's. To
 move a calibration into another site's frame without capturing again, use
-`dotbot swarm calibrate-lh2 reframe`.
+`dotbot swarm calibrate-lh2 reframe`, or **Place in this room** in the site
+editor for a spin in its own frame.
 
 ## Upgrading from schema 3
 

@@ -261,8 +261,10 @@ dev-corner = { x = 4000, y = 300,  w = 700,  h = 700, role = "corner" }
 
 | Key | Meaning |
 |---|---|
-| `anchor` | Prose saying where zero is on the real floor. No code reads it, but a calibration records it, and one made against another anchor is refused. |
+| `anchor` | Prose saying where zero is on the real floor. No code reads it; it is how someone else finds zero in the room. |
+| `frame` | Optional: the frame's id, 8 hex digits. A calibration records the id of the frame it was made in, and one made in another frame is refused. Absent, the id is derived from the site's name and `anchor`; the site editor and `site turn` write it, when the note changes (so calibrations keep matching) or when the frame moves (so they stop). |
 | `extent_mm` | `[width, height]` of the floor. |
+| `lh2_error_limit_mm` | Optional: the predicted LH2 error a calibration should stay under on this floor, in mm (default 2). The site editor judges its error map and its "ready to run" verdict against it. |
 | `spin_radius_mm` | Optional: the radius of a spinning robot's photodiode circle measured on this floor, in mm (1 to 200). `calibrate-lh2 collect --spin` uses it unless `--spin-radius` is given; `site init` writes it. |
 | `stations.<serial>` | Optional: the site's LH2 base stations, each serial (8 upper-case hex digits) with its channel, 1 to 16, e.g. `[stations]` `"1A2B3C4D" = 3`. Two stations on one channel are refused. |
 | `areas.<name>` | A rectangle `{ x, y, w, h }` in mm, with an optional `role`. |
@@ -356,9 +358,14 @@ LH2 calibration files are schema 4; an older one is refused, and the
 do instead.
 
 At load, the controller refuses an LH2 or camera calibration made in another
-site, and one whose recorded anchor differs from the site's when both record
-one. Select the calibration's site with `--site`, or pick a calibration of the
-active site.
+site, and one recorded in another frame than the site's. Select the
+calibration's site with `--site`, or pick a calibration of the active site.
+
+Beside a site's calibrations in `~/.dotbot/calibrations/<site>/` are
+`archived/`, the files the site editor archived (out of its lists, still
+found by their full id or path), and `checks.toml`, the checks on a mark,
+only ever appended to. The site editor keeps the last saved versions of each
+`site.toml`, and its named restore points, in `~/.dotbot/history/<site>/`.
 
 ### How calibration points were chosen
 
