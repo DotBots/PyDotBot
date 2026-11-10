@@ -135,10 +135,21 @@ def reading(rects: Mapping[int, Sequence[int]]) -> str:
             if ra[0] > rb[2] or rb[0] > ra[2] or ra[1] > rb[3] or rb[1] > ra[3]:
                 continue
             (ax, ay), (bx, by) = centre(ra), centre(rb)
+            ox0, oy0 = max(ra[0], rb[0]), max(ra[1], rb[1])
+            ox1, oy1 = min(ra[2], rb[2]), min(ra[3], rb[3])
             if ay == by and ax != bx:
-                parts.append(f"S{a}/S{b} handover x {0.5 * (ax + bx):g}")
+                line, lo, hi, axis = 0.5 * (ax + bx), ox0, ox1, "x"
             elif ax == bx and ay != by:
-                parts.append(f"S{a}/S{b} handover y {0.5 * (ay + by):g}")
+                line, lo, hi, axis = 0.5 * (ay + by), oy0, oy1, "y"
+            else:
+                line = None
+            if line is not None and lo < line < hi:
+                parts.append(f"S{a}/S{b} handover {axis} {line:g}")
+            elif line is not None:
+                # The line misses the overlap: one station wins all of it
+                won = candidates(rects, 0.5 * (ox0 + ox1), 0.5 * (oy0 + oy1))
+                if len(won) == 1:
+                    parts.append(f"S{won[0]} wins where S{a} and S{b} overlap")
             elif (ax, ay) != (bx, by):
                 parts.append(f"S{a}/S{b} handover halfway between their centres")
     return " · ".join(parts)

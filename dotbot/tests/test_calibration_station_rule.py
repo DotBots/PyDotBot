@@ -58,3 +58,15 @@ def test_the_reading_names_shared_boxes_and_handovers():
     assert rule.reading({0: (1059, 0, 1060, 1220), 1: WHOLE}).startswith(
         "S0 only in a 1 mm strip"
     )
+
+
+def test_a_reading_names_no_handover_outside_the_overlap():
+    assert rule.reading({0: (1059, 0, 1060, 1220), 1: WHOLE}) == (
+        "S0 only in a 1 mm strip · S1 x 0-1060, y 0-1220 · S0 wins where S0 and S1 overlap"
+    )
+    assert rule.reading({0: (0, 0, 300, 1220), 1: WHOLE}).endswith(
+        "S0 wins where S0 and S1 overlap"
+    )
+    assert rule.reading({0: (0, 0, 541, 1220), 1: (141, 0, 1060, 1220)}).endswith(
+        "S0/S1 handover x 435.5"
+    )
