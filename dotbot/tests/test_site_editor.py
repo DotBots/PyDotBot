@@ -242,15 +242,15 @@ def test_site_edit_defaults_to_the_active_pack_even_by_path(
     ]
 
 
-def test_a_request_for_another_host_is_refused(client):
-    response = client.get("/api/site", headers={"host": "evil.example"})
-    assert response.status_code == 403
+def test_a_write_for_another_host_is_refused_and_a_read_is_served(client):
+    assert client.post("/api/done", headers={"host": "evil.example"}).status_code == 403
+    assert client.get("/api/site", headers={"host": "evil.example"}).status_code == 200
 
 
-def test_a_request_from_another_machine_is_refused_whatever_its_host(pack, page):
+def test_a_write_from_another_machine_is_refused_whatever_its_host(pack, page):
     app = create_app(EditorState("arena", pack), page)
     remote = TestClient(app, base_url="http://127.0.0.1", client=("192.0.2.7", 5))
-    assert remote.get("/api/site").status_code == 403
+    assert remote.get("/api/site").status_code == 200
     assert remote.post("/api/done").status_code == 403
 
 
@@ -422,3 +422,55 @@ def test_open_runs_the_named_editor_on_site_toml(client, pack, monkeypatch):
     monkeypatch.setenv("DOTBOT_EDITOR", "true --wait")
     body = client.post("/api/open").json()
     assert body["command"] == f"true --wait {pack / 'site.toml'}"
+
+
+def test_reads_reach_the_page_off_loopback_and_writes_do_not(pack, page, tmp_path):
+    app = create_app(EditorState("arena", pack, [tmp_path / "c"]), page)
+    lan = TestClient(app, base_url="http://bench-host:8000", client=("192.168.1.30", 50000))
+    origin = {"Origin": "http://bench-host:8000"}
+    body = lan.get("/api/site", headers=origin)
+    assert body.status_code == 200
+    assert lan.get("/api/context", headers=origin).json()["can_write"] is False
+    site = body.json()
+    refused = lan.put("/api/site", headers=origin, json={"revision": site["revision"], "site": site["site"]})
+    assert refused.status_code == 403
+    assert lan.get("/api/site", headers={"Origin": "http://example.org"}).status_code == 403
+    assert local_client(app).get("/api/context").json()["can_write"] is True
+
+
+def test_a_check_is_appended_and_no_calibration_is_rewritten(client, tmp_path, monkeypatch):
+    from dotbot.calibration import checks, lighthouse2
+
+    monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path / "home")
+    first = client.post(
+        "/api/checks",
+        json={"calibration": "4640cfde014c7232", "mark_mm": [500, 600], "measured_mm": [502.4, 598.1], "robot": "222a34f9458e8aad"},
+    ).json()
+    assert first["error_mm"] == 3.06 and first["robot"] == "222A34F9458E8AAD"
+    path = checks.checks_path("arena")
+    before = path.read_text()
+    client.post(
+        "/api/checks",
+        json={"calibration": "4640cfde014c7232", "mark_mm": [0, 0], "measured_mm": [1, 0], "robot": "c999"},
+    )
+    after = path.read_text()
+    assert after.startswith(before)
+    assert [c["error_mm"] for c in client.get("/api/checks").json()["checks"]] == [3.06, 1.0]
+    assert list((tmp_path / "home" / "calibrations" / "arena").glob("calibration*")) == []
+
+
+def test_a_restore_point_puts_site_toml_back(client, pack, tmp_path, monkeypatch):
+    from dotbot.calibration import lighthouse2
+
+    monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path / "home")
+    point = client.post("/api/points", json={"name": "Monday class"}).json()
+    assert point["name"] == "Monday class"
+    body = _loaded(client)
+    body["site"]["areas"][0]["w"] = 1500
+    client.put("/api/site", json={"revision": body["revision"], "site": body["site"]})
+    assert "w = 1500" in (pack / "site.toml").read_text()
+    revision = client.get("/api/site").json()["revision"]
+    back = client.post(f"/api/points/{point['id']}/restore", json={"revision": revision}).json()
+    assert (pack / "site.toml").read_text() == ARENA
+    assert back["steps"][0]["status"] == "written"
+    assert [p["name"] for p in client.get("/api/points").json()] == ["Monday class"]

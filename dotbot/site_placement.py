@@ -397,5 +397,7 @@ def create_router(
         }
 
     router.save_boxes = save_boxes  # type: ignore[attr-defined]
+    router.resolve = resolve  # type: ignore[attr-defined]
+    router.current_site = current_site  # type: ignore[attr-defined]
 
     return router

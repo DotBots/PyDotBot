@@ -90,9 +90,10 @@ async def test_a_robot_stops_at_a_wall_drawn_while_it_runs(scenario):
 
 
 @pytest.mark.asyncio
-async def test_the_panel_refuses_another_host(scenario):
+async def test_the_panel_refuses_a_write_for_another_host(scenario):
     s, _, _ = scenario
-    response = await s.client.get("/controller/site-editor/api/site")
+    assert (await s.client.get("/controller/site-editor/api/site")).status_code == 200
+    response = await s.client.post("/controller/site-editor/api/done")
     assert response.status_code == 403
 
 
@@ -103,7 +104,8 @@ async def test_the_panel_refuses_another_machine_whatever_its_host(scenario):
         transport=httpx.ASGITransport(app=api, client=("192.0.2.7", 5000)),
         base_url="http://localhost",
     ) as remote:
-        response = await remote.get("/controller/site-editor/api/site")
+        assert (await remote.get("/controller/site-editor/api/site")).status_code == 200
+        response = await remote.post("/controller/site-editor/api/done")
     assert response.status_code == 403
 
 

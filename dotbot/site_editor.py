@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Callable, Literal
 from urllib.parse import urlsplit
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -112,6 +112,25 @@ class ServeRequest(BaseModel):
     persist: bool = False
 
 
+class CheckRequest(BaseModel):
+    calibration: str
+    mark_mm: tuple[float, float]
+    measured_mm: tuple[float, float]
+    robot: str
+    predicted_mm: float | None = None
+    note: str = ""
+
+
+class PointRequest(BaseModel):
+    name: str
+
+
+class PointRestoreRequest(BaseModel):
+    revision: str
+    # Serve the calibration served when the point was kept
+    serve: bool = True
+
+
 class RestoreRequest(BaseModel):
     version: str
     revision: str
@@ -170,14 +189,36 @@ def _refusal(scope) -> str | None:
     return None
 
 
+def _read_refusal(scope) -> str | None:
+    """Why a read may not reach the editor: only another site's page is
+    refused, so a console or a laptop on the network can view it."""
+    headers = {
+        key.decode("latin-1"): value.decode("latin-1")
+        for key, value in scope.get("headers", [])
+    }
+    if cross_site_refusal(headers) is not None:
+        return "the site editor answers its own page only"
+    return None
+
+
+def can_write(scope) -> bool:
+    """Whether this request's client may write: this machine, by a loopback
+    name, from the editor's page."""
+    return _refusal(scope) is None
+
+
 class LocalOnly:
-    """ASGI middleware refusing, with a 403, any request `_refusal` names."""
+    """ASGI middleware refusing, with a 403, a write from anywhere but this
+    machine, and a read from another site's page."""
 
     def __init__(self, app):
         self.app = app
 
     async def __call__(self, scope, receive, send):
-        reason = _refusal(scope) if scope["type"] == "http" else None
+        reason = None
+        if scope["type"] == "http":
+            read = scope.get("method", "GET") in ("GET", "HEAD")
+            reason = _read_refusal(scope) if read else _refusal(scope)
         if reason is not None:
             await PlainTextResponse(reason, status_code=403)(scope, receive, send)
             return
@@ -451,14 +492,106 @@ def create_app(
         return context() if context is not None else {"mode": "standalone"}
 
     @app.get("/api/context")
-    def get_context():
+    def get_context(request: Request):
         found = {"served": None, "next_start": None, "configured": None}
         return {
             **found,
             **opened_by(),
             "site": state.name,
             "path": str(state.path),
+            "can_write": can_write(request.scope),
         }
+
+    def served_calibration():
+        found = opened_by()
+        spec = (found.get("served") or found.get("configured") or {}).get("id")
+        if not spec:
+            return None
+        try:
+            return placement.resolve(spec)
+        except HTTPException:
+            return None
+
+    @app.get("/api/checks")
+    def get_checks():
+        from dotbot.calibration import checks
+
+        return {"checks": checks.read_checks(state.name), "path": str(checks.checks_path(state.name))}
+
+    @app.post("/api/checks")
+    def post_check(request: CheckRequest):
+        from dotbot.calibration import checks
+
+        return checks.append_check(
+            state.name,
+            request.calibration,
+            request.mark_mm,
+            request.measured_mm,
+            request.robot,
+            request.predicted_mm,
+            request.note,
+        )
+
+    @app.get("/api/provenance")
+    def get_provenance(request: Request):
+        from dotbot.calibration import checks
+        from dotbot.calibration.multi_station import error_map_from_calibration
+        from dotbot.calibration.provenance import provenance_lines
+
+        cal = served_calibration()
+        if cal is None:
+            raise HTTPException(404, "no calibration is served or configured, so there is nothing to record")
+        try:
+            error_map = error_map_from_calibration(cal)
+        except (ValueError, ArithmeticError):
+            error_map = None
+        found = opened_by()
+        served = found.get("served")
+        by = None
+        if served:
+            how = served.get("source", "")
+            by = f"{request.headers.get('host', 'this controller')}, {how}"
+        lines = provenance_lines(
+            cal,
+            placement.current_site(),
+            error_map,
+            served=by,
+            check=checks.last_check(state.name, cal.id),
+        )
+        return {"lines": lines, "text": "\n".join(lines)}
+
+    @app.get("/api/points")
+    def get_points():
+        return site_history.points(state.name)
+
+    @app.post("/api/points")
+    def post_point(request: PointRequest):
+        data, _ = read()
+        served = (opened_by().get("served") or {}).get("id")
+        return site_history.save_point(state.name, request.name, data, served)
+
+    @app.post("/api/points/{point}/restore")
+    def restore_point(point: str, request: PointRestoreRequest):
+        try:
+            kept, kept_bytes = site_history.read_point(state.name, point)
+        except KeyError as exc:
+            raise HTTPException(404, f"no restore point {point}") from exc
+        kept_text = kept_bytes.decode("utf-8")
+        with saving:
+            data, text = read()
+            if site_toml.revision(data) != request.revision:
+                raise HTTPException(409, f"{state.path} changed on disk since the page loaded it")
+            if kept_text != text:
+                keep_and_write(data, kept_text)
+        steps = [{"step": "site.toml", "status": "written", "detail": f"as at {kept['at']}"}]
+        if request.serve and kept.get("served") and serve is not None:
+            try:
+                serve(kept["served"], False)
+                steps.append({"step": "serve", "status": "written", "detail": f"serving {kept['served'][:8]}, this run only"})
+            except (ValueError, OSError) as exc:
+                steps.append({"step": "serve", "status": "refused", "detail": str(exc)})
+        data, text = read()
+        return {**body(data, text), "steps": steps}
 
     @app.put("/api/served")
     def put_served(request: ServeRequest):
