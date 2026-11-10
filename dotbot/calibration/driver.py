@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Callable, Sequence
 
+from dotbot.calibration.lighthouse2 import calibration_payload
 from dotbot.calibration.points import field_corners, resolve_placement_points
 from dotbot.calibration.push import PushRefused, gate_push, push_worklist
 from dotbot.calibration.session import (
@@ -138,42 +139,52 @@ class SessionDriver:
 
         No devices, None or empty, is the whole swarm, as for flash and start.
         """
-        targets = sorted({d.upper() for d in devices}) if devices else None
         async with self._lock:
             session = self._require()
             payload = session.push_payload()
-            client = await asyncio.to_thread(self._ensure_client)
             try:
-                try:
-                    check = await asyncio.to_thread(
-                        gate_push, client, session.saved, site_changed, targets
-                    )
-                except PushRefused as exc:
-                    raise SessionError(f"push refused: {exc}") from exc
-                await asyncio.to_thread(
-                    client.send_lh2_calibration, payload, check.send_to
-                )
-                stale = await asyncio.to_thread(
-                    push_worklist,
-                    client,
-                    session.saved,
-                    check.addresses,
-                    check.info_gens,
-                )
-                if self._on_held is not None:
-                    held = dict(check.held)
-                    for addr in check.targets:
-                        if addr not in stale:
-                            held[addr] = session.saved_id
-                    self._on_held(held)
+                stale = await self._send(session.saved, payload, site_changed, devices)
             finally:
                 await asyncio.to_thread(self._listen_for_buttons)
             await self._emit()
-            return {
-                "id": session.saved_id,
-                "bytes": len(payload),
-                "stale": stale,
-            }
+            return {"id": session.saved_id, "bytes": len(payload), "stale": stale}
+
+    async def push_file(
+        self, calibration: Any, devices: list[str], site_changed: bool = False
+    ) -> dict:
+        """Send a saved calibration file, not the session's, to `devices`
+        only, with the same checks; report who is still stale."""
+        if not devices:
+            raise SessionError("name the robots to push to; nothing is ticked")
+        async with self._lock:
+            payload = calibration_payload(calibration)
+            try:
+                stale = await self._send(calibration, payload, site_changed, devices)
+            finally:
+                if self.session is not None:
+                    await asyncio.to_thread(self._listen_for_buttons)
+            return {"id": calibration.id, "bytes": len(payload), "stale": stale}
+
+    async def _send(self, calibration, payload: bytes, site_changed, devices) -> list[str]:
+        targets = sorted({d.upper() for d in devices}) if devices else None
+        client = await asyncio.to_thread(self._ensure_client)
+        try:
+            check = await asyncio.to_thread(
+                gate_push, client, calibration, site_changed, targets
+            )
+        except PushRefused as exc:
+            raise SessionError(f"push refused: {exc}") from exc
+        await asyncio.to_thread(client.send_lh2_calibration, payload, check.send_to)
+        stale = await asyncio.to_thread(
+            push_worklist, client, calibration, check.addresses, check.info_gens
+        )
+        if self._on_held is not None:
+            held = dict(check.held)
+            for addr in check.targets:
+                if addr not in stale:
+                    held[addr] = calibration.id
+            self._on_held(held)
+        return stale
 
     async def abandon(self) -> dict:
         """Drop the session; nothing captured is written anywhere."""

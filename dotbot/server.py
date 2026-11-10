@@ -39,6 +39,7 @@ from dotbot.models import (
     DotBotBuildModel,
     DotBotCalibrationPreviewModel,
     DotBotCalibrationPushedModel,
+    DotBotCalibrationFilePushModel,
     DotBotCalibrationPushModel,
     DotBotCalibrationSavedModel,
     DotBotCalibrationSaveModel,
@@ -712,6 +713,27 @@ async def calibration_session_push(
     """Calibration-push HTTP POST handler."""
     devices = request.devices if request else []
     return await _calibration(api.controller.calibration_session.push(devices=devices))
+
+
+@api.post(
+    path="/controller/calibration/push",
+    dependencies=[Depends(same_origin)],
+    response_model=DotBotCalibrationPushedModel,
+    summary="Send a saved calibration file to the named robots over the air",
+    tags=["calibration"],
+)
+async def calibration_file_push(request: DotBotCalibrationFilePushModel):
+    """Push a saved calibration, not the session's, to the robots named."""
+    from dotbot.controller import load_calibration
+
+    controller = api.controller
+    try:
+        calibration = load_calibration(request.calibration, site=controller.site)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return await _calibration(
+        controller.calibration_session.push_file(calibration, request.devices)
+    )
 
 
 @api.delete(

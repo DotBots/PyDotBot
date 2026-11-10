@@ -597,6 +597,14 @@ class DotBotCalibrationPushModel(BaseModel):
     devices: List[str] = []
 
 
+class DotBotCalibrationFilePushModel(BaseModel):
+    """A saved calibration, by id, tag or path, and the robots to push it to;
+    at least one robot, since nothing is pushed to a fleet unticked."""
+
+    calibration: str
+    devices: List[str]
+
+
 class DotBotCalibrationSavedModel(BaseModel):
     """What a save produced: the file, and the id the robots will report."""
 

@@ -671,6 +671,7 @@ async def test_the_routes_walk_a_session_from_start_to_push(
     "method, path",
     [
         ("post", "/controller/calibration/session/push"),
+        ("post", "/controller/calibration/push"),
         ("post", "/controller/calibration/session"),
         ("get", "/controller/calibration/session/state"),
         ("delete", "/controller/calibration/session"),
@@ -1212,3 +1213,24 @@ def test_a_push_to_an_empty_robot_list_is_refused():
 
     with pytest.raises(PushRefused, match="no robot named"):
         gate_push(_FakeClient(), SimpleNamespace(), devices=[])
+
+
+@pytest.mark.asyncio
+async def test_a_file_push_goes_only_to_the_named_robots(monkeypatch, tmp_path):
+    from dotbot.calibration.session import SessionError
+
+    monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
+    driver, client, _ = _driver()
+    client.infos["FEED"] = _info()
+    client.infos["BEEF"] = _info()
+    await _button_session(driver, "FEED")
+    saved = driver.session.saved
+    await driver.abandon()
+
+    pushed = await driver.push_file(saved, ["beef"])
+
+    assert client.pushed_to == ["BEEF"]
+    assert pushed["id"] == saved.id and pushed["stale"] == []
+    assert client.infos["BEEF"].lh2_calibration_id == lighthouse2.pushed_id(saved)
+    with pytest.raises(SessionError, match="nothing is ticked"):
+        await driver.push_file(saved, [])
