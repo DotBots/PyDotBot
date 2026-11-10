@@ -79,11 +79,15 @@ export const NumField: React.FC<{
   /** Shown before the value inside the field, e.g. "x". */
   prefix?: string;
   hint?: string;
-}> = ({ label, value, onApply, min, max, disabled, unit = "mm", prefix, hint }) => {
+  /** A measured value: typed as it is, never as a change to the last one */
+  absolute?: boolean;
+  placeholder?: string;
+}> = ({ label, value, onApply, min, max, disabled, unit = "mm", prefix, hint, absolute, placeholder }) => {
   const show = (v: number | null) => (v === null ? "" : unit === "mm" ? showMm(v) : String(Math.round(v * 100) / 100));
   const [text, setText] = useEditable(value, show);
   const [error, setError] = useState("");
-  const parse = (t: string): Parsed => (unit === "mm" ? parseMm(t, value ?? 0) : parseDeg(t, value ?? 0));
+  const base = absolute ? 0 : (value ?? 0);
+  const parse = (t: string): Parsed => (unit === "mm" ? parseMm(t, base) : parseDeg(t, base));
   const apply = (t = text) => {
     if (value !== null && t === show(value)) return setError("");
     if (value === null && t.trim() === "") return setError("");
@@ -111,7 +115,7 @@ export const NumField: React.FC<{
           aria-invalid={!!error}
           inputMode="decimal"
           value={text}
-          placeholder={value === null ? "mixed" : undefined}
+          placeholder={value === null ? (placeholder ?? "mixed") : undefined}
           disabled={disabled}
           onChange={(e) => setText(e.target.value)}
           onBlur={() => apply()}

@@ -264,7 +264,7 @@ export const StationsPanel: React.FC<StationsPanelProps> = (props) => {
             <Icon name={h.worst_mm > (coverage?.limit_mm ?? 2) ? "warn" : "check"} size={14} />≤ {h.worst_mm.toFixed(2)} mm on the floor, worst near ({h.at[0]}, {h.at[1]})
           </div>
           For the station the robot keeps{h.bound ? "; where the boxes do not decide, the worse of the candidates, a bound" : ""}, on the CLI's {h.cell_mm} mm cells: the same number{" "}
-          <span className="mono">calibrate-lh2 show</span> prints. A robot averaging every station would do better ({h.fused_worst_mm.toFixed(2)} mm), but robots keep one station's fix.
+          <span className="mono">calibrate-lh2 show</span> prints.{h.fused_worst_mm < h.worst_mm - 0.005 ? ` A robot averaging every station would do better (${h.fused_worst_mm.toFixed(2)} mm), but robots keep one station's fix.` : ""}
           {h.cells_over_limit > 0 && ` ${h.cells_over_limit} of ${h.cells} cells pass the ${coverage?.limit_mm ?? 2} mm limit.`}
           {coverage && coverage.next.length > 0 && (
             <div className="acts">

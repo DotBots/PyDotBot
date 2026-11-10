@@ -107,8 +107,8 @@ export const CheckMarkPanel: React.FC<{
               </div>
               <span className="lbl" style={{ marginTop: 8 }}>The mark, measured from zero, mm</span>
               <div className="grid2">
-                <NumField label="mark x" prefix="x" value={mark[0]} hint="measured" onApply={(v) => setMark([v, mark[1]])} />
-                <NumField label="mark y" prefix="y" value={mark[1]} hint="measured" onApply={(v) => setMark([mark[0], v])} />
+                <NumField label="mark x" prefix="x" value={mark[0]} absolute min={0} placeholder="mm from zero" onApply={(v) => setMark([v, mark[1]])} />
+                <NumField label="mark y" prefix="y" value={mark[1]} absolute min={0} placeholder="mm from zero" onApply={(v) => setMark([mark[0], v])} />
               </div>
               {held && !trusted && (
                 <div className="callout warn" style={{ marginTop: 8 }}>

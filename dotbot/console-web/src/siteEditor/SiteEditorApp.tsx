@@ -502,6 +502,7 @@ export const SiteEditorApp: React.FC = () => {
     setKind(k);
     setTool("select");
     setEdge(null);
+    setChecking(null);
     if (k === "view") setSelected([]);
     else setSelected((s) => s.filter((key) => kindOfKey(key) === k));
   };
@@ -607,7 +608,7 @@ export const SiteEditorApp: React.FC = () => {
     if (!bot) return;
     try {
       await putRgbLed(id, bot.application, { red: 255, green: 255, blue: 255 });
-      setToast({ text: `…${id.slice(-4).toUpperCase()} blinks white for 2 s: look for it on the floor.` });
+      setToast({ text: `…${id.slice(-6).toUpperCase()} blinks white for 2 s: look for it on the floor.` });
       window.setTimeout(() => putRgbLed(id, bot.application, { red: 0, green: 0, blue: 0 }).catch(() => {}), 2000);
     } catch (e) {
       setNotice({ tone: "err", text: `Blink failed: ${(e as Error).message}` });
@@ -677,6 +678,7 @@ export const SiteEditorApp: React.FC = () => {
         }
         if (edge) return setEdge(null);
         if (tool !== "select") return setTool("select");
+        if (checking) return setChecking(null);
       }
       const action = keyAction(e.key, kind);
       if (!action) return;
@@ -857,6 +859,7 @@ export const SiteEditorApp: React.FC = () => {
             onPreview={setPlacePreview}
             onClose={() => (setNewRoom(false), setPlacePreview(null))}
             onCheck={() => (setNewRoom(false), setChecking(true))}
+            servedId={servedId && servedRowNow?.in_frame !== false ? servedId : null}
             onWritten={(p, placed, served) => {
               if (p) onSaved(p);
               else fetchSite().then(onSaved, () => {});

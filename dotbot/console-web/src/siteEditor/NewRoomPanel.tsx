@@ -52,6 +52,8 @@ export const NewRoomPanel: React.FC<{
   onClose: () => void;
   /** Opens the check on a mark, once a placed calibration is served */
   onCheck?: () => void;
+  /** What the controller serves in this room's frame, if anything */
+  servedId?: string | null;
 }> = (props) => {
   const { doc, spin } = props;
   const spinning = spin && (spin.phase === "spinning" || spin.phase === "solving");
@@ -68,7 +70,9 @@ export const NewRoomPanel: React.FC<{
   const [note, setNote] = useState(doc.anchor ?? "");
   const [busy, setBusy] = useState(false);
   const [steps, setSteps] = useState<string[]>([]);
-  const [written, setWritten] = useState<{ id: string; served: boolean } | null>(null);
+  const [wrote, setWritten] = useState<{ id: string; served: boolean } | null>(null);
+  // A room already served in its frame is placed, unless a spin is picked to place again
+  const written = wrote ?? (!props.placeId && !justSpun && !spinning && props.servedId ? { id: props.servedId, served: true } : null);
 
   useEffect(() => {
     setOverlay(null);
@@ -209,11 +213,17 @@ export const NewRoomPanel: React.FC<{
       {written ? (
         <>
           <Step n={3} title="Put it in the room" state="done">
-            <ul className="note" style={{ margin: 0, paddingLeft: 16 }} data-testid="place-steps">
-              {steps.map((x, i) => (
-                <li key={i}>{x}</li>
-              ))}
-            </ul>
+            {steps.length ? (
+              <ul className="note" style={{ margin: 0, paddingLeft: 16 }} data-testid="place-steps">
+                {steps.map((x, i) => (
+                  <li key={i}>{x}</li>
+                ))}
+              </ul>
+            ) : (
+              <div className="note">
+                {written.id.slice(0, 8)} is served in this room's frame. To place another spin, pick it in Calibrations and choose Place in this room.
+              </div>
+            )}
           </Step>
           <Step n={4} title="Push it, then check it" state="on">
             <div className="note">
@@ -296,8 +306,8 @@ export const NewRoomPanel: React.FC<{
                         </select>
                       </div>
                       <div className="grid2" style={{ marginTop: 4 }}>
-                        <NumField label={`${label} x`} prefix="x" value={mark.at[0]} onApply={(v) => setMark({ ...mark, at: [v, mark.at[1]] })} />
-                        <NumField label={`${label} y`} prefix="y" value={mark.at[1]} onApply={(v) => setMark({ ...mark, at: [mark.at[0], v] })} />
+                        <NumField label={`${label} x`} prefix="x" absolute min={0} placeholder="mm from zero" value={mark.at[0]} onApply={(v) => setMark({ ...mark, at: [v, mark.at[1]] })} />
+                        <NumField label={`${label} y`} prefix="y" absolute min={0} placeholder="mm from zero" value={mark.at[1]} onApply={(v) => setMark({ ...mark, at: [mark.at[0], v] })} />
                       </div>
                     </div>
                   );

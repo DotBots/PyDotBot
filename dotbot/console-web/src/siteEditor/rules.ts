@@ -68,7 +68,10 @@ function splitFixes(doc: Doc, field: DocArea, staging: DocArea): Fix[] {
     if (staging.x > field.x) cuts.push({ area: field.h * (staging.x - field.x), patch: { w: staging.x - field.x }, size: `${staging.x - field.x} × ${field.h}` });
     if (staging.x + staging.w < fx1) cuts.push({ area: field.h * (fx1 - staging.x - staging.w), patch: { x: staging.x + staging.w, w: fx1 - staging.x - staging.w }, size: `${fx1 - staging.x - staging.w} × ${field.h}` });
     const best = cuts.sort((a, b) => b.area - a.area)[0];
-    if (best) fixes.push({ label: `Shrink the field to ${best.size}`, note: scripts, doc: withArea(doc, field.key, best.patch) });
+    if (best) {
+      const lost = field.w * field.h - best.area;
+      fixes.push({ label: `Shrink the field to ${best.size}`, note: `It gives up ${Math.round(lost / 1000) / 1000} m² along the side the staging meets. ${scripts}`, doc: withArea(doc, field.key, best.patch) });
+    }
   }
   const ext = doc.extent_mm;
   if (ext) {

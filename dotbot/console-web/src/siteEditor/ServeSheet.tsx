@@ -144,8 +144,9 @@ export const ServeSheet: React.FC<{
           <span>
             <div className="rt">This run only</div>
             <div className="rs">
-              At restart the controller goes back to {restart}
-              {started?.source ? `, from ${started.source}` : ""}. The top bar says so until then.
+              {restart.startsWith(row.id8)
+                ? `It is also what the controller serves at restart${started?.source ? `, from ${started.source}` : ""}.`
+                : `At restart the controller goes back to ${restart}${started?.source ? `, from ${started.source}` : ""}. The top bar says so until then.`}
             </div>
           </span>
         </button>
