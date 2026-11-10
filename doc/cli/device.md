@@ -30,6 +30,45 @@ UART↔MQTT bridge process is a different thing - that's [`run gateway`](run.md)
 | `flash programmer` | Re-flash the board's on-board debug chip (J-Link OB / DAPLink), for first-time setup and recovery - needs a J-Link |
 | `info` | Read a board's provisioning state (chip id + network id) |
 
+## Wiring a DotBot for flashing
+
+```{figure} ../_static/images/dotbot-v3-flash-wiring.svg
+:alt: A DotBot v3 seen from above, with a power supply on the barrel jack, a computer on the USB-C port, the ON/OFF switch set to ON, and a dimmed nRF DK on the SWD header marked recovery only.
+:class: dark-light
+
+Flashing a DotBot v3 build 1.3a: USB-C to the computer, power on the barrel jack, switch ON.
+```
+
+What to plug in depends on the board build, printed on the top silkscreen just
+above the *DotBot V3* label (for example *build 1.3a*):
+
+| Build | To flash | Coin cell (BT1) |
+|---|---|---|
+| 1.3a | USB-C and the barrel jack | not needed |
+| 1.3 | USB-C alone | not needed |
+| 1.2a, 1.2 | USB-C alone | needed to charge |
+
+- **USB-C (J2) to the computer.** This reaches the on-board programmer. The
+  port is marked *DATA ONLY*: it does not charge the robot.
+- **The power supply on the barrel jack (J4)**, 6-18 V DC, on build 1.3a. A
+  known board defect on that build stops USB-C from powering the nRF5340, so
+  without the barrel jack the flash fails.
+
+Set the **ON/OFF switch (SW3) to ON**. In the OFF position the DotBot discharges
+its supercapacitor.
+
+Then flash, for example the swarm sandbox role:
+
+```bash
+dotbot device flash swarmit-sandbox --swarm-id 0100 --probe 77
+```
+
+An external nRF DK wired to the programmer's SWD header (J3) is **only for
+recovery**: it is the external J-Link that
+[`flash programmer`](#flash-the-programmer) needs to re-flash the on-board
+programmer chip. A locked nRF5340 does not need it; see
+[Recover a locked board](#recover-a-locked-board), which works over USB-C.
+
 ## Flash an app
 
 `flash` takes the names [`dotbot fw`](fw.md) builds and fetches: a role

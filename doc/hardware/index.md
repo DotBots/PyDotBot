@@ -16,9 +16,9 @@ What to have on hand (the two USB cables are the ones you'll reach for most):
 
 | Cable / connector | For |
 |---|---|
-| **USB-C to USB-A (or USB-C)** | Flash and power the DotBot v3 (its USB-C port, J2). |
+| **USB-C to USB-A (or USB-C)** | Flash the DotBot v3 (its USB-C port, J2). |
 | **micro-USB to USB-A (or USB-C)** | The nRF5340-DK gateway's on-board J-Link. |
-| **Barrel-jack charger** (2.5 mm, 6-18 V) | Charges the DotBot v3 supercap (J4); free-roaming only. |
+| **Barrel-jack charger** (2.5 mm, 6-18 V) | Charges the DotBot v3 supercap (J4); required while flashing. |
 
 ## DotBot v3
 
@@ -46,7 +46,7 @@ What to have on hand (the two USB cables are the ones you'll reach for most):
 | **Motors** | M1, M2 (N20) | Drive the left and right wheels; each carries a quadrature encoder. |
 | **Status LEDs** | D19, D23, D24 + D18 | Indicate the robot's mode: bootloader, running, programming. |
 | **Supercapacitors** | J11 / J12  | Main energy storage. |
-| **Coin cell** | BT1 (CR2032, 3 V) | Enables the motors to be powered; optional in DotBot V3 build >= 1.3 (but needed in build <= 1.2) |
+| **Coin cell** | BT1 (CR2032, 3 V) | Enables the motors to be powered; optional from build 1.3, needed on builds 1.2a and earlier |
 | **Supercap terminals** | J11 (V_Cap+), J12 (V_Cap−) | Connect the supercapacitors to the board. |
 | **Passive front wheel** | — | Ball caster: used for support. |
 | **Bumper connectors** | J7, J8, J14 (front) / J9, J10, J15 (rear) |  Connect the front and rear bumpers to the board. |
@@ -90,8 +90,11 @@ supercap is what runs the DotBot when it's untethered; expect short, fast charge
 rather than a slow battery cycle.
 
 ```{note}
-The DotBot is powered whenever USB-C is connected, so you can flash and bench-test
-without charging first. For free-roaming, charge via the barrel jack.
+On build 1.3a the barrel jack is required to flash: a known board defect on
+that build stops USB-C from powering the nRF5340. The build is printed on the
+top silkscreen, above the *DotBot V3* label. Keep the barrel jack connected and
+the ON/OFF switch on ON while flashing. See
+[Wiring a DotBot for flashing](../cli/device.md#wiring-a-dotbot-for-flashing).
 ```
 
 ## Gateway - nRF5340-DK
