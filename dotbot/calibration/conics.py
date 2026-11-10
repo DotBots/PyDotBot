@@ -984,13 +984,13 @@ def align_to_calibration(
     shared = sorted(
         {st.index for st in source.stations} & {st.index for st in target.stations}
     )
-    labels = ", ".join(f"{i} (channel {i + 1})" for i in shared) or "none"
+    labels = ", ".join(f"S{i}" for i in shared) or "none"
     if not shared:
         raise ValueError(f"calibrations {source.id8} and {target.id8} share no station")
     if not stations:
         if len(shared) > 1:
             raise ValueError(
-                f"calibrations {source.id8} and {target.id8} share stations "
+                f"calibrations {source.id8} and {target.id8} share "
                 f"{labels}: pick the one(s) to align through"
             )
         stations = shared

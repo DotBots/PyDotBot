@@ -202,7 +202,7 @@ def test_an_island_is_refused_by_name_and_dropping_it_solves_the_rest():
     with pytest.raises(ms.MultiStationError) as caught:
         ms.solve_joint(tracks)
     assert caught.value.islands == [8]
-    assert "station 8 (channel 9)" in str(caught.value)
+    assert "S8" in str(caught.value)
     assert "--drop-station 8" in str(caught.value)
     assert [(k.a, k.b, k.shared) for k in caught.value.weak] == [(0, 8, 1)]
     joint = ms.solve_joint(tracks, drop=[8])
@@ -222,7 +222,7 @@ def test_shared_centres_closer_than_300_mm_are_not_a_link(apart_mm):
     (link,) = graph.links
     assert link.shared == 2 and link.spread_mm == pytest.approx(apart_mm, abs=0.5)
     assert not ms.link_holds(link) and graph.components == [[0], [1]]
-    with pytest.raises(ms.MultiStationError, match="station 1 \\(channel 2\\)"):
+    with pytest.raises(ms.MultiStationError, match="S1"):
         ms.solve_joint(tracks)
 
 
@@ -522,14 +522,14 @@ def test_the_report_names_stations_links_and_the_error_map(tmp_path):
     calibration, joint, _ = conics.solve_calibration(samples, Site(name="arena"))
     live = ms.multi_station_report(calibration, joint)
     text = "\n".join(live)
-    assert "station 0 (channel 1)" in text and "station 1 (channel 2)" in text
-    assert "station 0 (channel 1) - station 1 (channel 2):" in text
+    assert "S0" in text and "S1" in text
+    assert "S0 - S1:" in text
     assert "predicted error (100 mm cells), station kept: worst" in text
     path = tmp_path / "cal.toml"
     path.write_text(render_calibration(calibration), encoding="utf-8")
     offline = ms.multi_station_report(read_calibration_file(path))
     assert any(line.startswith("predicted error") for line in offline)
-    assert any(" - station 1 (channel 2):" in line for line in offline)
+    assert any(" - S1:" in line for line in offline)
 
 
 def test_the_file_rules_are_enforced(tmp_path):
@@ -723,7 +723,7 @@ def test_active_next_round_ties_the_weak_link_first():
     )
     assert len(targets) == 4
     assert targets[0].stations == targets[1].stations == (0, 1)
-    assert "ties station 0 (channel 1) and station 1 (channel 2)" in targets[0].why
+    assert "ties S0 and S1" in targets[0].why
     assert math.dist(targets[0].point_mm, targets[1].point_mm) >= 600
     for t in targets:
         assert all(

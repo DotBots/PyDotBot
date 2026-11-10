@@ -104,7 +104,7 @@ def test_a_second_edit_numbers_the_tag(placed):
 )
 def test_a_rectangle_a_robot_cannot_take_is_refused(placed, rect, why):
     with pytest.raises(
-        BoxesRefused, match=rf"station 0 \(channel 1\)'s rectangle .*{why}"
+        BoxesRefused, match=rf"S0's rectangle .*{why}"
     ):
         reboxed(placed, ARENA, {0: rect})
 
@@ -141,7 +141,7 @@ def test_a_rectangle_leaving_out_circles_is_warned_about(placed):
     boxed = reboxed(placed, ARENA, {0: (0, 0, 50, 50)})
     (line,) = coverage_warnings(boxed)
     assert line.startswith(
-        "station 0 (channel 1)'s rectangle [0, 0, 50, 50] leaves out"
+        "S0's rectangle [0, 0, 50, 50] leaves out"
     )
     assert "spin circle(s)" in line
 

@@ -484,8 +484,13 @@ def station_mask(calibration: Calibration) -> int:
 
 
 def station_label(index: int) -> str:
-    """How a station is named to an operator: its index and its channel."""
-    return f"station {index} (channel {index + 1})"
+    """How a station is named to an operator: S and its index, 0 to 15."""
+    return f"S{index}"
+
+
+def station_setup_label(index: int) -> str:
+    """A station as it is mounted: its name and the channel it is set to."""
+    return f"S{index} · channel {index + 1}"
 
 
 def pushable_stations(calibration: Calibration) -> list[StationSolution]:

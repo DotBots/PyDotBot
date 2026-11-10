@@ -207,7 +207,7 @@ def test_every_station_moves_as_one_body_with_its_own_rectangle():
     ]
     assert placed.valid_mm == (700, 100, 3500, 2100)
     assert all(len(s["circles"]) for s in drawn)
-    with pytest.raises(PlacementRefused, match=r"station 1 \(channel 2\)'s rectangle"):
+    with pytest.raises(PlacementRefused, match=r"S1's rectangle"):
         place_calibration(calibration, unbounded, Rigid2D(2700, 100, 90))
 
 

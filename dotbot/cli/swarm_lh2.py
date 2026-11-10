@@ -1180,10 +1180,10 @@ def _place(ctx, calibration, target, stations, tag):
         raise click.ClickException(str(exc)) from exc
     placed = aligned.calibration
     path = write_calibration(placed)
-    through = ", ".join(f"{i} (channel {i + 1})" for i in aligned.stations)
+    through = ", ".join(f"S{i}" for i in aligned.stations)
     click.echo(
         f"Placed {source.id8} (site {source.site.name}) on site {placed.site.name} "
-        f"through station {through} of {onto.id8}: turn {aligned.turn_deg:.3f} deg, "
+        f"through {through} of {onto.id8}: turn {aligned.turn_deg:.3f} deg, "
         f"shift ({aligned.shift_mm[0]:.1f}, {aligned.shift_mm[1]:.1f}) mm"
     )
     click.echo(
