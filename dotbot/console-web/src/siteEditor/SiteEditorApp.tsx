@@ -1640,16 +1640,19 @@ export const SiteEditorApp: React.FC = () => {
           served={rows.find((r) => r.id === servedId) ?? null}
           context={context}
           bots={bots}
+          site={payload?.name ?? ""}
           onClose={() => setServing(null)}
-          onServed={(ctx, persist) => {
+          onStale={() => fetchContext().then((c) => (setContext(c), c))}
+          onServed={(ctx) => {
             setContext({ ...context, ...ctx });
-            setServing(null);
             setPreviewId(null);
             loadLibrary();
-            setToast({
-              text: `Now using ${nameOf(serving)}${persist ? ", kept for the next start" : ", until the controller restarts"}. Robots still have what they had.`,
-              push: serving.id,
-            });
+          }}
+          onVerify={() => {
+            setServing(null);
+            setChecking(true);
+            setRightTab("inspect");
+            if (rightAsRail) setDrawer("right");
           }}
         />
       )}

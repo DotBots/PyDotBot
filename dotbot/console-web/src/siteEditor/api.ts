@@ -91,9 +91,11 @@ export interface DryRun {
 export const dryRunBoxes = (id: string, boxes: Record<number, Rect>, revision: string, tag: string | null) =>
   json<DryRun>(`api/calibrations/${encodeURIComponent(id)}/boxes?dry_run=1`, post({ stations: boxes, revision, tag }));
 
-/** Serve `spec` on the controller that opened the editor; `persist` also at its next start. */
-export const putServed = (spec: string, persist: boolean) =>
-  json<EditorContext>("api/served", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ spec, persist }) });
+/** Serve `spec` on the controller that opened the editor; `persist` also at
+ * its next start. `expected` is what the page believes is served ("none" for
+ * nothing): the controller refuses with 409 when that is no longer true. */
+export const putServed = (spec: string, persist: boolean, expected?: string) =>
+  json<EditorContext>("api/served", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ spec, persist, ...(expected !== undefined ? { expected } : {}) }) });
 
 /** Rename a file's tag, or move it into or out of archived/. */
 export const patchCalibration = (id: string, change: { tag?: string; archived?: boolean; force?: boolean }) =>

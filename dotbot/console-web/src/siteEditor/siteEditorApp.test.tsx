@@ -339,6 +339,59 @@ describe("keeping the operator's work", () => {
   });
 });
 
+describe("the room view", () => {
+  it("draws the stations above the floor, the coverage and the robots, and opens Present on it", async () => {
+    const geometry = { stations: { "0": { x_mm: -542, y_mm: 1268, height_mm: 2423, off_square_deg: 5.4 }, "1": { x_mm: 1387, y_mm: -245, height_mm: 1606, off_square_deg: -3.1 } }, apart_mm: { "0-1": 2583 } };
+    const withGeometry = { ...LIBRARY, serving: { ...served, geometry }, groups: [{ ...LIBRARY.groups[0], rows: inFrame.map((r) => (r.id === served.id ? { ...r, geometry } : r)) }] };
+    stubFetch({ "api/calibrations?": () => new Response(JSON.stringify(withGeometry), { status: 200 }) });
+    render(<SiteEditorApp />);
+    await waitFor(() => expect(screen.getByTestId("plan")).toBeTruthy());
+    fireEvent.click(screen.getByRole("tab", { name: "Room" }));
+    await waitFor(() => expect(screen.getByTestId("room-view")).toBeTruthy());
+    expect(screen.getByTestId("room-station-0").textContent).toContain("S0 · channel 1");
+    expect(screen.getByTestId("room-station-0").textContent).toContain("2.4 m up");
+    expect(screen.getAllByTestId(/room-cover-/)).toHaveLength(2);
+    expect(screen.getByTestId("room-legend").textContent).toContain("both cover the whole floor, no handover");
+    fireEvent.click(screen.getByRole("tab", { name: "Plan" }));
+    await waitFor(() => expect(screen.getByTestId("plan")).toBeTruthy());
+    fireEvent.click(screen.getByLabelText("More"));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Present/ }));
+    await waitFor(() => expect(screen.getByTestId("presbar")).toBeTruthy());
+    expect(screen.getByTestId("room-view")).toBeTruthy();
+    keyDown("Escape");
+    await waitFor(() => expect(screen.getByTestId("plan")).toBeTruthy());
+  });
+});
+
+describe("the Use sheet", () => {
+  it("switches with the id it believes is in use, and shows the controller's answer when that is stale", async () => {
+    let attempts = 0;
+    const calls = stubFetch({
+      "api/served": () => {
+        attempts += 1;
+        if (attempts === 1)
+          return new Response(JSON.stringify({ detail: { message: "the controller now uses 0ac36f3e, not 4640cfde: look again before switching", served: null } }), { status: 409 });
+        return new Response(JSON.stringify({ ...CONTEXT, served: { ...CONTEXT.served, id: handover.id, id8: "a1b41f12", tag: handover.tag, source: "the site editor, for this run" } }), { status: 200 });
+      },
+    });
+    render(<SiteEditorApp />);
+    await waitFor(() => expect(screen.getByRole("tab", { name: /Calibrations/ })).toBeTruthy());
+    fireEvent.click(screen.getByRole("tab", { name: /Calibrations/ }));
+    await waitFor(() => expect(screen.getByTestId("library-row-a1b41f12")).toBeTruthy());
+    fireEvent.click(screen.getByTestId("library-row-a1b41f12"));
+    fireEvent.click(screen.getByTestId("status-use"));
+    await waitFor(() => expect(screen.getByTestId("serve-sheet")).toBeTruthy());
+    expect(screen.getByTestId("serve-sheet").textContent).toContain("Use tag-a1b41f12?");
+    fireEvent.click(screen.getByTestId("serve-confirm"));
+    await waitFor(() => expect(screen.getByTestId("serve-conflict").textContent).toContain("now uses 0ac36f3e"));
+    fireEvent.click(screen.getByTestId("serve-confirm"));
+    await waitFor(() => expect(screen.getByTestId("serve-result").textContent).toContain("Now using tag-a1b41f12"));
+    const bodies = calls.filter((c) => c.url === "api/served").map((c) => JSON.parse(c.init!.body as string));
+    expect(bodies[0]).toEqual({ spec: handover.id, persist: false, expected: served.id });
+    expect(screen.getByTestId("status-line").textContent).toContain("Using tag-a1b41f12");
+  });
+});
+
 describe("the frame tools", () => {
   it("drops the turn's ghost when the tool changes", async () => {
     stubFetch({ "api/frame": () => new Response(JSON.stringify({ frame: "f2", from_frame: "f1", calibration: { id: "x", id8: "x", tag: "" }, source: "", warnings: [], push: "", steps: [] }), { status: 200 }) });

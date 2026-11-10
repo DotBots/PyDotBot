@@ -1,29 +1,42 @@
 import React, { useEffect, useRef, useState } from "react";
 
+import { pushCalibrationFile } from "../api";
 import { Badge } from "../shared/Badge";
+import { pushRows, pushTwin, type PushRow } from "../shared/pushRows";
 import type { UnifiedBot } from "../types";
-import { putServed } from "./api";
+import { HttpError, putServed } from "./api";
 import { Icon } from "./icons";
-import { heldBy, tail } from "./robots";
+import { coverageText, nameOf } from "./library";
 import type { EditorContext, LibraryRow } from "./types";
 
-// Serve one calibration on the controller that opened the editor: what changes
-// now and after, each robot (which keeps what it holds until a push), and for
-// how long, this run only by default.
+// Use one calibration: the controller switches to it now, it is sent to the
+// robots ticked, and a verification is offered after. One sheet, in order.
+
+type Phase = { kind: "ask" } | { kind: "busy"; what: string } | { kind: "done"; used: boolean; sent: string[]; stale: string[]; error: string };
 
 export const ServeSheet: React.FC<{
   row: LibraryRow;
   served: LibraryRow | null;
   context: EditorContext;
   bots: UnifiedBot[];
+  site: string;
   onClose: () => void;
+  /** The controller took it; `persist` when kept for the next start. */
   onServed: (context: EditorContext, persist: boolean) => void;
-}> = ({ row, served, context, bots, onClose, onServed }) => {
+  /** The controller's context now, when the sheet found it changed. */
+  onStale: () => Promise<EditorContext>;
+  onVerify?: () => void;
+}> = ({ row, served, context: given, bots, site, onClose, onServed, onStale, onVerify }) => {
+  const [context, setContext] = useState(given);
   const [persist, setPersist] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const [phase, setPhase] = useState<Phase>({ kind: "ask" });
+  const [conflict, setConflict] = useState<string>("");
+  const rows = pushRows(bots, row.id);
+  const pushable = (r: PushRow) => r.holds !== "not reported" && r.holds !== "old firmware";
+  const [ticked, setTicked] = useState<Set<string>>(() => new Set(rows.filter((r) => pushable(r) && !r.current).map((r) => r.id)));
   const cancelRef = useRef<HTMLButtonElement | null>(null);
   useEffect(() => cancelRef.current?.focus(), []);
+  const busy = phase.kind === "busy";
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || busy) return;
@@ -35,178 +48,180 @@ export const ServeSheet: React.FC<{
     return () => window.removeEventListener("keydown", onKey, true);
   }, [busy, onClose]);
 
-  const nowId8 = context.served?.id8 ?? "none";
+  const name = nameOf(row);
+  const nowName = context.served ? nameOf(context.served) : "none";
   const sameSpin = served && served.spin === row.spin;
   const started = context.started_with;
-  const restart = started?.source === "the command line" ? started.spec : (context.next_start?.spec ?? started?.spec ?? "none");
   const flagWins = started?.source === "the command line";
+  const unreported = rows.filter((r) => !pushable(r)).length;
+  const already = rows.filter((r) => r.current).length;
+  const n = rows.filter((r) => ticked.has(r.id)).length;
+  const stops = rows.filter((r) => ticked.has(r.id) && r.appStops).length;
   const host = window.location.host;
-  const serve = async () => {
-    setBusy(true);
-    setError("");
+
+  const go = async (send: boolean) => {
+    setConflict("");
+    setPhase({ kind: "busy", what: "Switching…" });
+    let ctx: EditorContext;
     try {
-      const ctx = await putServed(row.id, persist);
-      onServed(ctx, persist);
+      ctx = await putServed(row.id, persist, context.served?.id ?? "none");
     } catch (e) {
-      setError((e as Error).message.replace(/^\d+: /, ""));
-      setBusy(false);
+      if (e instanceof HttpError && e.status === 409) {
+        let message = e.message.replace(/^\d+: /, "");
+        try {
+          message = JSON.parse(message).message ?? message;
+        } catch {
+          // the message stands as it came
+        }
+        const fresh = await onStale().catch(() => context);
+        setContext(fresh);
+        setConflict(`${message}. Now using ${fresh.served ? nameOf(fresh.served) : "nothing"}.`);
+        setPhase({ kind: "ask" });
+        return;
+      }
+      setPhase({ kind: "done", used: false, sent: [], stale: [], error: (e as Error).message.replace(/^\d+: /, "") });
+      return;
+    }
+    onServed({ ...context, ...ctx }, persist);
+    if (!send || n === 0) return setPhase({ kind: "done", used: true, sent: [], stale: [], error: "" });
+    setPhase({ kind: "busy", what: `Sending to ${n} robot${n === 1 ? "" : "s"}…` });
+    try {
+      const done = await pushCalibrationFile(row.id, [...ticked]);
+      setPhase({ kind: "done", used: true, sent: [...ticked], stale: done.stale, error: "" });
+    } catch (e) {
+      setPhase({ kind: "done", used: true, sent: [], stale: [], error: `Not sent: ${(e as Error).message}` });
     }
   };
 
   return (
     <>
       <div className="scrim" onClick={busy ? undefined : onClose} />
-      <div className="sheet wide" role="dialog" aria-modal="true" aria-label={`Serve ${row.id8}`} data-testid="serve-sheet">
+      <div className="sheet wide" role="dialog" aria-modal="true" aria-label={`Use ${name}`} data-testid="serve-sheet">
         <button type="button" className="btn icon ghost x" aria-label="Close" onClick={onClose} disabled={busy}>
           <Icon name="x" size={14} />
         </button>
         <h2>
-          <Icon name="served" size={16} /> Serve {row.id8} on this controller?
+          <Icon name="served" size={16} /> {phase.kind === "done" && phase.used ? `Using ${name}` : `Use ${name}?`}
         </h2>
         <div className="sub">
-          {row.tag || "no tag"}
-          {sameSpin ? ` · the same spin as ${nowId8}: the stations do not move, only the boxes differ.` : row.in_frame ? " · another spin of this room." : " · not placed in this room."} The
-          controller at {host} switches now, with no restart.
+          {sameSpin ? `The same measurement as ${nowName}: the stations are where they were, only the coverage differs.` : row.in_frame ? "Another measurement of this room." : "Not in this room yet."}{" "}
+          Coverage: {coverageText(row.reading)}
+          {served ? ` (now: ${coverageText(served.reading)})` : ""}.
         </div>
-        <table className="ft">
-          <thead>
-            <tr>
-              <th />
-              <th>now · {nowId8}</th>
-              <th>after · {row.id8}</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>Who gives the fix</td>
-              <td>{served?.reading ?? "unknown"}</td>
-              <td>
-                <b>{row.reading}</b>
-              </td>
-            </tr>
-            <tr>
-              <td>What the console compares robots with</td>
-              <td className="m">{nowId8}</td>
-              <td className="m">{row.id8}</td>
-            </tr>
-            <tr>
-              <td>Data sent to robots</td>
-              <td colSpan={2}>none: serving sends nothing to robots</td>
-            </tr>
-          </tbody>
-        </table>
-        <h3>The fleet · {bots.length} robot{bots.length === 1 ? "" : "s"}</h3>
-        {bots.length === 0 ? (
-          <div className="note">No robot reports to this controller.</div>
-        ) : (
-          <table className="ft" data-testid="serve-fleet">
-            <thead>
-              <tr>
-                <th>robot</th>
-                <th>state</th>
-                <th>holds</th>
-                <th>after serving</th>
-              </tr>
-            </thead>
-            <tbody>
-              {bots.slice(0, 50).map((b) => {
-                const held = heldBy(b, row.id);
-                return (
-                  <tr key={b.id}>
-                    <td className="m">…{tail(b.id, 6)}</td>
-                    <td>
-                      <span className="dot" style={{ background: b.state ? `var(--s-${b.state})` : "var(--s-Inactive)", marginRight: 6 }} />
-                      {b.state ?? "unknown"}
-                    </td>
-                    <td>
-                      <Badge tone={held.kind === "not-reported" ? "unknown" : held.kind === "served" ? "ok" : "plain"}>
-                        {held.kind === "not-reported" ? "not reported" : held.kind === "served" ? `${held.id8}` : held.kind === "other" ? held.id8 : held.kind === "none" ? "none" : "old firmware"}
-                      </Badge>
-                    </td>
-                    <td>{held.kind === "served" ? `holds ${row.id8} already` : "keeps what it holds until a push"}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-        {bots.length > 50 && <div className="note">and {bots.length - 50} more, each keeping what it holds until a push.</div>}
-        <div className="callout warn" style={{ marginTop: 12 }}>
-          <div className="h">
-            <Icon name="warn" size={14} /> Robots compute their positions themselves
-          </div>
-          Serving changes what this controller and its console use. A robot keeps the boxes it holds until <b>Push</b>, in the console. Serving is per controller; pushing
-          reaches every robot of the swarm you tick, including those another controller on this broker is using.
-        </div>
-        <h3>How long</h3>
-        <button type="button" className={`radio${!persist ? " on" : ""}`} onClick={() => setPersist(false)} data-testid="serve-run-only">
-          <span className="o" />
-          <span>
-            <div className="rt">This run only</div>
-            <div className="rs">
-              {restart.startsWith(row.id8)
-                ? `It is also what the controller serves at restart${started?.source ? `, from ${started.source}` : ""}.`
-                : `At restart the controller goes back to ${restart}${started?.source ? `, from ${started.source}` : ""}. The top bar says so until then.`}
-            </div>
-          </span>
-        </button>
-        <button
-          type="button"
-          className={`radio${persist ? " on" : ""}`}
-          onClick={() => context.persist_path && setPersist(true)}
-          disabled={!context.persist_path}
-          style={{ opacity: context.persist_path ? 1 : 0.55 }}
-          data-testid="serve-persist"
-        >
-          <span className="o" />
-          <span>
-            <div className="rt">Also at the next start</div>
-            <div className="rs">
-              {context.persist_path ? (
-                <>
-                  Writes <span className="mono">[run.controller] lh2_calibration = "{row.id8}"</span> to <span className="mono">{context.persist_path}</span>.
-                  {flagWins && (
-                    <>
-                      {" "}
-                      This controller was started with <span className="mono">--lh2-calibration {started?.spec}</span>, which wins over the file: restart it without the flag
-                      for this to apply.
-                    </>
-                  )}
-                </>
-              ) : (
-                "This controller has no config file to write to."
-              )}
-            </div>
-          </span>
-        </button>
-        <h3>Same from a terminal</h3>
-        <div className="cli">
-          <span className="c"># now, through this page's route (this machine only){"\n"}</span>
-          {`curl -X PUT http://${host}/controller/site-editor/api/served -H 'Content-Type: application/json' -d '{"spec": "${row.id8}"${persist ? ', "persist": true' : ""}}'`}
-          {persist && (
-            <>
-              <span className="c">{"\n"}# at the next start{"\n"}</span>
-              {`dotbot config set run.controller.lh2_calibration ${row.id8}`}
-            </>
-          )}
-        </div>
-        {error && (
-          <div className="callout err" role="alert" style={{ marginTop: 10 }}>
+        {conflict && (
+          <div className="callout warn" role="alert" data-testid="serve-conflict">
             <div className="h">
-              <Icon name="err" size={14} /> Not served
+              <Icon name="warn" size={14} /> The controller changed meanwhile
             </div>
-            {error}
+            {conflict} Look it over, then switch again if you still want to.
           </div>
         )}
+        <div className="part">
+          <div className="ph">
+            <span className="stepn">{phase.kind === "done" && phase.used ? <Icon name="check" size={13} /> : "1"}</span>
+            <span>The controller uses it now</span>
+            <span className="sp" />
+            <Badge>{host}</Badge>
+          </div>
+          <div className="pb">
+            Its console and this page follow it at once; nothing is sent to a robot by this step.
+            <label style={{ display: "flex", gap: 7, alignItems: "flex-start", marginTop: 8, cursor: context.persist_path ? "pointer" : "default", opacity: context.persist_path ? 1 : 0.6 }}>
+              <input type="checkbox" checked={persist} disabled={!context.persist_path || phase.kind !== "ask"} onChange={(e) => setPersist(e.target.checked)} data-testid="serve-persist" />
+              <span>
+                Keep it after a restart
+                <span className="note" style={{ display: "block" }}>
+                  {context.persist_path
+                    ? `Writes it to the controller's config.${flagWins ? ` This controller was started with --lh2-calibration ${started?.spec}, which wins over the config until it is restarted without the flag.` : ""}`
+                    : "This controller has no config file to write to."}
+                  {!persist && ` Otherwise the controller starts with ${context.next_start?.spec ?? started?.spec ?? "none"} next time.`}
+                </span>
+              </span>
+            </label>
+          </div>
+        </div>
+        <div className="part">
+          <div className="ph">
+            <span className="stepn">{phase.kind === "done" && phase.sent.length ? <Icon name="check" size={13} /> : "2"}</span>
+            <span>Send it to the robots</span>
+            <span className="sp" />
+            <span className="note">
+              {rows.length} on the floor{already ? ` · ${already} already have it` : ""}
+              {unreported ? ` · ${unreported} cannot be checked` : ""}
+            </span>
+          </div>
+          <div className="pb">
+            {rows.length === 0 ? (
+              <span className="note">No robot reports to this controller: nothing to send yet.</span>
+            ) : (
+              <>
+                <div className="ticks" data-testid="serve-fleet">
+                  {rows.map((r) => (
+                    <label key={r.id} className={`tick${pushable(r) ? "" : " off"}`} title={pushable(r) ? undefined : r.holds === "not reported" ? "No device info from this robot: a send could not check it, so it would be refused" : "Firmware too old for this calibration format"}>
+                      <input type="checkbox" checked={ticked.has(r.id)} disabled={!pushable(r) || phase.kind !== "ask"} onChange={() => setTicked((t) => (t.has(r.id) ? new Set([...t].filter((x) => x !== r.id)) : new Set([...t, r.id])))} aria-label={`Send to …${r.tail}`} />
+                      <span className="mono">…{r.tail}</span>
+                      <span className="muted">{r.current ? "has it" : r.holds === "not reported" ? "cannot tell" : r.holds === "none" ? "none yet" : r.holds === "old firmware" ? "old firmware" : `has ${r.holds}`}</span>
+                      {ticked.has(r.id) && r.appStops && <span className="muted">· its app stops</span>}
+                    </label>
+                  ))}
+                </div>
+                {unreported > 0 && (
+                  <div className="note" style={{ marginTop: 6 }}>
+                    {unreported === rows.length ? "No robot" : `${unreported} of ${rows.length}`} sent device info, which a send needs to check each robot first, so {unreported === rows.length ? "none" : "those"} can be ticked.
+                    {unreported === rows.length ? " On a simulator that is expected." : ""}
+                  </div>
+                )}
+                <div className="note" style={{ marginTop: 6 }}>A robot takes a calibration in its bootloader, so a running app stops on each robot sent to. Robots not ticked keep what they have.</div>
+              </>
+            )}
+          </div>
+        </div>
+        <div className="part">
+          <div className="ph">
+            <span className="stepn">3</span>
+            <span>Verify with a robot on a measured spot</span>
+          </div>
+          <div className="pb">Offered once it is in use: park a robot on a spot you measured from the origin and read it.</div>
+        </div>
+        {phase.kind === "done" && (
+          <div className={`callout ${phase.error ? "err" : phase.stale.length ? "warn" : "ok"}`} role="status" data-testid="serve-result" style={{ marginTop: 10 }}>
+            {phase.used ? `Now using ${name}${persist ? ", kept for the next start" : ", until the controller restarts"}. ` : ""}
+            {phase.sent.length ? (phase.stale.length ? `Sent to ${phase.sent.length}; ${phase.stale.length} did not report it back yet: ${phase.stale.map((s) => `…${s.slice(-4)}`).join(", ")}.` : `Sent: all ${phase.sent.length} report it now.`) : phase.used && !phase.error ? "Robots keep what they had until it is sent." : ""}
+            {phase.error ? ` ${phase.error}` : ""}
+          </div>
+        )}
+        <details style={{ marginTop: 10 }}>
+          <summary className="note" style={{ cursor: "pointer" }}>
+            Same from a terminal
+          </summary>
+          <div className="cli" style={{ marginTop: 6 }}>
+            <span className="c"># use it on this controller (this machine only){"\n"}</span>
+            {`curl -X PUT http://${host}/controller/site-editor/api/served -H 'Content-Type: application/json' -d '{"spec": "${row.id8}"${persist ? ', "persist": true' : ""}}'`}
+            <span className="c">{"\n"}# send it to the robots{"\n"}</span>
+            {pushTwin(row.id8, site, [...ticked])}
+          </div>
+        </details>
         <footer>
-          <span className="note">Then push in the console: it lists each robot and what stops.</span>
           <span className="sp" style={{ flex: 1 }} />
           <button ref={cancelRef} type="button" className="btn" onClick={onClose} disabled={busy}>
-            Cancel
+            {phase.kind === "done" ? "Close" : "Cancel"}
           </button>
-          <button type="button" className="btn primary" onClick={serve} disabled={busy} data-testid="serve-confirm">
-            {busy ? "Serving…" : `Serve ${row.id8}`}
-          </button>
+          {phase.kind === "done" && phase.used && onVerify && (
+            <button type="button" className="btn primary" onClick={onVerify} data-testid="serve-verify">
+              Verify…
+            </button>
+          )}
+          {phase.kind !== "done" && (
+            <>
+              <button type="button" className={`btn${n ? "" : " primary"}`} onClick={() => go(false)} disabled={busy} data-testid="serve-confirm">
+                {busy ? (phase as { what: string }).what : "Use only"}
+              </button>
+              {n > 0 && (
+                <button type="button" className="btn primary" onClick={() => go(true)} disabled={busy} data-testid="serve-send">
+                  {busy ? (phase as { what: string }).what : stops ? `Use, stop ${stops} app${stops === 1 ? "" : "s"} and send to ${n}` : `Use and send to ${n} robot${n === 1 ? "" : "s"}`}
+                </button>
+              )}
+            </>
+          )}
         </footer>
       </div>
     </>
