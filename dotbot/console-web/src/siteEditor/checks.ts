@@ -16,7 +16,7 @@ export type GoalState = "ok" | "warn" | "fail" | "unknown" | "info" | "optional"
 export interface GoalAction {
   label: string;
   /** Where the fix lives in the editor. */
-  go: { kind?: EditKind; tool?: string; tab?: "library" | "outline"; select?: string; sheet?: "check" | "split" | "newroom" };
+  go: { kind?: EditKind; tool?: string; tab?: "library" | "outline"; select?: string; sheet?: "check" | "split" | "newroom"; mode?: "fix" | "error"; href?: string };
 }
 
 export interface Goal {
@@ -51,7 +51,13 @@ export interface GoalInputs {
   problems: Problem[];
   checks: CheckRecord[];
   frameChangeOpen: boolean;
+  /** The served calibration was switched in this run, from the editor */
+  servedHere?: boolean;
 }
+
+/** Whether a check on a mark agrees with the frame: under the larger of
+ * the site's limit and twice what was predicted there. */
+export const checkPasses = (c: CheckRecord, limitMm: number) => c.error_mm <= Math.max(limitMm, 2 * (c.predicted_mm ?? 0));
 
 export function goals(i: GoalInputs): Goal[] {
   const out: Goal[] = [];
@@ -64,18 +70,22 @@ export function goals(i: GoalInputs): Goal[] {
     detail: ext ? `${ext[0]} × ${ext[1]} mm · positions outside it are dropped` : "not measured: robots' positions cannot be checked against it",
     action: ext ? undefined : { label: "Set its size…", go: { kind: "frame", select: "floor" } },
   });
+  const limit = i.coverage?.limit_mm ?? 2;
   const myChecks = i.checks.filter((c) => c.calibration === i.servedId);
+  const agreed = myChecks.some((c) => checkPasses(c, limit));
   out.push({
     id: "zero",
     group: "room",
     title: "Zero",
-    state: myChecks.length ? "ok" : "warn",
-    detail: myChecks.length
+    state: agreed ? "ok" : "warn",
+    detail: agreed
       ? "a robot on a taped mark agreed with the frame"
-      : i.doc.anchor
-        ? "a note says where it is; nothing ties it to a mark yet"
-        : "no note says where zero is in the room",
-    action: myChecks.length ? undefined : { label: "Capture with a robot…", go: { kind: "frame", tool: "capture" } },
+      : myChecks.length
+        ? "the last check on a mark was off: check the tape, or capture zero again"
+        : i.doc.anchor
+          ? "a note says where it is; not checked with a robot on a taped mark yet"
+          : "no note says where zero is in the room",
+    action: agreed ? undefined : { label: "Capture with a robot…", go: { kind: "frame", tool: "capture" } },
   });
   if (!i.served) {
     const free = i.rows.some((r) => r.free && !r.in_frame);
@@ -103,7 +113,7 @@ export function goals(i: GoalInputs): Goal[] {
       state: m.verdict === "moved?" ? "warn" : "ok",
       detail: `${st} measured in ${i.served.id8}${m.spins > 1 ? ` · ${m.spins} spins ${m.verdict === "moved?" ? "disagree: a station may have moved" : "agree (no sign of a move)"}` : ""}`,
       summary: m.spins > 1 ? ["Stations ", m.verdict === "moved?" ? "may have moved" : `consistent across ${m.spins} spins`] : undefined,
-      action: { label: "Stations…", go: { kind: "stations" } },
+      action: { label: "Stations…", go: { kind: "stations", mode: "fix" } },
     });
     const shared = i.served.stations.length > 1 && new Set(i.served.stations.map((s) => s.box.join())).size === 1;
     out.push({
@@ -112,7 +122,7 @@ export function goals(i: GoalInputs): Goal[] {
       title: "Who gives the fix",
       state: "info",
       detail: shared ? "one shared box: the boxes decide nothing; the stations' disagreement does" : i.served.reading,
-      action: shared ? { label: "Split the floor…", go: { kind: "stations", sheet: "split" } } : undefined,
+      action: shared ? { label: "Split the floor…", go: { kind: "stations", sheet: "split", mode: "fix" } } : undefined,
     });
   }
   const h = i.coverage?.headline;
@@ -123,7 +133,7 @@ export function goals(i: GoalInputs): Goal[] {
     state: !h ? "unknown" : h.worst_mm <= (i.coverage?.limit_mm ?? 2) ? "ok" : "fail",
     detail: h ? `≤ ${h.worst_mm.toFixed(2)} mm on the floor, limit ${i.coverage?.limit_mm ?? 2} mm · for the station the robot keeps` : "not computed: no spin to predict it from",
     summary: h ? ["Predicted error ", `≤ ${h.worst_mm.toFixed(2)} mm`] : undefined,
-    action: { label: "Predicted error…", go: { kind: "stations" } },
+    action: { label: "Predicted error…", go: { kind: "stations", mode: "error" } },
   });
   const field = i.doc.areas.find((a) => roleOf(a) === "field");
   const staging = i.doc.areas.find((a) => roleOf(a) === "staging");
@@ -163,33 +173,43 @@ export function goals(i: GoalInputs): Goal[] {
     summary: i.servedId ? ["Serving ", i.servedId.slice(0, 8)] : undefined,
   });
   if (i.live) {
+    const held = i.robots.map((r) => heldBy(r, i.servedId));
+    const unknown = held.filter((h) => h.kind === "not-reported" || h.kind === "old-firmware").length;
+    const other = held.filter((h) => h.kind === "other" || h.kind === "none").length;
+    // Switched here this run and no robot says it holds it: none can, until a push
+    const unpushed = !!i.servedHere && !!i.servedId && unknown + other === i.robots.length;
     const located = i.robots.filter((r) => r.position);
     const inField = field ? located.filter((r) => r.position!.x >= field.x && r.position!.x <= field.x + field.w && r.position!.y >= field.y && r.position!.y <= field.y + field.h) : [];
     out.push({
       id: "robots",
       group: "run",
       title: "Robots on the floor",
-      state: i.robots.length === 0 ? "unknown" : inField.length === i.robots.length ? "ok" : "warn",
-      detail: i.robots.length === 0 ? "none reports to this controller" : `${inField.length} of ${i.robots.length} in the field${located.length < i.robots.length ? ` · ${i.robots.length - located.length} without a fix` : ""}`,
-      summary: i.robots.length ? ["", `${inField.length} of ${i.robots.length}`] : undefined,
+      state: i.robots.length === 0 || unpushed ? "unknown" : inField.length === i.robots.length ? "ok" : "warn",
+      detail:
+        i.robots.length === 0
+          ? "none reports to this controller"
+          : unpushed
+            ? "their positions are still in the frame of what they hold, not of the served calibration"
+            : `${inField.length} of ${i.robots.length} in the field${located.length < i.robots.length ? ` · ${i.robots.length - located.length} without a fix` : ""}`,
+      summary: i.robots.length && !unpushed ? ["", `${inField.length} of ${i.robots.length}`] : undefined,
     });
-    const held = i.robots.map((r) => heldBy(r, i.servedId));
-    const unknown = held.filter((h) => h.kind === "not-reported" || h.kind === "old-firmware").length;
-    const other = held.filter((h) => h.kind === "other" || h.kind === "none").length;
     out.push({
       id: "held",
       group: "run",
       title: "Which calibration robots hold",
-      state: i.robots.length === 0 ? "unknown" : other ? "fail" : unknown ? "unknown" : "ok",
+      state: i.robots.length === 0 ? "unknown" : other || unpushed ? "fail" : unknown ? "unknown" : "ok",
       detail:
         i.robots.length === 0
           ? "no robot to ask"
-          : other
+          : unpushed
+            ? `${i.servedId?.slice(0, 8)} was served from here this run and no robot reports holding it: push it in the console`
+            : other
             ? `${other} of ${i.robots.length} hold another calibration: push ${i.servedId?.slice(0, 8)} in the console`
             : unknown
-              ? `${unknown} of ${i.robots.length} not reported: swarmit gave no device info`
+              ? `${unknown} of ${i.robots.length} not reported: the fleet server sent no device info`
               : `all ${i.robots.length} hold ${i.servedId?.slice(0, 8)}`,
-      summary: ["Which calibration robots hold: ", other ? `${other} hold another` : unknown ? "not reported" : `all hold ${i.servedId?.slice(0, 8)}`],
+      summary: ["Which calibration robots hold: ", unpushed ? "push needed" : other ? `${other} hold another` : unknown ? "not reported" : `all hold ${i.servedId?.slice(0, 8)}`],
+      action: (unpushed || other) && i.servedId ? { label: "Push in the console…", go: { href: `/console?push=${i.servedId.slice(0, 8)}` } } : undefined,
     });
   } else {
     out.push({ id: "robots", group: "run", title: "Robots", state: "unknown", detail: "no controller opened this page, so no robot is known" });
@@ -199,8 +219,8 @@ export function goals(i: GoalInputs): Goal[] {
     id: "checked",
     group: "run",
     title: "Checked on a mark",
-    state: last ? (last.error_mm <= Math.max(i.coverage?.limit_mm ?? 2, 2 * (last.predicted_mm ?? 0)) ? "ok" : "warn") : "optional",
-    detail: last ? `${last.error_mm.toFixed(1)} mm at (${last.mark_mm[0]}, ${last.mark_mm[1]}) by …${last.robot.slice(-4)}, ${last.at.replace("T", " ").slice(0, 16)}` : "optional · a robot on a taped mark proves the positions",
+    state: last ? (checkPasses(last, limit) ? "ok" : "warn") : "optional",
+    detail: last ? `${checkPasses(last, limit) ? "" : "off: "}${last.error_mm.toFixed(1)} mm at (${last.mark_mm[0]}, ${last.mark_mm[1]}) by …${last.robot.slice(-4)}, ${last.at.replace("T", " ").slice(0, 16)}` : "optional · a robot on a taped mark proves the positions",
     action: i.live ? { label: "Check on a mark…", go: { sheet: "check" } } : undefined,
   });
   return out;

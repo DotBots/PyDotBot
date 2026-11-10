@@ -6,6 +6,7 @@ import { KV, NumField, TextField } from "./fields";
 import { Icon } from "./icons";
 import { freshKey, siteModel, type Doc, type Point } from "./model";
 import type { PlanPaint } from "./PlanCanvas";
+import { SPIN_ADVISED, SPIN_MIN } from "../SpinCard";
 import { aroundRobots, fromMarks, MARGIN_MM, moveBy, propose, spunRobots, type Proposal, type Rigid, type SpunRobot } from "./place";
 import type { LibraryRow, SitePayload } from "./types";
 
@@ -49,6 +50,8 @@ export const NewRoomPanel: React.FC<{
   onPreview: (p: PlacePreview | null) => void;
   onWritten: (payload: SitePayload | null, placedId: string | null, served: boolean) => void;
   onClose: () => void;
+  /** Opens the check on a mark, once a placed calibration is served */
+  onCheck?: () => void;
 }> = (props) => {
   const { doc, spin } = props;
   const spinning = spin && (spin.phase === "spinning" || spin.phase === "solving");
@@ -59,11 +62,13 @@ export const NewRoomPanel: React.FC<{
   const [method, setMethod] = useState<Method>("around");
   const [margin, setMargin] = useState(MARGIN_MM);
   const [typed, setTyped] = useState<Rigid>({ theta_deg: 0, dx: MARGIN_MM, dy: MARGIN_MM });
-  const [markA, setMarkA] = useState<{ robot: string; at: Point }>({ robot: "", at: [500, 500] });
-  const [markB, setMarkB] = useState<{ robot: string; at: Point }>({ robot: "", at: [1000, 500] });
+  type Mark = { robot: string; at: [number | null, number | null] };
+  const [markA, setMarkA] = useState<Mark>({ robot: "", at: [null, null] });
+  const [markB, setMarkB] = useState<Mark>({ robot: "", at: [null, null] });
   const [note, setNote] = useState(doc.anchor ?? "");
   const [busy, setBusy] = useState(false);
   const [steps, setSteps] = useState<string[]>([]);
+  const [written, setWritten] = useState<{ id: string; served: boolean } | null>(null);
 
   useEffect(() => {
     setOverlay(null);
@@ -83,7 +88,9 @@ export const NewRoomPanel: React.FC<{
   const marks = useMemo(() => {
     const a = robots.find((r) => r.name === markA.robot);
     const b = robots.find((r) => r.name === markB.robot);
-    return a && b && a !== b ? fromMarks(a.at, markA.at, b.at, markB.at) : null;
+    const pa = markA.at[0] !== null && markA.at[1] !== null ? ([markA.at[0], markA.at[1]] as Point) : null;
+    const pb = markB.at[0] !== null && markB.at[1] !== null ? ([markB.at[0], markB.at[1]] as Point) : null;
+    return a && b && a !== b && pa && pb ? fromMarks(a.at, pa, b.at, pb) : null;
   }, [robots, markA, markB]);
   const move: Rigid | null = method === "around" ? aroundRobots(margin) : method === "typed" ? typed : (marks?.move ?? null);
   const proposal = move && robots.length ? propose(robots, move, doc.extent_mm) : null;
@@ -125,6 +132,8 @@ export const NewRoomPanel: React.FC<{
         done.push(`${placed.id8} served, this run only`);
       }
       setSteps(done);
+      setWritten({ id: placed.id, served });
+      props.onPreview(null);
       props.onWritten(payload, placed.id, served);
     } catch (e) {
       setSteps(done);
@@ -175,7 +184,7 @@ export const NewRoomPanel: React.FC<{
           <div className="callout err">The spin failed: {spin.error}</div>
         ) : (
           <div className="note">
-            Spread four or more robots over the floor, then spin them in the console's Localization tab. This page follows the spin as it runs.
+            Spread at least {SPIN_MIN} robots over the floor ({SPIN_ADVISED} or more hold the frame best), then spin them in the console's Localization tab. This page follows the spin as it runs.
           </div>
         )}
         {justSpun && spin?.result && (
@@ -191,12 +200,38 @@ export const NewRoomPanel: React.FC<{
         )}
         {spinHref && !spinning && (
           <div className="acts">
-            <a className="btn sm" href={spinHref} target="_blank" rel="noreferrer" data-testid="spin-link">
+            <a className="btn sm" href={spinHref} target="dotbot-console" rel="noreferrer" data-testid="spin-link">
               <Icon name="spin" size={13} /> Spin robots in the console <Icon name="ext" size={11} />
             </a>
           </div>
         )}
       </Step>
+      {written ? (
+        <>
+          <Step n={3} title="Put it in the room" state="done">
+            <ul className="note" style={{ margin: 0, paddingLeft: 16 }} data-testid="place-steps">
+              {steps.map((x, i) => (
+                <li key={i}>{x}</li>
+              ))}
+            </ul>
+          </Step>
+          <Step n={4} title="Push it, then check it" state="on">
+            <div className="note">
+              Robots still compute positions with what they hold. Push {written.id.slice(0, 8)} to them in the console, then park one on a taped mark to check the room's zero.
+            </div>
+            <div className="acts">
+              <a className="btn sm primary" href={`/console?push=${written.id.slice(0, 8)}`} target="dotbot-console" rel="noreferrer" data-testid="newroom-push">
+                Push in the console <Icon name="ext" size={11} />
+              </a>
+              {props.onCheck && written.served && (
+                <button type="button" className="btn sm" onClick={props.onCheck}>
+                  Check on a mark…
+                </button>
+              )}
+            </div>
+          </Step>
+        </>
+      ) : (
       <Step n={3} title="Put it in the room" state={overlay ? "on" : "todo"}>
         {props.freeRows.length > 1 && (
           <div className="fld" style={{ marginBottom: 6 }}>
@@ -272,7 +307,7 @@ export const NewRoomPanel: React.FC<{
                     The tape puts the marks {marks.tapeMm.toFixed(0)} mm apart, the spin {marks.spinMm.toFixed(0)} mm: {gap.toFixed(1)} mm {gap > 10 ? "off. Check the tape and that each robot spun on its mark." : "apart, fine."}
                   </div>
                 )}
-                {!marks && <div className="note">Pick two different robots.</div>}
+                {!marks && <div className="note">Pick two different robots and type both marks.</div>}
               </>
             )}
             {method === "typed" && (
@@ -322,6 +357,7 @@ export const NewRoomPanel: React.FC<{
           </>
         )}
       </Step>
+      )}
     </div>
   );
 };

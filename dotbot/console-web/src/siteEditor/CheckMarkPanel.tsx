@@ -24,7 +24,7 @@ export const CheckMarkPanel: React.FC<{
 }> = ({ bots, robotId, calibrationId, coverage, onClose, onRecorded }) => {
   const located = bots.filter((b) => b.position);
   const [robot, setRobot] = useState<string>(robotId ?? located[0]?.id ?? "");
-  const [mark, setMark] = useState<Point>([500, 600]);
+  const [mark, setMark] = useState<[number | null, number | null]>([null, null]);
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [assume, setAssume] = useState(false);
   const [recorded, setRecorded] = useState<CheckRecord | null>(null);
@@ -50,13 +50,18 @@ export const CheckMarkPanel: React.FC<{
   const trusted = held?.kind === "served" || assume;
   const still = stillness(track.current, now);
   const measured = still.mean;
-  const err = measured ? Math.hypot(measured[0] - mark[0], measured[1] - mark[1]) : null;
-  const predicted = coverage?.fog ? sample(coverage.fog.sigma, coverage.fog, mark[0], mark[1]) : null;
+  const typed = mark[0] !== null && mark[1] !== null ? ([mark[0], mark[1]] as Point) : null;
+  const err = measured && typed ? Math.hypot(measured[0] - typed[0], measured[1] - typed[1]) : null;
+  const predicted = coverage?.fog && typed ? sample(coverage.fog.sigma, coverage.fog, typed[0], typed[1]) : null;
+  const limit = coverage?.limit_mm ?? 2;
+  const passes = err !== null && err <= Math.max(limit, 2 * (predicted ?? 0));
+  // Far beyond any calibration error: more likely the wrong robot or mark
+  const wild = err !== null && err > 50;
 
   const record = async () => {
-    if (!measured) return;
+    if (!measured || !typed) return;
     try {
-      const c = await postCheck({ calibration: calibrationId, mark_mm: mark, measured_mm: measured, robot, predicted_mm: predicted });
+      const c = await postCheck({ calibration: calibrationId, mark_mm: typed, measured_mm: measured, robot, predicted_mm: predicted });
       setRecorded(c);
       setStep(3);
       onRecorded(c);
@@ -102,8 +107,8 @@ export const CheckMarkPanel: React.FC<{
               </div>
               <span className="lbl" style={{ marginTop: 8 }}>The mark, measured from zero, mm</span>
               <div className="grid2">
-                <NumField label="mark x" prefix="x" value={mark[0]} onApply={(v) => setMark([v, mark[1]])} />
-                <NumField label="mark y" prefix="y" value={mark[1]} onApply={(v) => setMark([mark[0], v])} />
+                <NumField label="mark x" prefix="x" value={mark[0]} hint="measured" onApply={(v) => setMark([v, mark[1]])} />
+                <NumField label="mark y" prefix="y" value={mark[1]} hint="measured" onApply={(v) => setMark([mark[0], v])} />
               </div>
               {held && !trusted && (
                 <div className="callout warn" style={{ marginTop: 8 }}>
@@ -117,7 +122,7 @@ export const CheckMarkPanel: React.FC<{
                 </div>
               )}
               <div className="acts">
-                <button type="button" className="btn sm primary" disabled={!trusted || !robot} onClick={() => setStep(2)} data-testid="check-read">
+                <button type="button" className="btn sm primary" disabled={!trusted || !robot || !typed} title={typed ? undefined : "Type where the mark is first"} onClick={() => setStep(2)} data-testid="check-read">
                   Read …{tail(robot || "0000")}
                 </button>
               </div>
@@ -136,15 +141,19 @@ export const CheckMarkPanel: React.FC<{
           <KV
             testid="check-numbers"
             rows={[
-              ["Mark", `${mark[0].toFixed(1)}, ${mark[1].toFixed(1)} mm`],
+              ["Mark", typed ? `${typed[0].toFixed(1)}, ${typed[1].toFixed(1)} mm` : "-"],
               ["Robot reports", measured ? `${measured[0].toFixed(1)}, ${measured[1].toFixed(1)} mm` : "waiting"],
-              ["Error", err !== null && measured ? `${err.toFixed(1)} mm (dx ${(measured[0] - mark[0]).toFixed(1)}, dy ${(measured[1] - mark[1]).toFixed(1)})` : "-"],
+              ["Error", err !== null && measured && typed ? `${err.toFixed(1)} mm (dx ${(measured[0] - typed[0]).toFixed(1)}, dy ${(measured[1] - typed[1]).toFixed(1)})` : "-"],
               ["Predicted here", predicted !== null ? `≤ ${predicted.toFixed(2)} mm` : "not computed"],
             ]}
           />
-          {err !== null && predicted !== null && err > predicted && still.still && (
-            <div className="callout warn" style={{ marginTop: 8 }}>
-              Measured error is larger than predicted: the prediction covers the solve, not the tape, the mark or the robot's placement. Record it as it is.
+          {err !== null && still.still && (
+            <div className={`callout ${wild ? "err" : passes ? "ok" : "warn"}`} style={{ marginTop: 8 }} data-testid="check-verdict">
+              {wild
+                ? `${err.toFixed(0)} mm off: far more than any calibration error. Is it the right robot, on the right mark, and the mark measured from zero? Check before recording.`
+                : passes
+                  ? `Agrees: within the ${Math.max(limit, 2 * (predicted ?? 0)).toFixed(1)} mm a check allows here.`
+                  : `Off: over the ${Math.max(limit, 2 * (predicted ?? 0)).toFixed(1)} mm a check allows here (the limit, or twice the prediction). The prediction covers the solve, not the tape or the robot's placement; record it as it is, then check the tape or capture zero again.`}
             </div>
           )}
           {error && <div className="callout err" style={{ marginTop: 8 }}>{error}</div>}
@@ -160,7 +169,9 @@ export const CheckMarkPanel: React.FC<{
       )}
       {step === 3 && recorded && (
         <>
-          <div style={{ fontWeight: 600, fontSize: 13, margin: "6px 0 4px" }}>Recorded: {recorded.error_mm.toFixed(1)} mm</div>
+          <div style={{ fontWeight: 600, fontSize: 13, margin: "6px 0 4px" }}>
+            Recorded: {recorded.error_mm.toFixed(1)} mm, {recorded.error_mm <= Math.max(limit, 2 * (recorded.predicted_mm ?? 0)) ? "agrees" : "off"}
+          </div>
           <div className="infile">
             <div className="ih">
               <Icon name="file" size={12} /> APPENDED TO checks.toml

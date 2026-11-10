@@ -93,15 +93,15 @@ export const ChecksPane: React.FC<{
         <ul>
           {v.lines.map((g) => (
             <li key={g.id}>
-              <span style={{ color: g.state === "ok" ? "var(--ok)" : g.state === "unknown" ? "var(--warn)" : g.state === "fail" ? "var(--err)" : "var(--muted)" }}>
-                {g.state === "unknown" ? "?" : g.state === "fail" ? <Icon name="x" size={12} /> : <Icon name="check" size={12} />}
+              <span style={{ color: g.state === "ok" ? "var(--ok)" : g.state === "unknown" || g.state === "warn" ? "var(--warn)" : g.state === "fail" ? "var(--err)" : "var(--muted)" }}>
+                {g.state === "unknown" ? "?" : g.state === "fail" ? <Icon name="x" size={12} /> : g.state === "warn" ? <Icon name="warn" size={12} /> : g.state === "ok" ? <Icon name="check" size={12} /> : <Icon name="info" size={12} />}
               </span>
               <span>
                 {g.summary ? (
                   <>
                     {g.summary[0]}
                     <b>{g.summary[1]}</b>
-                    {g.id === "robots" ? " robots localized in the field" : ""}
+                    {g.id === "robots" ? " robots in the field" : ""}
                   </>
                 ) : (
                   <>
