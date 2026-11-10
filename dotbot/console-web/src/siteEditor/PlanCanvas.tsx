@@ -136,6 +136,8 @@ interface PlanCanvasProps {
   onProbe?: (mm: Point | null, at: Point | null) => void;
   /** A one-shot tool finished; back to Select. */
   onToolDone: () => void;
+  /** A click on the floor with a tool that picks a point, e.g. the pivot. */
+  onPoint?: (mm: Point) => void;
   onShortcuts?: () => void;
   /** Bumped by the page to fit the floor again. */
   fitSignal?: number;
@@ -278,6 +280,7 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
     if (editable && tool === "area") return setDrag({ type: "area", from: at, to: at });
     if (tool === "measure") return setDrag({ type: "measure", from: at, to: at });
     if (tool === "probe") return props.onProbe?.(rawMm(e), local(e));
+    if (tool === "turn") return props.onPoint?.(at);
     if (editable && (tool === "wall" || tool === "obstacle")) return setPoly((p) => [...p, at]);
     const objectKind = OBJECT_TOOLS[tool];
     if (editable && objectKind) return placeObject(at, objectKind);

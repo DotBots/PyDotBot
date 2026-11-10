@@ -10,8 +10,11 @@ import { Tabs } from "../shared/Tabs";
 import { TitleBar } from "../shared/TitleBar";
 import { holds, typingIn } from "../shortcuts";
 import type { Site, UnifiedBot } from "../types";
-import { dryRunBoxes, fetchContext, fetchCoverage, fetchLibrary, fetchRevision, fetchSite, patchCalibration, type DryRun } from "./api";
+import { dryRunBoxes, fetchContext, fetchCoverage, fetchLibrary, fetchRevision, fetchSite, patchCalibration, type DryRun, type FrameResult } from "./api";
 import { CompareSheet } from "./CompareSheet";
+import { FramePanel } from "./FramePanel";
+import { FrameSheet } from "./FrameSheet";
+import { moves, NO_MOVE, toOld, type FrameMove } from "./frameMove";
 import { ServeSheet } from "./ServeSheet";
 import { heldCalibrationId } from "../botFacts";
 import type { Coverage } from "./coverage";
@@ -27,7 +30,7 @@ import { LibraryPane, type LibraryAction } from "./LibraryPane";
 import { residuals, when } from "./library";
 import { docFromPayload, docFromSite, type Doc, type Point } from "./model";
 import { OutlinePane } from "./OutlinePane";
-import { DEFAULT_LAYERS, kindOfKey, PlanCanvas, type PlanLayers } from "./PlanCanvas";
+import { DEFAULT_LAYERS, kindOfKey, PlanCanvas, type PlanLayers, type PlanPaint } from "./PlanCanvas";
 import { edgeMoved, handleAt, movedAll, removed, resized, type Handle } from "./plan";
 import { ReviewSheet } from "./ReviewSheet";
 import { Readout, StationsLegend, stationsOverlay, stationsUnderlay } from "./StationsLayer";
@@ -130,6 +133,36 @@ interface Notice {
   tone: "info" | "warn" | "err";
 }
 
+/** The new floor and zero of a frame move, dashed over the plan. */
+function frameGhost(m: FrameMove, extent: [number, number]) {
+  return (p: PlanPaint) => {
+    const corners = ([[0, 0], [extent[0], 0], [extent[0], extent[1]], [0, extent[1]]] as Point[]).map((c) => p.px(toOld(m, c)));
+    const zero = p.px(toOld(m, [0, 0]));
+    const xEnd = p.px(toOld(m, [Math.min(250, extent[0] / 3), 0]));
+    const yEnd = p.px(toOld(m, [0, Math.min(250, extent[1] / 3)]));
+    const pivot = p.px(m.pivot);
+    return (
+      <g data-testid="frame-ghost" style={{ pointerEvents: "none" }}>
+        <polygon points={corners.map((c) => c.join(",")).join(" ")} fill="color-mix(in srgb, var(--accent) 5%, transparent)" stroke="var(--accent)" strokeWidth={1.5 * p.chrome} strokeDasharray={`${6 * p.chrome} ${4 * p.chrome}`} />
+        <line x1={zero[0]} y1={zero[1]} x2={xEnd[0]} y2={xEnd[1]} stroke="var(--accent)" strokeWidth={1.8 * p.chrome} />
+        <line x1={zero[0]} y1={zero[1]} x2={yEnd[0]} y2={yEnd[1]} stroke="var(--accent)" strokeWidth={1.8 * p.chrome} />
+        <circle cx={zero[0]} cy={zero[1]} r={6 * p.chrome} fill="var(--canvas)" stroke="var(--accent)" strokeWidth={1.6 * p.chrome} />
+        <text className="halo" x={zero[0] + 9 * p.chrome} y={zero[1] - 8 * p.chrome} fontSize={10.5 * p.label} fill="var(--accent)" strokeWidth={3 * p.chrome}>
+          new zero
+        </text>
+        {m.theta_deg !== 0 && (
+          <g>
+            <circle cx={pivot[0]} cy={pivot[1]} r={4 * p.chrome} fill="none" stroke="var(--text)" strokeWidth={1.2 * p.chrome} />
+            <text className="tl halo" x={pivot[0] + 7 * p.chrome} y={pivot[1] + 4 * p.chrome} fontSize={9.5 * p.label} strokeWidth={3 * p.chrome}>
+              turns {m.theta_deg}° about here
+            </text>
+          </g>
+        )}
+      </g>
+    );
+  };
+}
+
 /** The site editor page. */
 export const SiteEditorApp: React.FC = () => {
   const [theme, setTheme] = useState<"dark" | "light">(() => {
@@ -192,6 +225,8 @@ export const SiteEditorApp: React.FC = () => {
   const [serving, setServing] = useState<LibraryRow | null>(null);
   const [comparing, setComparing] = useState<[LibraryRow, LibraryRow] | null>(null);
   const [toast, setToast] = useState<{ text: string; push?: string; undo?: () => void } | null>(null);
+  const [frameMove, setFrameMove] = useState<FrameMove>(NO_MOVE);
+  const [frameReview, setFrameReview] = useState<FrameResult | null>(null);
   useEffect(() => {
     if (!toast) return;
     const t = window.setTimeout(() => setToast(null), 9000);
@@ -296,7 +331,14 @@ export const SiteEditorApp: React.FC = () => {
         .sort((a, b) => a.index - b.index)
     : fileBoxes;
   const baseChip = editorChip(context, previewId ? shown : null);
-  const chip: ChipModel = boxDraft ? { ...baseChip, side: { kind: "draft", from: boxDraft.from.slice(0, 8) } } : baseChip;
+  const frameChange = context?.frame_change && servedId === context.frame_change.to_id ? context.frame_change : null;
+  const frameHeld = frameChange ? bots.filter((b) => heldCalibrationId(b).toLowerCase() === frameChange.to_id.toLowerCase()).length : 0;
+  const frameOpen = !!frameChange && (bots.length === 0 || frameHeld < bots.length);
+  const chip: ChipModel = boxDraft
+    ? { ...baseChip, side: { kind: "draft", from: boxDraft.from.slice(0, 8) } }
+    : frameOpen && !previewId
+      ? { ...baseChip, side: { kind: "frame-change" } }
+      : baseChip;
   const boxesKey = JSON.stringify(boxDraft?.boxes ?? null);
   const circles = !previewId && fleetSite?.calibration?.id === servedId ? (fleetSite?.calibration?.circles ?? []) : [];
   const live = context?.mode === "controller";
@@ -311,6 +353,13 @@ export const SiteEditorApp: React.FC = () => {
       if (k !== "view") setKind(k);
     }
   }, []);
+  useEffect(() => {
+    if (tool === "turn" && !moves(frameMove) && draft?.doc.extent_mm) {
+      const [w, h] = draft.doc.extent_mm;
+      setFrameMove((m) => ({ ...m, pivot: [Math.round(w / 2), Math.round(h / 2)] }));
+    }
+  }, [tool]);
+
   const pickKind = (k: EditKind) => {
     setKind(k);
     setTool("select");
@@ -627,7 +676,23 @@ export const SiteEditorApp: React.FC = () => {
         </button>
       </div>
       <div className="pane-body">
-        {rightTab === "inspect" && kind === "stations" && !selected.some((k) => k.startsWith("robot:")) ? (
+        {rightTab === "inspect" && kind === "frame" && (tool === "turn" || tool === "capture") ? (
+          <FramePanel
+            mode={tool === "capture" ? "capture" : "turn"}
+            move={frameMove}
+            onMove={setFrameMove}
+            site={payload?.name ?? ""}
+            calibrationId={servedId}
+            revision={draft.revision}
+            frameId={payload?.frame_id ?? ""}
+            extent={draft.doc.extent_mm ?? [1000, 1000]}
+            note={draft.doc.anchor ?? ""}
+            bots={bots}
+            live={live}
+            onReview={setFrameReview}
+            onMode={(m) => setTool(m)}
+          />
+        ) : rightTab === "inspect" && kind === "stations" && !selected.some((k) => k.startsWith("robot:")) ? (
           <StationsPanel
             shown={shown}
             servedId={servedId}
@@ -663,6 +728,11 @@ export const SiteEditorApp: React.FC = () => {
             onEdit={onEdit}
             onSelect={select}
             onBlink={live ? blink : undefined}
+            frameId={payload?.frame_id}
+            onFrameTool={(t) => {
+              setKind("frame");
+              setTool(t);
+            }}
           />
         ) : (
           <div data-testid="layers" style={{ paddingTop: 8 }}>
@@ -827,8 +897,15 @@ export const SiteEditorApp: React.FC = () => {
                 fitSignal={fitSignal}
                 onBoxEdit={shown?.in_frame ? (index, rect) => editBoxes({ [index]: rect }) : undefined}
                 underlay={kind === "stations" ? stationsUnderlay(coverageMode, coverage && coverage.id === shown?.id ? coverage : null, draft.doc.extent_mm ?? [1000, 1000], theme === "light", coverageStale) : undefined}
-                overlay={kind === "stations" ? stationsOverlay(coverage && coverage.id === shown?.id ? coverage : null, showNext && coverageMode === "error", probe?.at ?? null) : undefined}
+                overlay={
+                  kind === "stations"
+                    ? stationsOverlay(coverage && coverage.id === shown?.id ? coverage : null, showNext && coverageMode === "error", probe?.at ?? null)
+                    : kind === "frame" && moves(frameMove) && (tool === "turn" || tool === "capture")
+                      ? frameGhost(frameMove, draft.doc.extent_mm ?? [1000, 1000])
+                      : undefined
+                }
                 onProbe={(at, px) => setProbe(at && px ? { at, px } : null)}
+                onPoint={(p) => setFrameMove((m) => ({ ...m, pivot: p }))}
                 onSelect={select}
                 onEdge={setEdge}
                 onEdit={onEdit}
@@ -848,6 +925,18 @@ export const SiteEditorApp: React.FC = () => {
                     coverage={coverage && coverage.id === shown?.id ? coverage : null}
                     area={draft.doc.areas.find((a) => probe.at[0] >= a.x && probe.at[0] <= a.x + a.w && probe.at[1] >= a.y && probe.at[1] <= a.y + a.h)?.name ?? null}
                   />
+                )}
+                {frameOpen && !boxDraft && !previewId && (
+                  <div className="float banner frame" data-testid="frame-banner" style={{ left: tools.length ? 62 : 12 }}>
+                    <Icon name="frame" size={15} />
+                    <span className="tx">
+                      <b>Frame change, push needed:</b> robots report in the old frame {frameChange!.from_frame} until they hold {frameChange!.to_id.slice(0, 8)} ({frameHeld} of{" "}
+                      {bots.length} do). Data already logged stays in the old frame.
+                    </span>
+                    <a className="btn sm primary" href={`/console?push=${frameChange!.to_id.slice(0, 8)}`} target="_blank" rel="noreferrer">
+                      Push in the console ↗
+                    </a>
+                  </div>
                 )}
                 {previewId && !boxDraft && shown && (
                   <div className="float banner prev" data-testid="preview-banner" style={{ left: tools.length ? 62 : 12 }}>
@@ -1052,6 +1141,24 @@ export const SiteEditorApp: React.FC = () => {
             setView("plan");
             select([key]);
             setFitSignal((n) => n + 1);
+          }}
+        />
+      )}
+      {frameReview && servedId && draft && (
+        <FrameSheet
+          site={payload?.name ?? ""}
+          calibrationId={servedId}
+          move={frameMove}
+          revision={draft.revision}
+          planned={frameReview}
+          live={live}
+          onClose={() => setFrameReview(null)}
+          onDone={() => {
+            setFrameMove(NO_MOVE);
+            setTool("select");
+            fetchContext().then(setContext, () => {});
+            fetchSite().then(load, () => {});
+            loadLibrary();
           }}
         />
       )}

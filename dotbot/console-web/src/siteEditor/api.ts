@@ -44,7 +44,7 @@ export const fetchRevision = () => json<{ revision: string }>("api/revision");
 export const openInEditor = () => json<{ command: string; path: string }>("api/open", post({}));
 
 export interface ApplyStep {
-  step: "site.toml" | "calibration";
+  step: "site.toml" | "calibration" | "serve";
   status: "written" | "unchanged" | "refused";
   detail: string;
   revision?: string;
@@ -102,3 +102,39 @@ export const patchCalibration = (id: string, change: { tag?: string; archived?: 
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(change),
   });
+
+export interface FrameRequest {
+  calibration: string;
+  theta_deg: number;
+  pivot: [number, number];
+  dx_mm: number;
+  dy_mm: number;
+  note: string | null;
+  revision: string;
+  serve: boolean;
+  dry_run: boolean;
+}
+
+export interface FrameResult {
+  frame: string;
+  from_frame: string;
+  calibration: { id: string; id8: string; tag: string };
+  source: string;
+  warnings: string[];
+  push: string;
+  steps: ApplyStep[];
+  ok?: boolean;
+}
+
+export type FrameAnswer = { ok: true; result: FrameResult } | { ok: false; status: number; message: string; offer: { dx_mm: number; dy_mm: number } | null };
+
+/** A frame change, or what it would do with `dry_run`; a refusal carries the
+ * largest legal shift when there is one. */
+export async function postFrame(request: FrameRequest): Promise<FrameAnswer> {
+  const response = await fetch("api/frame", post(request));
+  const body = await response.json().catch(() => ({}));
+  if (response.ok) return { ok: true, result: body as FrameResult };
+  const detail = body?.detail;
+  if (detail && typeof detail === "object" && !Array.isArray(detail)) return { ok: false, status: response.status, message: String(detail.message), offer: detail.offer ?? null };
+  return { ok: false, status: response.status, message: typeof detail === "string" ? detail : response.statusText, offer: null };
+}

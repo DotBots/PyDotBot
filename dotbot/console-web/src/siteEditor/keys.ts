@@ -26,12 +26,14 @@ export type Tool =
   | "landmark"
   | "camera"
   | "probe"
+  | "turn"
+  | "capture"
   | "measure";
 
 /** Each kind's tools, by the key that picks them. */
 export const TOOLS: Record<EditKind, Partial<Record<string, Tool>>> = {
   view: {},
-  frame: { V: "select", M: "measure" },
+  frame: { V: "select", T: "turn", C: "capture", M: "measure" },
   areas: { V: "select", A: "area", M: "measure" },
   walls: { V: "select", W: "wall", O: "obstacle", M: "measure" },
   objects: { V: "select", C: "charger", D: "dock", L: "landmark", K: "camera", M: "measure" },
@@ -75,6 +77,8 @@ export const TOOL_LABEL: Record<Tool, string> = {
   landmark: "Landmark",
   camera: "Camera position",
   probe: "Point inspector",
+  turn: "Turn or shift zero",
+  capture: "Capture zero with a robot",
   measure: "Measure",
 };
 
@@ -89,6 +93,8 @@ export const TOOL_ICON: Record<Tool, IconName> = {
   landmark: "landmark",
   camera: "camera",
   probe: "probe",
+  turn: "turn",
+  capture: "capture",
   measure: "measure",
 };
 
