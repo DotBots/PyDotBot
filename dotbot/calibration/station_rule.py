@@ -102,6 +102,48 @@ def shared_centres(rects: Mapping[int, Sequence[int]]) -> list[tuple[int, ...]]:
     return [tuple(g) for g in groups.values() if len(g) > 1]
 
 
+def _span(lo: int, hi: int) -> str:
+    return f"{lo}-{hi}"
+
+
+def reading(rects: Mapping[int, Sequence[int]]) -> str:
+    """The boxes in one line: each box, then who gives the fix where they meet."""
+    rects = {s: resolve_rect(r) for s, r in sorted(rects.items())}
+    if not rects:
+        return "no station"
+    parts = []
+    shared = {s for g in shared_centres(rects) for s in g}
+    for group in shared_centres(rects):
+        same = len({rects[s] for s in group}) == 1
+        names = " and ".join(f"S{s}" for s in group)
+        parts.append(
+            f"{names} share {'one box' if same else 'a centre'}: the boxes do not decide"
+        )
+    for s, (x0, y0, x1, y1) in rects.items():
+        if s in shared:
+            continue
+        if x1 - x0 <= 1 or y1 - y0 <= 1:
+            parts.append(f"S{s} only in a {max(min(x1 - x0, y1 - y0), 0)} mm strip")
+        else:
+            parts.append(f"S{s} x {_span(x0, x1)}, y {_span(y0, y1)}")
+    stations = list(rects)
+    for i, a in enumerate(stations):
+        for b in stations[i + 1 :]:
+            ra, rb = rects[a], rects[b]
+            if a in shared and b in shared:
+                continue
+            if ra[0] > rb[2] or rb[0] > ra[2] or ra[1] > rb[3] or rb[1] > ra[3]:
+                continue
+            (ax, ay), (bx, by) = centre(ra), centre(rb)
+            if ay == by and ax != bx:
+                parts.append(f"S{a}/S{b} handover x {0.5 * (ax + bx):g}")
+            elif ax == bx and ay != by:
+                parts.append(f"S{a}/S{b} handover y {0.5 * (ay + by):g}")
+            elif (ax, ay) != (bx, by):
+                parts.append(f"S{a}/S{b} handover halfway between their centres")
+    return " · ".join(parts)
+
+
 # --- Fixtures ---------------------------------------------------------------
 
 
