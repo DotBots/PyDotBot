@@ -102,12 +102,13 @@ describe("the spin circles on the map", () => {
     },
   };
 
-  it("rings each circle in its station's colour, in place of the span", () => {
+  it("rings each spin once, in the colours of every station that saw it, in place of the span", () => {
     renderMap(SPIN);
     expect(screen.getByTestId("spin-circles")).toBeTruthy();
-    const ring = screen.getByTestId("spin-circle-1").querySelector("ellipse")!;
-    expect(ring.getAttribute("stroke")).toBe("var(--st-1)");
-    expect(ring.textContent).toContain("S1 saw …55E2");
+    expect(screen.queryByTestId("spin-circle-1")).toBeNull();
+    const rings = screen.getByTestId("spin-circle-0").querySelectorAll("ellipse");
+    expect([...rings].map((r) => r.getAttribute("stroke"))).toEqual(["var(--st-0)", "var(--st-1)"]);
+    expect(rings[0].textContent).toContain("S0 and S1 saw …55E2");
     expect(screen.queryByTestId("calibration-span")).toBeNull();
   });
 

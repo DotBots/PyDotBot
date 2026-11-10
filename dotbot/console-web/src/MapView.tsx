@@ -2,6 +2,7 @@ import React, { useCallback, useId, useMemo, useRef, useState } from "react";
 
 import { cameraStreamUrl } from "./api";
 import { areaColor } from "./areaColor";
+import { ringDash, spinRings } from "./shared/spinRings";
 import { OBJECT_COLOUR, OBJECT_SIZE_MM, facing } from "./siteObjects";
 import { CalibrationLayer } from "./CalibrationLayer";
 import { calibrationSpans, hatchBox, spanTitle } from "./calibrationSpan";
@@ -1331,30 +1332,38 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                 station's colour, as the editor draws them. */}
             {calibration && (calibration.circles ?? []).length > 0 && (
               <g data-testid="spin-circles">
-                {(calibration.circles ?? []).map((c, i) => {
+                {spinRings(calibration.circles ?? []).map((c, i) => {
                   const box = rectPx({
                     x: c.x - c.radius_mm,
                     y: c.y - c.radius_mm,
                     w: 2 * c.radius_mm,
                     h: 2 * c.radius_mm,
                   });
-                  const hue = `var(--st-${c.station % 2})`;
+                  const rx = box.width / 2;
+                  const label = `${c.stations.map((s) => `S${s}`).join(" and ")} saw …${c.name.slice(-4)} spin here`;
                   return (
                     <g key={`spin-${i}`} data-testid={`spin-circle-${i}`}>
-                      <ellipse
-                        cx={box.x + box.width / 2}
-                        cy={box.y + box.height / 2}
-                        rx={box.width / 2}
-                        ry={box.height / 2}
-                        fill="none"
-                        stroke={hue}
-                        strokeOpacity={0.8}
-                        strokeWidth={chrome}
-                        strokeDasharray={c.station >= 2 ? `${4 * chrome} ${3 * chrome}` : undefined}
-                      >
-                        <title>{`S${c.station} saw …${c.name.slice(-4)} spin here`}</title>
-                      </ellipse>
-                      <circle cx={box.x + box.width / 2} cy={box.y + box.height / 2} r={1.5 * chrome} fill={hue} />
+                      {c.stations.map((st, k) => {
+                        const dash = ringDash(k, c.stations.length, 2 * Math.PI * rx);
+                        return (
+                          <ellipse
+                            key={st}
+                            cx={box.x + rx}
+                            cy={box.y + box.height / 2}
+                            rx={rx}
+                            ry={box.height / 2}
+                            fill="none"
+                            stroke={`var(--st-${st % 2})`}
+                            strokeOpacity={0.85}
+                            strokeWidth={chrome}
+                            strokeDasharray={dash.dasharray}
+                            strokeDashoffset={dash.offset}
+                          >
+                            <title>{label}</title>
+                          </ellipse>
+                        );
+                      })}
+                      <circle cx={box.x + rx} cy={box.y + box.height / 2} r={1.5 * chrome} fill="var(--muted)" />
                     </g>
                   );
                 })}
