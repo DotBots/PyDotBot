@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: 2026-present Inria
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Turning a site on the floor: its calibrations saved again for the turned
-frame, its anchor rewritten, no other number of site.toml changed."""
+"""Turning a site on the floor or moving its zero: its calibrations saved
+again in a new frame, site.toml's frame id changed, no other number."""
 
 import dataclasses
 
@@ -20,9 +20,7 @@ from dotbot.calibration.site_turn import (
     turned,
 )
 from dotbot.site import Site
-from dotbot.site_editor import EditorState, create_app
 from dotbot.tests.test_calibration_conics import CENTRES, track_samples
-from dotbot.tests.test_site_editor import local_client
 
 SELF = "self-defined from spin calibration 1234abcd"
 ARENA = Site(name="arena", anchor=SELF, extent_mm=(3000, 4000))
@@ -70,18 +68,25 @@ def test_a_turned_calibration_moves_every_fix_by_the_floor_move(placed):
     ]
     assert result.valid_mm == placed.valid_mm
     assert result.site == Site(name="arena", anchor="zero moved")
+    assert plan_turn([placed], ARENA, 10, (1500, 2000), "zero moved")[0].site.frame
     assert result.edited_from == placed.id
     assert result.placed_from == placed.placed_from != ""
     assert result.tag == "spin-arena-turned"
 
 
-def test_a_turn_with_nothing_to_do_or_the_same_anchor_is_refused(placed):
-    with pytest.raises(TurnRefused, match="0 degrees"):
+def test_a_turn_with_nothing_to_do_is_refused_and_a_note_may_stay(placed):
+    with pytest.raises(TurnRefused, match="nothing moves"):
         plan_turn([placed], ARENA, 360, (0, 0), "new")
-    with pytest.raises(TurnRefused, match="anchor still reads"):
-        plan_turn([placed], ARENA, 5, (0, 0), SELF + "  ")
     with pytest.raises(TurnRefused, match="no calibration"):
         plan_turn([], ARENA, 5, (0, 0), "new")
+    (kept,) = plan_turn([placed], ARENA, 5, (0, 0), SELF)
+    assert kept.site.anchor == SELF and kept.site.frame != ARENA.frame_id
+
+
+def test_a_shift_alone_moves_zero(placed):
+    (shifted,) = plan_turn([placed], ARENA, 0, (0, 0), SELF, shift=(-100, -50))
+    for a, b in zip(spin_centres(placed)[0], spin_centres(shifted)[0]):
+        assert (b["x"], b["y"]) == pytest.approx((a["x"] + 100, a["y"] + 50), abs=0.1)
 
 
 def test_a_turn_putting_a_circle_below_zero_is_refused(placed):
@@ -116,105 +121,6 @@ def home(tmp_path, monkeypatch):
     return tmp_path / "home" / "calibrations"
 
 
-@pytest.fixture
-def pack(tmp_path, home, placed):
-    pack = tmp_path / "arena"
-    pack.mkdir()
-    (pack / "site.toml").write_text(SITE_TOML)
-    write_calibration(placed)
-    return pack
-
-
-@pytest.fixture
-def client(pack, home):
-    saves = []
-    app = create_app(
-        EditorState("arena", pack, [home / "arena"]),
-        page_dir=None,
-        on_saved=lambda: saves.append(1),
-    )
-    c = local_client(app)
-    c.saves = saves
-    return c
-
-
-def _turn(client, **body):
-    loaded = client.get("/api/site").json()
-    request = {
-        "theta_deg": 5,
-        "pivot": [1500, 2000],
-        "anchor": "zero is 40 mm right of the pillar",
-        "calibrations": [
-            c["id"] for c in client.get("/api/turn").json()["calibrations"]
-        ],
-        "revision": loaded["revision"],
-        **body,
-    }
-    return client.post("/api/turn", json=request)
-
-
-def test_the_turn_lists_the_calibrations_in_the_site_s_frame(client, placed):
-    info = client.get("/api/turn").json()
-    assert [c["id"] for c in info["calibrations"]] == [placed.id]
-    assert info["pivot"] == [1500, 2000]
-    assert info["anchor"] == SELF
-    assert info["anchor_marks"] == []
-
-
-def test_a_turn_writes_new_calibrations_and_only_the_anchor(client, pack, home, placed):
-    source = placed.path.read_bytes()
-    body = _turn(client).json()
-    (saved,) = body["saved"]
-    assert placed.path.read_bytes() == source
-    written = read_calibration_file(saved["path"])
-    assert written.id == saved["id"] != placed.id
-    assert written.site.anchor == "zero is 40 mm right of the pillar"
-    assert written.edited_from == placed.id
-    assert (
-        saved["push"] == f"dotbot swarm calibrate-lh2 push {written.id8} --site arena"
-    )
-    assert (pack / "site.toml").read_text() == SITE_TOML.replace(
-        SELF, "zero is 40 mm right of the pillar"
-    )
-    assert client.saves == [1]
-    # The old calibration names the old anchor, so only the new one is in frame
-    assert [c["id"] for c in client.get("/api/turn").json()["calibrations"]] == [
-        written.id
-    ]
-
-
-def test_a_turn_over_an_older_site_toml_is_a_409(client, pack, home):
-    response = _turn(client, revision="stale")
-    assert response.status_code == 409
-    assert len(list((home / "arena").glob("*.toml"))) == 1
-    assert (pack / "site.toml").read_text() == SITE_TOML
-
-
-def test_a_turn_keeping_the_anchor_is_refused_and_writes_nothing(client, home):
-    response = _turn(client, anchor=SELF)
-    assert response.status_code == 422
-    assert "anchor still reads" in response.json()["detail"]
-    assert len(list((home / "arena").glob("*.toml"))) == 1
-
-
-def test_another_anchor_takes_a_calibration_out_and_is_named(client, pack):
-    (pack / "site.toml").write_text(SITE_TOML.replace(SELF, "the door corner"))
-    response = client.get("/api/turn").json()
-    # The placed calibration records the old anchor: no longer in frame
-    assert response["calibrations"] == []
-    assert "names a mark in the room" in response["anchor_marks"][0]
-
-
-def test_a_floor_marked_anchor_is_refused_until_confirmed(client, pack, home, placed):
-    marked = Site(name="arena", anchor="the door corner", extent_mm=(3000, 4000))
-    write_calibration(dataclasses.replace(placed, site=marked))
-    (pack / "site.toml").write_text(SITE_TOML.replace(SELF, "the door corner"))
-    refused = _turn(client)
-    assert refused.status_code == 422
-    assert "floor marks" in refused.json()["detail"]
-    assert _turn(client, marks_confirmed=True).status_code == 200
-
-
 def _lab(tmp_path):
     lab = tmp_path / "lab"
     (lab / "sites" / "arena").mkdir(parents=True)
@@ -235,25 +141,28 @@ def _site_cmd(lab, *args, input=None):
     )
 
 
-def test_site_turn_does_what_the_editor_s_save_does(tmp_path, home, placed):
+def test_site_turn_writes_the_new_frame_and_the_calibrations(tmp_path, home, placed):
     lab = _lab(tmp_path)
     write_calibration(placed)
-    result = _site_cmd(lab, "arena", "--rotate", "5", "--about", "1500,2000", "--note")
+    result = _site_cmd(lab, "arena", "--rotate", "5", "--about", "1500,2000")
     assert result.exit_code == 0, result.output
     (written,) = set((home / "arena").glob("*.toml")) - {placed.path}
     cal = read_calibration_file(written)
-    expected = turned(
-        placed,
-        ARENA,
-        5,
-        (1500, 2000),
-        cal.site.anchor,
-    )
-    assert cal.id == expected.id
+    (expected,) = plan_turn([placed], ARENA, 5, (1500, 2000), SELF)
+    assert cal.id == expected.id and cal.site.frame == expected.site.frame
     text = (lab / "sites" / "arena" / "site.toml").read_text()
-    assert "Turned 5 deg about (1500, 2000) mm on" in text
+    assert f'frame = "{cal.site.frame}"' in text
+    assert f'anchor = "{SELF}"' in text
     assert text.startswith("# kept as it is\n")
     assert f"dotbot swarm calibrate-lh2 push {cal.id8} --site arena" in result.output
+
+
+def test_site_turn_names_the_largest_legal_shift(tmp_path, home, placed):
+    lab = _lab(tmp_path)
+    write_calibration(placed)
+    result = _site_cmd(lab, "arena", "--shift", "5000,0")
+    assert result.exit_code != 0
+    assert "the largest legal shift that way is --shift" in result.output
 
 
 def test_site_turn_asks_when_the_anchor_is_a_floor_mark(tmp_path, home, placed):
@@ -271,7 +180,9 @@ def test_site_turn_asks_when_the_anchor_is_a_floor_mark(tmp_path, home, placed):
     assert 'anchor = "moved"' in path.read_text()
 
 
-def test_site_turn_needs_an_anchor_or_a_note(tmp_path, home):
-    result = _site_cmd(_lab(tmp_path), "--rotate", "5")
-    assert result.exit_code == 2
-    assert "--anchor, or --note" in result.output
+def test_site_turn_needs_a_turn_or_a_shift(tmp_path, home, placed):
+    lab = _lab(tmp_path)
+    write_calibration(placed)
+    result = _site_cmd(lab)
+    assert result.exit_code != 0
+    assert "nothing moves" in result.output

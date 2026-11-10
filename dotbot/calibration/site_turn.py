@@ -1,19 +1,19 @@
 # SPDX-FileCopyrightText: 2026-present Inria
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Turning a whole site on the floor.
+"""Turning a whole site on the floor, and shifting its zero.
 
-The site's frame turns with everything in it, so no number in `site.toml`
+The site's frame moves with everything in it, so no number in `site.toml`
 changes; a point fixed on the floor gets new site coordinates instead. Each
 calibration of the site maps the stations' sweeps to those coordinates, so
-each is re-expressed by the floor's move, `floor_move`, as a new calibration.
-The anchor names where zero is, and zero has moved, so the turn takes a new
-anchor text too.
+each is re-expressed by the floor's move as a new calibration, recording the
+new frame's id.
 """
 
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 
@@ -40,10 +40,28 @@ class TurnRefused(ValueError):
     could not take once turned."""
 
 
-def floor_move(theta_deg: float, pivot: Sequence[float]) -> Rigid2D:
+def floor_move(
+    theta_deg: float, pivot: Sequence[float], shift: Sequence[float] = (0.0, 0.0)
+) -> Rigid2D:
     """Where a point fixed on the floor lands in the site's frame once the
-    site turns by `theta_deg` about `pivot`: the opposite turn about it."""
-    return Rigid2D.about((float(pivot[0]), float(pivot[1])), -float(theta_deg))
+    site turns by `theta_deg` about `pivot` and its zero moves by `shift`:
+    the opposite turn about the pivot, then the opposite shift."""
+    return Rigid2D.about(
+        (float(pivot[0]), float(pivot[1])),
+        -float(theta_deg),
+        (-float(shift[0]), -float(shift[1])),
+    )
+
+
+def new_frame_id(
+    old: str, theta_deg: float, pivot: Sequence[float], shift: Sequence[float]
+) -> str:
+    """8 hex digits naming the frame `old` becomes after the move."""
+    text = (
+        f"{old}\nturn {float(theta_deg):g} about {float(pivot[0]):g},{float(pivot[1]):g}"
+        f"\nshift {float(shift[0]):g},{float(shift[1]):g}"
+    )
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:8]
 
 
 def default_pivot(site: Site) -> tuple[float, float]:
@@ -51,17 +69,6 @@ def default_pivot(site: Site) -> tuple[float, float]:
     if site.extent_mm is None:
         return (0.0, 0.0)
     return (site.extent_mm[0] / 2, site.extent_mm[1] / 2)
-
-
-def turn_note(theta_deg: float, pivot: Sequence[float], date: str) -> str:
-    return (
-        f"Turned {theta_deg:g} deg about ({pivot[0]:g}, {pivot[1]:g}) mm on "
-        f"{date}: zero turned with the site."
-    )
-
-
-def noted_anchor(anchor: str, note: str) -> str:
-    return f"{anchor.rstrip()} {note}" if anchor.strip() else note
 
 
 def anchor_marks(site: Site, calibrations: Iterable[Calibration]) -> list[str]:
@@ -107,9 +114,12 @@ def turned(
     anchor: str,
     *,
     taken_tags: Iterable[str] = (),
+    move: Rigid2D | None = None,
+    frame: str | None = None,
 ) -> Calibration:
     """`source` re-expressed for `site` turned by `theta_deg` about `pivot`,
-    recording `anchor`, as a new calibration.
+    or moved by `move` when given, recording `anchor` and the frame id
+    `frame`, as a new calibration.
 
     Every homography becomes `floor_move . H` and every placement point
     moves with it. The stations' rectangles and the fence are site
@@ -130,14 +140,14 @@ def turned(
         raise TurnRefused(f"site {site.name} has no extent to turn")
     try:
         moved = place_calibration(
-            source, site, floor_move(theta_deg, pivot), reanchor=True
+            source, site, move or floor_move(theta_deg, pivot), reanchor=True
         )
     except PlacementRefused as exc:
         raise TurnRefused(f"calibration {source.id8}: {exc}") from exc
     rects = {st.index: st.valid_mm for st in source.stations}
     return dataclasses.replace(
         moved,
-        site=Site(name=site.name, anchor=anchor),
+        site=Site(name=site.name, anchor=anchor, frame=frame),
         valid_mm=source.valid_mm,
         stations=[
             dataclasses.replace(st, valid_mm=rects[st.index]) for st in moved.stations
@@ -188,13 +198,14 @@ def save_turn(
     anchor: str,
     write_site: Callable[[str], None],
 ) -> list[tuple[Calibration, Path]]:
-    """Write every planned calibration, then `site_text` with its anchor
-    changed through `write_site`: a failure part way leaves the site's
-    anchor, and so its frame, as it was."""
+    """Write every planned calibration, then `site_text` with its anchor and
+    frame id changed through `write_site`: a failure part way leaves the
+    site's frame as it was."""
     from dotbot import site_toml
     from dotbot.calibration.placement import save_new
 
-    text = site_toml.anchored_text(site_text, anchor)
+    frame = planned[0].site.frame if planned else None
+    text = site_toml.framed_text(site_text, anchor, frame)
     saved = [save_new(cal) for cal in planned]
     write_site(text)
     return saved
@@ -207,22 +218,23 @@ def plan_turn(
     pivot: Sequence[float],
     anchor: str,
     taken_tags: Iterable[str] = (),
+    shift: Sequence[float] = (0.0, 0.0),
 ) -> list[Calibration]:
-    """Every source turned, or TurnRefused naming the first that cannot be;
-    nothing is written."""
+    """Every source moved into the new frame, or TurnRefused naming the
+    first that cannot be; nothing is written."""
     if not sources:
         raise TurnRefused("no calibration of the site to turn")
-    if abs(((theta_deg + 180) % 360) - 180) < 1e-9:
-        raise TurnRefused("a turn of 0 degrees leaves every calibration as it is")
-    if anchor.strip() == site.anchor.strip():
-        raise TurnRefused(
-            "the anchor still reads as before the turn: say where zero is now, "
-            "or append a note"
-        )
+    turn = abs(((theta_deg + 180) % 360) - 180) >= 1e-9
+    if not turn and abs(shift[0]) < 1e-9 and abs(shift[1]) < 1e-9:
+        raise TurnRefused("nothing moves: give a turn or a shift of zero")
+    frame = new_frame_id(site.frame_id, theta_deg, pivot, shift)
+    move = floor_move(theta_deg, pivot, shift)
     taken = list(taken_tags)
     out = []
     for source in sources:
-        result = turned(source, site, theta_deg, pivot, anchor, taken_tags=taken)
+        result = turned(
+            source, site, theta_deg, pivot, anchor, taken_tags=taken, move=move, frame=frame
+        )
         if result.tag:
             taken.append(result.tag)
         out.append(result)

@@ -1005,7 +1005,7 @@ def _parse_point(_ctx, _param, value):
 @click.option(
     "--rotate",
     type=float,
-    required=True,
+    default=0.0,
     help=(
         "Degrees the site turns on the floor; positive turns x toward y, "
         "clockwise as drawn."
@@ -1017,45 +1017,48 @@ def _parse_point(_ctx, _param, value):
     default=None,
     help="The point it turns about, `x,y` in mm. Defaults to the middle of the extent.",
 )
-@click.option("--anchor", default=None, help="The new anchor: where zero is now.")
 @click.option(
-    "--note",
-    is_flag=True,
-    help="Keep the anchor and append a note of the turn to it, instead of --anchor.",
+    "--shift",
+    callback=_parse_point,
+    default=None,
+    help="Where zero moves, `x,y` in mm of the frame as it is now.",
+)
+@click.option(
+    "--anchor",
+    default=None,
+    help="A new note on where zero is in the room; the old one stays otherwise.",
 )
 @click.option(
     "--calibration",
     "calibrations",
     multiple=True,
     help=(
-        "A calibration to turn, by id or tag; repeat for more. Defaults to "
-        "every calibration in the site's frame."
+        "A calibration to re-express, by id or tag; repeat for more. Defaults "
+        "to every calibration in the site's frame."
     ),
 )
 @click.option(
-    "--yes", "-y", is_flag=True, help="Do not ask when the anchor is a floor mark."
+    "--yes", "-y", is_flag=True, help="Do not ask when zero is a mark on the floor."
 )
 @click.pass_context
-def turn(ctx, site, rotate, about, anchor, note, calibrations, yes):
-    """Turn a site on the floor, its frame and everything in it.
+def turn(ctx, site, rotate, about, shift, anchor, calibrations, yes):
+    """Turn a site's frame on the floor or move its zero, as a new frame.
 
-    No number in site.toml changes, since the frame turns with the areas;
-    each calibration of the site is saved again, under a new id, for the
-    turned frame, and the anchor is rewritten. Sends nothing: push the new
-    calibrations once they look right.
+    No number in site.toml changes, since the frame moves with the areas;
+    site.toml takes a new frame id, and each calibration of the site is saved
+    again, under a new id, in the new frame. Sends nothing: serve and push
+    the new calibrations once they look right. The site editor's Frame kind
+    does the same for the served calibration.
     """
-    import datetime
-
     from dotbot import site_toml
-    from dotbot.calibration import site_turn
+    from dotbot.calibration import site_frame, site_turn
     from dotbot.calibration.placement import site_tags
     from dotbot.calibration.station_boxes import coverage_warnings, push_line
     from dotbot.site import site_from_table
     from dotbot.site_editor import _write_atomic
     from dotbot.site_placement import _files
 
-    if (anchor is None) == (not note):
-        raise click.UsageError("give the new anchor with --anchor, or --note")
+    shift = shift or (0.0, 0.0)
     name, pack = _pack_of(ctx, site)
     path = pack / PACK_FILE
     text = path.read_text(encoding="utf-8")
@@ -1064,11 +1067,7 @@ def turn(ctx, site, rotate, about, anchor, note, calibrations, yes):
     except ConfigError as exc:
         raise click.ClickException(str(exc)) from exc
     pivot = about or site_turn.default_pivot(current)
-    if note:
-        today = datetime.date.today().isoformat()
-        anchor = site_turn.noted_anchor(
-            current.anchor, site_turn.turn_note(rotate, pivot, today)
-        )
+    note = current.anchor if anchor is None else anchor
     files = _files(pack)
     found = site_turn.in_frame(current, files)
     if calibrations:
@@ -1093,30 +1092,46 @@ def turn(ctx, site, rotate, about, anchor, note, calibrations, yes):
             current,
             rotate,
             pivot,
-            anchor,
+            note,
             taken_tags=site_tags(name, files),
+            shift=shift,
         )
     except site_turn.TurnRefused as exc:
-        raise click.ClickException(str(exc)) from exc
+        offer = (
+            site_frame.largest_shift(sources[0], current, rotate, pivot, shift)
+            if sources and (shift[0] or shift[1])
+            else None
+        )
+        hint = (
+            f"; the largest legal shift that way is --shift {offer[0]},{offer[1]}"
+            if offer
+            else ""
+        )
+        raise click.ClickException(f"{exc}{hint}") from exc
     marks = site_turn.anchor_marks(current, found)
     for line in marks:
         click.echo(f"warning: {line}", err=True)
-    if marks and not yes and not click.confirm("Turn it anyway?", default=False):
+    if marks and not yes and not click.confirm("Move it anyway?", default=False):
         raise click.Abort()
     try:
         saved = site_turn.save_turn(
-            planned, text, anchor, lambda new: _write_atomic(path, new)
+            planned, text, note, lambda new: _write_atomic(path, new)
         )
     except site_toml.SiteTomlError as exc:
         raise click.ClickException(str(exc)) from exc
+    frame = planned[0].site.frame
     click.echo(
-        f"Turned site {name} by {rotate:g} deg about ({pivot[0]:g}, {pivot[1]:g}) mm"
+        f"Moved site {name}'s frame: turn {rotate:g} deg about "
+        f"({pivot[0]:g}, {pivot[1]:g}) mm, zero shifted ({shift[0]:g}, {shift[1]:g}) mm; "
+        f"frame {current.frame_id} -> {frame}"
     )
-    click.echo(f"Anchor in {path}: {anchor}")
     for source, (cal, where) in zip(sources, saved):
         click.echo(f"  {source.id8} -> {cal.id8}, saved to {where}")
         for line in site_turn.outside_warnings(cal, current) + coverage_warnings(cal):
             click.echo(f"warning: {line}", err=True)
-    click.echo("Robots keep the old frame until these are pushed:")
+    click.echo(
+        "Robots report in the old frame until they hold the new calibration; "
+        "data already logged stays in the old frame. Push:"
+    )
     for cal, _ in saved:
         click.echo(f"  {push_line(cal)}")
