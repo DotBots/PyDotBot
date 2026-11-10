@@ -1,0 +1,659 @@
+{
+ "source": "dotbot/calibration/station_rule.py",
+ "rule": "offered in index order; a non-finite solve or one outside its own station's box is dropped; the one nearest its own box's centre is kept; an exact tie keeps the lower index",
+ "cases": [
+  {
+   "name": "equal boxes, S1 solve nearer the shared centre",
+   "rects": {
+    "0": [
+     0,
+     0,
+     1060,
+     1220
+    ],
+    "1": [
+     0,
+     0,
+     1060,
+     1220
+    ]
+   },
+   "solves": [
+    [
+     0,
+     300.0,
+     500.0
+    ],
+    [
+     1,
+     300.4,
+     500.3
+    ]
+   ],
+   "expect": 1,
+   "note": "the boxes decide nothing; 0.5 mm decides"
+  },
+  {
+   "name": "equal boxes, S0 solve nearer the shared centre",
+   "rects": {
+    "0": [
+     0,
+     0,
+     1060,
+     1220
+    ],
+    "1": [
+     0,
+     0,
+     1060,
+     1220
+    ]
+   },
+   "solves": [
+    [
+     0,
+     300.4,
+     500.3
+    ],
+    [
+     1,
+     300.0,
+     500.0
+    ]
+   ],
+   "expect": 0,
+   "note": "the same point, the other way round"
+  },
+  {
+   "name": "equal boxes, solves identical",
+   "rects": {
+    "0": [
+     0,
+     0,
+     1060,
+     1220
+    ],
+    "1": [
+     0,
+     0,
+     1060,
+     1220
+    ]
+   },
+   "solves": [
+    [
+     0,
+     300.0,
+     500.0
+    ],
+    [
+     1,
+     300.0,
+     500.0
+    ]
+   ],
+   "expect": 0,
+   "note": "an exact tie keeps the lower index"
+  },
+  {
+   "name": "split boxes, left of the handover",
+   "rects": {
+    "0": [
+     0,
+     0,
+     630,
+     1220
+    ],
+    "1": [
+     430,
+     0,
+     1060,
+     1220
+    ]
+   },
+   "solves": [
+    [
+     0,
+     500.0,
+     600.0
+    ],
+    [
+     1,
+     500.2,
+     600.1
+    ]
+   ],
+   "expect": 0,
+   "note": "S0's centre is x 315, S1's x 745"
+  },
+  {
+   "name": "split boxes, right of the handover",
+   "rects": {
+    "0": [
+     0,
+     0,
+     630,
+     1220
+    ],
+    "1": [
+     430,
+     0,
+     1060,
+     1220
+    ]
+   },
+   "solves": [
+    [
+     0,
+     560.0,
+     600.0
+    ],
+    [
+     1,
+     560.1,
+     600.0
+    ]
+   ],
+   "expect": 1,
+   "note": "handover at x 530"
+  },
+  {
+   "name": "split boxes, on the handover line",
+   "rects": {
+    "0": [
+     0,
+     0,
+     630,
+     1220
+    ],
+    "1": [
+     430,
+     0,
+     1060,
+     1220
+    ]
+   },
+   "solves": [
+    [
+     0,
+     530.0,
+     610.0
+    ],
+    [
+     1,
+     530.0,
+     610.0
+    ]
+   ],
+   "expect": 0,
+   "note": "equidistant: the lower index"
+  },
+  {
+   "name": "split boxes, S0 only",
+   "rects": {
+    "0": [
+     0,
+     0,
+     630,
+     1220
+    ],
+    "1": [
+     430,
+     0,
+     1060,
+     1220
+    ]
+   },
+   "solves": [
+    [
+     0,
+     200.0,
+     600.0
+    ],
+    [
+     1,
+     200.0,
+     600.0
+    ]
+   ],
+   "expect": 0,
+   "note": "outside S1's own box"
+  },
+  {
+   "name": "split boxes, S1 only",
+   "rects": {
+    "0": [
+     0,
+     0,
+     630,
+     1220
+    ],
+    "1": [
+     430,
+     0,
+     1060,
+     1220
+    ]
+   },
+   "solves": [
+    [
+     0,
+     900.0,
+     600.0
+    ],
+    [
+     1,
+     900.0,
+     600.0
+    ]
+   ],
+   "expect": 1,
+   "note": "outside S0's own box"
+  },
+  {
+   "name": "outside every box",
+   "rects": {
+    "0": [
+     0,
+     0,
+     630,
+     1220
+    ],
+    "1": [
+     430,
+     0,
+     1060,
+     1220
+    ]
+   },
+   "solves": [
+    [
+     0,
+     1100.0,
+     600.0
+    ],
+    [
+     1,
+     1100.0,
+     600.0
+    ]
+   ],
+   "expect": null,
+   "note": "no fix"
+  },
+  {
+   "name": "box edge is inside",
+   "rects": {
+    "0": [
+     0,
+     0,
+     630,
+     1220
+    ]
+   },
+   "solves": [
+    [
+     0,
+     630.0,
+     1220.0
+    ]
+   ],
+   "expect": 0,
+   "note": "edges included"
+  },
+  {
+   "name": "just outside the edge",
+   "rects": {
+    "0": [
+     0,
+     0,
+     630,
+     1220
+    ]
+   },
+   "solves": [
+    [
+     0,
+     630.001,
+     600.0
+    ]
+   ],
+   "expect": null,
+   "note": "dropped"
+  },
+  {
+   "name": "not finite",
+   "rects": {
+    "0": [
+     0,
+     0,
+     1060,
+     1220
+    ],
+    "1": [
+     0,
+     0,
+     1060,
+     1220
+    ]
+   },
+   "solves": [
+    [
+     0,
+     "nan",
+     500.0
+    ],
+    [
+     1,
+     300.0,
+     500.0
+    ]
+   ],
+   "expect": 1,
+   "note": "a NaN solve is dropped"
+  },
+  {
+   "name": "all 0xFF reads as the default",
+   "rects": {
+    "0": [
+     4294967295,
+     4294967295,
+     4294967295,
+     4294967295
+    ]
+   },
+   "solves": [
+    [
+     0,
+     50000.0,
+     99999.0
+    ]
+   ],
+   "expect": 0,
+   "note": "0 to 100000 mm"
+  },
+  {
+   "name": "only one station sees the robot",
+   "rects": {
+    "0": [
+     0,
+     0,
+     1060,
+     1220
+    ],
+    "1": [
+     0,
+     0,
+     1060,
+     1220
+    ]
+   },
+   "solves": [
+    [
+     1,
+     300.0,
+     500.0
+    ]
+   ],
+   "expect": 1,
+   "note": "a station without a fresh pair is not offered"
+  },
+  {
+   "name": "strip box",
+   "rects": {
+    "0": [
+     1059,
+     0,
+     1060,
+     1220
+    ],
+    "1": [
+     0,
+     0,
+     1060,
+     1220
+    ]
+   },
+   "solves": [
+    [
+     0,
+     300.0,
+     500.0
+    ],
+    [
+     1,
+     300.2,
+     500.0
+    ]
+   ],
+   "expect": 1,
+   "note": "S0 only inside its 1 mm strip"
+  },
+  {
+   "name": "boxes tied at x 435.5, near the line",
+   "rects": {
+    "0": [
+     0,
+     0,
+     541,
+     1220
+    ],
+    "1": [
+     141,
+     0,
+     1060,
+     1220
+    ]
+   },
+   "solves": [
+    [
+     0,
+     436.0,
+     600.0
+    ],
+    [
+     1,
+     436.0,
+     600.0
+    ]
+   ],
+   "expect": 1,
+   "note": "handover at x 435.5"
+  },
+  {
+   "name": "boxes tied at x 435.5, other side",
+   "rects": {
+    "0": [
+     0,
+     0,
+     541,
+     1220
+    ],
+    "1": [
+     141,
+     0,
+     1060,
+     1220
+    ]
+   },
+   "solves": [
+    [
+     0,
+     435.0,
+     600.0
+    ],
+    [
+     1,
+     435.0,
+     600.0
+    ]
+   ],
+   "expect": 0,
+   "note": "handover at x 435.5"
+  }
+ ],
+ "points": [
+  {
+   "name": "equal boxes: the boxes do not decide",
+   "rects": {
+    "0": [
+     0,
+     0,
+     1060,
+     1220
+    ],
+    "1": [
+     0,
+     0,
+     1060,
+     1220
+    ]
+   },
+   "point": [
+    300.0,
+    500.0
+   ],
+   "expect": [
+    0,
+    1
+   ]
+  },
+  {
+   "name": "split boxes, left of the handover",
+   "rects": {
+    "0": [
+     0,
+     0,
+     630,
+     1220
+    ],
+    "1": [
+     430,
+     0,
+     1060,
+     1220
+    ]
+   },
+   "point": [
+    500.0,
+    600.0
+   ],
+   "expect": [
+    0
+   ]
+  },
+  {
+   "name": "split boxes, right of the handover",
+   "rects": {
+    "0": [
+     0,
+     0,
+     630,
+     1220
+    ],
+    "1": [
+     430,
+     0,
+     1060,
+     1220
+    ]
+   },
+   "point": [
+    560.0,
+    600.0
+   ],
+   "expect": [
+    1
+   ]
+  },
+  {
+   "name": "split boxes, on the handover line",
+   "rects": {
+    "0": [
+     0,
+     0,
+     630,
+     1220
+    ],
+    "1": [
+     430,
+     0,
+     1060,
+     1220
+    ]
+   },
+   "point": [
+    530.0,
+    600.0
+   ],
+   "expect": [
+    0,
+    1
+   ]
+  },
+  {
+   "name": "split boxes, S1 only",
+   "rects": {
+    "0": [
+     0,
+     0,
+     630,
+     1220
+    ],
+    "1": [
+     430,
+     0,
+     1060,
+     1220
+    ]
+   },
+   "point": [
+    900.0,
+    100.0
+   ],
+   "expect": [
+    1
+   ]
+  },
+  {
+   "name": "outside every box",
+   "rects": {
+    "0": [
+     0,
+     0,
+     630,
+     1220
+    ],
+    "1": [
+     430,
+     0,
+     1060,
+     1220
+    ]
+   },
+   "point": [
+    1100.0,
+    600.0
+   ],
+   "expect": []
+  },
+  {
+   "name": "all 0xFF reads as the default",
+   "rects": {
+    "0": [
+     4294967295,
+     4294967295,
+     4294967295,
+     4294967295
+    ]
+   },
+   "point": [
+    5000.0,
+    5000.0
+   ],
+   "expect": [
+    0
+   ]
+  }
+ ]
+}
