@@ -16,6 +16,7 @@ from pathlib import Path
 
 import tomlkit
 
+from dotbot.calibration.conics import is_free_mode
 from dotbot.calibration import lighthouse2, station_geometry, station_rule
 from dotbot.calibration.station_boxes import frame_refusal
 from dotbot.site import Site
@@ -81,6 +82,9 @@ def _row(path: Path) -> dict | None:
         ],
         "reading": station_rule.reading(boxes),
         "geometry": station_geometry.geometry(cal),
+        # A spin in its own frame, zero at its robots' top-left: placed in a
+        # room before it is served there
+        "free": is_free_mode(cal),
     }
     _ROWS[path] = (key, row)
     return row

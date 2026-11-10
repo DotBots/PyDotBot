@@ -648,3 +648,160 @@ def create_app(
     if page_dir.is_dir():
         app.mount("/", StaticFiles(directory=page_dir), name="page")
     return app
+
+
+class NewSiteRequest(BaseModel):
+    name: str
+    note: str = ""
+    # "empty": the floor measured later; "size": a known floor; "spin":
+    # around the robots of a spin calibration already done
+    start: Literal["empty", "size", "spin"] = "empty"
+    size_mm: tuple[int, int] | None = None
+    calibration: str | None = None
+    # The controller takes the new site at once
+    use: bool = True
+    persist: bool = False
+
+
+class UseSiteRequest(BaseModel):
+    name: str
+    persist: bool = False
+
+
+NO_PACK = "the controller's site is not read from a site pack"
+
+
+def create_lobby_app(
+    current: Callable[[], tuple[str, Path | None]],
+    use: Callable[[str, Path, bool], dict] | None = None,
+    context: Callable[[], dict] | None = None,
+    page_dir: Path | None = EDITOR_DIR,
+) -> FastAPI:
+    """The site list and New site, for a controller with or without a site
+    pack: `current()` names the controller's site and its pack, `use(name,
+    pack, persist)` switches it. Every other route answers 404 with NO_PACK."""
+    from dotbot.site_new import NewSiteRefused, home_beside, write_new_site
+    from dotbot.site_packs import user_sites_dir
+
+    app = FastAPI(title="DotBot site editor, sites", docs_url=None, redoc_url=None)
+    app.add_middleware(LocalOnly)
+
+    def homes() -> list[Path]:
+        _, pack = current()
+        out = [home_beside(pack)]
+        if user_sites_dir().resolve() != out[0].resolve():
+            out.append(user_sites_dir())
+        return out
+
+    def packs() -> dict[str, Path]:
+        found: dict[str, Path] = {}
+        for home in homes():
+            if not home.is_dir():
+                continue
+            for folder in sorted(home.iterdir()):
+                if (folder / PACK_FILE).is_file() and folder.name not in found:
+                    found[folder.name] = folder
+        return found
+
+    def switch(name: str, pack: Path, persist: bool) -> dict:
+        if use is None:
+            raise HTTPException(409, "only a controller switches site")
+        try:
+            return use(name, pack, persist)
+        except (ValueError, OSError) as exc:
+            raise HTTPException(422, str(exc)) from exc
+
+    @app.get("/api/sites")
+    def sites():
+        from dotbot.site import site_from_table
+        from dotbot.site_packs import read_pack
+
+        name, pack = current()
+        rows = []
+        for site_name, folder in packs().items():
+            try:
+                site = site_from_table(site_name, read_pack(folder), folder)
+            except Exception as exc:  # noqa: BLE001
+                rows.append({"name": site_name, "shown_path": _shown_path(folder / PACK_FILE), "error": str(exc)})
+                continue
+            rows.append(
+                {
+                    "name": site_name,
+                    "shown_path": _shown_path(folder / PACK_FILE),
+                    "current": pack is not None and folder.resolve() == pack.resolve(),
+                    "extent_mm": list(site.extent_mm) if site.extent_mm else None,
+                    "anchor": site.anchor,
+                    "frame_id": site.frame_id,
+                    "areas": len(site.areas),
+                }
+            )
+        return {
+            "current": name,
+            "has_pack": pack is not None,
+            "home": _shown_path(homes()[0]),
+            "sites": rows,
+        }
+
+    @app.post("/api/sites")
+    def new_site(request: NewSiteRequest):
+        source = None
+        if request.start == "spin":
+            from dotbot.calibration.lighthouse2 import load_calibration
+
+            try:
+                source = load_calibration(request.calibration or "")
+            except ValueError as exc:
+                raise HTTPException(422, str(exc)) from exc
+        _, pack = current()
+        try:
+            written = write_new_site(
+                home_beside(pack),
+                request.name,
+                request.start,
+                request.note,
+                request.size_mm,
+                source,
+            )
+        except NewSiteRefused as exc:
+            raise HTTPException(422, str(exc)) from exc
+        out = {
+            "name": written.name,
+            "shown_path": _shown_path(written.pack / PACK_FILE),
+            "calibration": written.calibration.id8 if written.calibration else None,
+            "used": None,
+        }
+        if request.use:
+            out["used"] = switch(written.name, written.pack, request.persist)
+        return out
+
+    @app.put("/api/sites/current")
+    def use_site(request: UseSiteRequest):
+        folder = packs().get(request.name)
+        if folder is None:
+            raise HTTPException(404, f"no site pack named {request.name}")
+        return switch(request.name, folder, request.persist)
+
+    @app.get("/api/context")
+    def get_context(request: Request):
+        name, pack = current()
+        return {
+            **(context() if context is not None else {"mode": "standalone"}),
+            "no_site": pack is None,
+            "site_name": name,
+            "can_write": can_write(request.scope),
+        }
+
+    @app.api_route("/api/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+    def no_pack(rest: str):
+        raise HTTPException(404, NO_PACK)
+
+    if page_dir is None:
+        return app
+
+    @app.get("/", include_in_schema=False)
+    def page():
+        return FileResponse(page_dir / EDITOR_PAGE)
+
+    if page_dir.is_dir():
+        app.mount("/", StaticFiles(directory=page_dir), name="page")
+    return app

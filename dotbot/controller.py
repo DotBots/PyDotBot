@@ -1281,6 +1281,59 @@ class Controller:
         point = session.outstanding if session else None
         return None if point is None else (point.index, point.mm)
 
+    def use_site(self, name: str, pack, persist: bool = False) -> dict:
+        """Take the site pack at `pack` as this controller's site, from now
+        on and with `persist` also at the next start. The calibration served
+        stays only if it is in the new site's frame. ValueError when the pack
+        does not read, or a calibration session or a spin is running."""
+        from pathlib import Path
+
+        from dotbot.calibration.lighthouse2 import check_calibration_site
+        from dotbot.site import site_from_table
+        from dotbot.site_packs import read_pack
+
+        driver = self.calibration_session
+        if driver.session is not None:
+            raise ValueError(
+                "a calibration session is open; save or abandon it before switching site"
+            )
+        if driver.spin is not None and driver.spin.phase in ("spinning", "solving"):
+            raise ValueError("a spin is running; wait for it before switching site")
+        site = site_from_table(name, read_pack(Path(pack)), Path(pack))
+        settings = self.settings
+        if persist:
+            if not settings.lh2_calibration_persist_path:
+                raise ValueError("this controller has no config file to write to")
+            from dotbot.cli._config_write import set_value
+
+            set_value(Path(settings.lh2_calibration_persist_path), ("site",), name)
+        dropped = None
+        if self.calibration is not None:
+            try:
+                check_calibration_site(self.calibration.site, site, self.calibration.path)
+            except ValueError:
+                dropped = self.calibration.id8
+                self.calibration = None
+                self.lh2_calibration = []
+                self._solved_stations = set()
+                self._frame_change = None
+                settings.lh2_calibration = None
+                settings.lh2_calibration_source = None
+        self.site = site
+        settings.site = site
+        driver.site = site
+        driver.spin = None
+        simulator = getattr(self.adapter, "simulator", None)
+        if hasattr(simulator, "use_site"):
+            simulator.use_site(site)
+        model = DotBotSiteModel.from_site(site, self.calibration)
+        self.set_event("site", "site", model.model_dump(mode="json"))
+        self.set_event("calibration_spin", "calibration_spin", None)
+        self.logger.info(
+            "Site switched from the site editor", site=name, dropped=dropped
+        )
+        return {"site": name, "pack": str(pack), "dropped": dropped}
+
     def reload_site(self) -> None:
         """Read the site's pack again: the map (a `site` event), the
         calibration session and a running simulator take the change at once.

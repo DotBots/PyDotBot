@@ -1042,6 +1042,8 @@ class SiteEditorMount:
     def __init__(self):
         self._app = None
         self._key = None
+        self._lobby = None
+        self._lobby_key = None
 
     async def __call__(self, scope, receive, send):
         import asyncio
@@ -1056,12 +1058,37 @@ class SiteEditorMount:
         controller = getattr(api, "controller", None)
         site = controller.site if controller is not None else None
         pack = Path(site.pack) if site is not None and site.pack else None
-        if pack is None or not (pack / PACK_FILE).is_file():
-            response = JSONResponse(
-                {"detail": "the controller's site is not read from a site pack"},
-                status_code=404,
-            )
+        if pack is not None and not (pack / PACK_FILE).is_file():
+            pack = None
+        if controller is None:
+            response = JSONResponse({"detail": "no controller"}, status_code=404)
             await response(scope, receive, send)
+            return
+        path = scope.get("path", "")
+        root = scope.get("root_path", "")
+        if path.startswith(root):
+            path = path[len(root) :]
+        if pack is None or path.startswith("/api/sites"):
+            if self._lobby is None or self._lobby_key != id(controller):
+                from dotbot.site_editor import create_lobby_app
+
+                loop = asyncio.get_running_loop()
+
+                def current():
+                    s = controller.site
+                    p = Path(s.pack) if s is not None and s.pack else None
+                    return (s.name if s is not None else "", p if p and (p / PACK_FILE).is_file() else None)
+
+                self._lobby = create_lobby_app(
+                    current,
+                    use=lambda name, folder, persist: _on_loop(
+                        loop, controller.use_site, name, folder, persist
+                    ),
+                    context=controller.editor_context,
+                    page_dir=EDITOR_DIR,
+                )
+                self._lobby_key = id(controller)
+            await self._lobby(scope, receive, send)
             return
         if self._app is None or self._key != (id(controller), pack):
             state = EditorState(site.name, pack, [calibration_root() / site.name])
