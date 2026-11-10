@@ -42,6 +42,79 @@ export function zeroAt(p: Point, q: Point | null, note: string | null): FrameMov
   return { theta_deg: Math.round(theta * 100) / 100, pivot: [Math.round(p[0]), Math.round(p[1])], dx: Math.round(p[0]), dy: Math.round(p[1]), note };
 }
 
+/** A robot pinned to a spot: where it reports itself now, and where it stands in the room. */
+export interface Anchor {
+  robot: string;
+  fix: Point;
+  spot: Point;
+}
+
+const round = (v: number, d = 10) => Math.round(v * d) / d;
+
+/** The move that lays the room on its anchors: one anchor shifts, two or
+ * more turn and shift by least squares (the spot positions as the new
+ * frame, the fixes as the old one). Null without an anchor. */
+export function fitAnchors(anchors: Anchor[], note: string | null): FrameMove | null {
+  if (!anchors.length) return null;
+  const n = anchors.length;
+  const cf: Point = [anchors.reduce((a, x) => a + x.fix[0], 0) / n, anchors.reduce((a, x) => a + x.fix[1], 0) / n];
+  const cs: Point = [anchors.reduce((a, x) => a + x.spot[0], 0) / n, anchors.reduce((a, x) => a + x.spot[1], 0) / n];
+  let theta = 0;
+  if (n > 1) {
+    // old = R(theta) new + t: the angle that best turns the spots onto the fixes
+    let sxx = 0;
+    let syx = 0;
+    for (const a of anchors) {
+      const s = [a.spot[0] - cs[0], a.spot[1] - cs[1]];
+      const f = [a.fix[0] - cf[0], a.fix[1] - cf[1]];
+      sxx += s[0] * f[0] + s[1] * f[1];
+      syx += s[0] * f[1] - s[1] * f[0];
+    }
+    theta = Math.atan2(syx, sxx);
+  }
+  const deg = round((theta * 180) / Math.PI, 100);
+  // With the pivot at the fixes' centroid, the shift is what moves the spots' centroid onto it
+  const pivot: Point = [round(cf[0], 1), round(cf[1], 1)];
+  return { theta_deg: deg, pivot, dx: round(cf[0] - cs[0]), dy: round(cf[1] - cs[1]), note };
+}
+
+/** `m` with its new origin at `o` (current frame's mm), the turn kept. */
+export function withOrigin(m: FrameMove, o: Point): FrameMove {
+  const back = turn(o, m.pivot, -m.theta_deg);
+  return { ...m, dx: round(back[0]), dy: round(back[1]) };
+}
+
+/** Each anchor's robot against its spot under `m`, mm. */
+export function anchorErrors(m: FrameMove, anchors: Anchor[]): number[] {
+  return anchors.map((a) => {
+    const at = toOld(m, a.spot);
+    return Math.hypot(at[0] - a.fix[0], at[1] - a.fix[1]);
+  });
+}
+
+/** Where the origin may go for the turn of `m`: robots report positions as
+ * unsigned millimetres, so every measured point must keep both coordinates
+ * at or above zero. The corner, in the current frame's mm, and the two
+ * half-planes beyond it as polygons to hatch; null without points. */
+export function forbidden(m: FrameMove, points: Point[]): { corner: Point; beyond: Point[][]; originOk: boolean } | null {
+  if (!points.length) return null;
+  const rot = (p: Point): Point => turn(p, [0, 0], -m.theta_deg);
+  const unrot = (p: Point): Point => turn(p, [0, 0], m.theta_deg);
+  const rp = points.map(rot);
+  const mx = Math.min(...rp.map((p) => p[0]));
+  const my = Math.min(...rp.map((p) => p[1]));
+  const far = 100000;
+  const o = rot(toOld(m, [0, 0]));
+  return {
+    corner: unrot([mx, my]),
+    beyond: [
+      [unrot([mx, -far]), unrot([far, -far]), unrot([far, far]), unrot([mx, far])],
+      [unrot([-far, my]), unrot([far, my]), unrot([far, far]), unrot([-far, far])],
+    ],
+    originOk: o[0] <= mx + 1e-6 && o[1] <= my + 1e-6,
+  };
+}
+
 /** The CLI twin of a move of `site`'s frame for `calibration`. */
 export function frameTwin(site: string, calibration: string, m: FrameMove): string {
   const parts = [`dotbot site turn ${site}`];

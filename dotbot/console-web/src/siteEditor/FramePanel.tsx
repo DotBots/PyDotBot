@@ -5,14 +5,16 @@ import type { UnifiedBot } from "../types";
 import { postFrame, type FrameAnswer } from "./api";
 import type { GoalAction } from "./checks";
 import { KV, NumField, Sec, TextField } from "./fields";
-import { frameTwin, moves, zeroAt, type FrameMove } from "./frameMove";
+import { anchorErrors, fitAnchors, forbidden, frameTwin, moves, toOld as toOldPoint, withOrigin, type Anchor, type FrameMove } from "./frameMove";
 import { Icon } from "./icons";
 import type { Point } from "./model";
+import type { PlanPaint } from "./PlanCanvas";
 import { heldBy, tail } from "./robots";
 
-// The Floor kind's two tools: turn or shift the origin, previewed on the plan and
-// checked by the server before anything is written; and capture zero from
-// a robot's live fix, which fills the same move in.
+// The Floor kind's two tools: turn or shift the origin, previewed on the plan
+// and checked by the server before anything is written; and set the origin
+// from robots standing on measured spots, which fits the same move and lets
+// the operator nudge it over the live dots.
 
 export const STILL_MM = 3;
 export const STILL_MS = 2000;
@@ -32,7 +34,7 @@ export interface FramePanelProps {
   move: FrameMove;
   onMove: (m: FrameMove) => void;
   site: string;
-  /** The calibration re-expressed: the served one. */
+  /** The calibration re-expressed: the one in use. */
   calibrationId: string | null;
   revision: string;
   frameId: string;
@@ -42,9 +44,52 @@ export interface FramePanelProps {
   live: boolean;
   onReview: (answer: Extract<FrameAnswer, { ok: true }>["result"]) => void;
   onMode: (m: "turn" | "capture") => void;
-  /** With nothing served: the step that serves a calibration. */
+  /** With nothing in use: the step that gets a calibration in use. */
   nextStep?: GoalAction;
   onAction?: (a: GoalAction) => void;
+  /** Robots pinned to measured spots, kept by the page so the plan can draw them. */
+  anchors?: Anchor[];
+  onAnchors?: (anchors: Anchor[]) => void;
+  /** Every measured point of the calibration in use, for where the origin may go. */
+  points?: Point[];
+}
+
+/** What the plan draws while the origin is set from robots: each spot where
+ * the move puts it, a line to its robot, and the hatched region where the
+ * origin may not go. */
+export function anchorsOverlay(m: FrameMove, anchors: Anchor[], points: Point[]) {
+  const forb = forbidden(m, points);
+  return (p: PlanPaint) => (
+    <g data-testid="anchors-overlay" style={{ pointerEvents: "none" }}>
+      {forb &&
+        forb.beyond.map((poly, i) => (
+          <polygon key={i} points={poly.map((q) => p.px(q).join(",")).join(" ")} fill="url(#forbidden-hatch)" stroke="none" />
+        ))}
+      {forb && (
+        <circle cx={p.px(forb.corner)[0]} cy={p.px(forb.corner)[1]} r={3 * p.chrome} fill="none" stroke="var(--muted)" strokeWidth={p.chrome} />
+      )}
+      <defs>
+        <pattern id="forbidden-hatch" patternUnits="userSpaceOnUse" width={8 * p.chrome} height={8 * p.chrome} patternTransform="rotate(45)">
+          <line x1="0" y1="0" x2="0" y2={8 * p.chrome} stroke="var(--err)" strokeOpacity="0.35" strokeWidth={1.2 * p.chrome} />
+        </pattern>
+      </defs>
+      {anchors.map((a) => {
+        const at = p.px(moves(m) ? toOldPoint(m, a.spot) : a.spot);
+        const fix = p.px(a.fix);
+        const err = Math.hypot(at[0] - fix[0], at[1] - fix[1]);
+        return (
+          <g key={a.robot}>
+            <line x1={fix[0]} y1={fix[1]} x2={at[0]} y2={at[1]} stroke="var(--accent)" strokeWidth={1.2 * p.chrome} strokeDasharray={`${3 * p.chrome} ${3 * p.chrome}`} />
+            <line x1={at[0] - 7 * p.chrome} y1={at[1]} x2={at[0] + 7 * p.chrome} y2={at[1]} stroke="var(--accent)" strokeWidth={1.6 * p.chrome} />
+            <line x1={at[0]} y1={at[1] - 7 * p.chrome} x2={at[0]} y2={at[1] + 7 * p.chrome} stroke="var(--accent)" strokeWidth={1.6 * p.chrome} />
+            <text className="tl halo" x={at[0] + 9 * p.chrome} y={at[1] - 8 * p.chrome} fontSize={10 * p.label} strokeWidth={3 * p.chrome} fill="var(--accent)">
+              …{tail(a.robot)} here{err > 1.5 * p.chrome ? "" : " ✓"}
+            </text>
+          </g>
+        );
+      })}
+    </g>
+  );
 }
 
 export const FramePanel: React.FC<FramePanelProps> = (props) => {
@@ -103,8 +148,17 @@ export const FramePanel: React.FC<FramePanelProps> = (props) => {
     const id = window.setInterval(sample, 500);
     return () => window.clearInterval(id);
   }, [props.mode]);
-  const [first, setFirst] = useState<{ id: string; p: Point } | null>(null);
-  const [assume, setAssume] = useState<Set<string>>(new Set());
+  const anchors = props.anchors ?? [];
+  const setAnchors = props.onAnchors ?? (() => {});
+  // Spots typed one coordinate at a time, until both are there
+  const pendingSpots = useRef(new Map<string, [number | null, number | null]>());
+  // The move follows the anchors; a nudge edits it on top until the anchors change again
+  const anchorsKey = JSON.stringify(anchors);
+  useEffect(() => {
+    if (props.mode !== "capture") return;
+    const fitted = fitAnchors(anchors, move.note);
+    if (fitted) onMove(fitted);
+  }, [anchorsKey, props.mode]);
 
   if (!props.calibrationId) {
     return (
@@ -124,7 +178,7 @@ export const FramePanel: React.FC<FramePanelProps> = (props) => {
   }
 
   const tabs = (
-    <div className="seg" style={{ display: "inline-flex", marginTop: 8 }} role="tablist" aria-label="Move zero by">
+    <div className="seg" style={{ display: "inline-flex", marginTop: 8 }} role="tablist" aria-label="Move the origin by">
       <button type="button" role="tab" aria-selected={props.mode === "turn"} className={props.mode === "turn" ? "on" : undefined} onClick={() => props.onMode("turn")}>
         Turn or shift
       </button>
@@ -134,9 +188,33 @@ export const FramePanel: React.FC<FramePanelProps> = (props) => {
     </div>
   );
 
+  const forb = forbidden(move, props.points ?? []);
+  const nearest = () => {
+    if (!forb) return;
+    const o = toOldPoint(move, [0, 0]);
+    // Clamp the origin, in the turned frame, to the allowed quadrant's corner
+    const rot = (p: Point): Point => turnBy(p, -move.theta_deg);
+    const unrot = (p: Point): Point => turnBy(p, move.theta_deg);
+    const ro = rot(o);
+    const rc = rot(forb.corner);
+    onMove(withOrigin(move, unrot([Math.min(ro[0], rc[0]), Math.min(ro[1], rc[1])])));
+  };
+
   const status = !moves(move) ? (
     <div className="note" style={{ marginTop: 10 }}>
-      Nothing moves yet. Type a turn or a shift{props.mode === "turn" ? ", or click the plan to set the point it turns about" : ""}.
+      Nothing moves yet. {props.mode === "turn" ? "Type a turn or a shift, or click the plan to set the point it turns about." : "Say where a robot stands."}
+    </div>
+  ) : forb && !forb.originOk ? (
+    <div className="callout err" role="alert" style={{ marginTop: 10 }} data-testid="frame-refusal">
+      <div className="h">
+        <Icon name="err" size={14} /> The origin cannot go there
+      </div>
+      Some measured point would get a negative coordinate, which robots cannot report: the hatched part of the plan is out of bounds for the origin.
+      <div className="acts">
+        <button type="button" className="btn sm" onClick={nearest} data-testid="frame-offer">
+          Move it to the nearest allowed spot
+        </button>
+      </div>
     </div>
   ) : checking && !check ? (
     <div className="note" style={{ marginTop: 10 }}>Checking every measured point stays at or above zero…</div>
@@ -149,11 +227,7 @@ export const FramePanel: React.FC<FramePanelProps> = (props) => {
       {check.offer && (
         <div className="acts">
           <button type="button" className="btn sm" onClick={() => onMove({ ...move, dx: check.offer!.dx_mm, dy: check.offer!.dy_mm })} data-testid="frame-offer">
-            {check.offer.dx_mm !== move.dx && check.offer.dy_mm === move.dy
-              ? `Shift x by ${check.offer.dx_mm} mm instead`
-              : check.offer.dy_mm !== move.dy && check.offer.dx_mm === move.dx
-                ? `Shift y by ${check.offer.dy_mm} mm instead`
-                : `Shift by (${check.offer.dx_mm}, ${check.offer.dy_mm}) mm instead`}
+            Move it to the nearest allowed spot
           </button>
         </div>
       )}
@@ -170,7 +244,7 @@ export const FramePanel: React.FC<FramePanelProps> = (props) => {
         <button type="button" className="btn sm primary" onClick={() => props.onReview(check.result)} data-testid="frame-review">
           Apply the move…
         </button>
-        <button type="button" className="btn sm" onClick={() => onMove({ ...move, theta_deg: 0, dx: 0, dy: 0, note: null })}>
+        <button type="button" className="btn sm" onClick={() => (setAnchors([]), onMove({ ...move, theta_deg: 0, dx: 0, dy: 0, note: null }))}>
           Reset
         </button>
       </div>
@@ -179,100 +253,121 @@ export const FramePanel: React.FC<FramePanelProps> = (props) => {
 
   if (props.mode === "capture") {
     const robots = props.bots.filter((b) => b.position);
+    const untrusted = robots.filter((b) => heldBy(b, props.calibrationId).kind !== "served");
+    const errs = anchorErrors(move, anchors);
+    const worst = errs.length ? Math.max(...errs) : null;
+    const nudge = (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (!e.key.startsWith("Arrow")) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.altKey) {
+        const step = e.shiftKey ? 1 : 0.1;
+        const dir = e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 1;
+        onMove({ ...move, theta_deg: Math.round((move.theta_deg + dir * step) * 100) / 100 });
+        return;
+      }
+      const d = e.shiftKey ? 10 : 1;
+      const o = toOldPoint(move, [0, 0]);
+      const dx = e.key === "ArrowLeft" ? -d : e.key === "ArrowRight" ? d : 0;
+      const dy = e.key === "ArrowUp" ? -d : e.key === "ArrowDown" ? d : 0;
+      onMove(withOrigin(move, [o[0] + dx, o[1] + dy]));
+    };
     return (
       <div data-testid="frame-capture">
         <div className="ins-h">
-          <span className="kind">Frame</span>
+          <span className="kind">Floor</span>
           <span className="name" style={{ fontFamily: "var(--font-ui)" }}>
             Set the origin from robots
           </span>
         </div>
         {tabs}
         <div className="ins-sub" style={{ marginTop: 8 }}>
-          Park a robot's sensor on the taped mark you want as zero and keep it still; its fix becomes zero. A second robot on another mark sets the x axis. Nothing is sent
-          to the robots: this only reads their fixes.
+          Put robots on spots you measured from where the origin should be, and type where each one stands. One spot sets the origin, two set the turn as well, more check each
+          other. Then nudge until the dots sit on their spots, and apply. Nothing is sent to the robots: this only reads their positions.
         </div>
-        {!props.live && <div className="callout" style={{ marginTop: 10 }}>Open the editor from a controller to see its robots; or type the point in Turn or shift.</div>}
-        {props.live && robots.length === 0 && <div className="note" style={{ marginTop: 10 }}>No robot has a fix right now.</div>}
+        {!props.live && <div className="callout" style={{ marginTop: 10 }}>Open the editor from a controller to see its robots; or type the move in Turn or shift.</div>}
+        {props.live && robots.length === 0 && <div className="note" style={{ marginTop: 10 }}>No robot has a position right now.</div>}
+        {untrusted.length > 0 && (
+          <div className="callout" style={{ marginTop: 10 }} data-testid="capture-untrusted">
+            {untrusted.length === robots.length ? "These robots" : `${untrusted.length} of these robots`} cannot say which calibration they have, so their positions are read as if they had{" "}
+            {props.calibrationId.slice(0, 8)}. If one has another calibration, its spot will not fit.
+          </div>
+        )}
         {robots.length > 0 && (
-          <table className="strip" style={{ marginTop: 10 }}>
+          <table className="strip" style={{ marginTop: 10 }} data-testid="anchors-table">
             <thead>
               <tr>
                 <th>robot</th>
-                <th>fix, mm</th>
+                <th>reports</th>
                 <th>still?</th>
-                <th />
+                <th>stands at x</th>
+                <th>y</th>
               </tr>
             </thead>
             <tbody>
               {robots.map((b) => {
                 const s = stillness(tracks.current.get(b.id) ?? [], now);
-                const held = heldBy(b, props.calibrationId);
-                const trusted = held.kind === "served" || assume.has(b.id);
                 const p = s.mean ?? [b.position!.x, b.position!.y];
+                const a = anchors.find((x) => x.robot === b.id);
+                const set = (i: 0 | 1, v: number | null) => {
+                  const half = pendingSpots.current.get(b.id);
+                  const spot: [number | null, number | null] = a ? [a.spot[0], a.spot[1]] : half ? [half[0], half[1]] : [null, null];
+                  spot[i] = v;
+                  const rest = anchors.filter((x) => x.robot !== b.id);
+                  if (spot[0] === null || spot[1] === null) {
+                    setAnchors(rest);
+                    pendingSpots.current.set(b.id, spot);
+                    return;
+                  }
+                  pendingSpots.current.delete(b.id);
+                  setAnchors([...rest, { robot: b.id, fix: [p[0], p[1]], spot: [spot[0], spot[1]] }]);
+                };
+                const half = pendingSpots.current.get(b.id) ?? [null, null];
+                const err = a ? errs[anchors.indexOf(a)] : null;
                 return (
-                  <React.Fragment key={b.id}>
-                    <tr>
-                      <td>…{tail(b.id)}</td>
-                      <td>
-                        {p[0].toFixed(0)}, {p[1].toFixed(0)}
-                      </td>
-                      <td className="l">{s.still ? <Badge tone="ok">still</Badge> : <Badge>{s.measuring ? "measuring…" : "moving"}</Badge>}</td>
-                      <td className="l">
-                        {trusted ? (
-                          <button
-                            type="button"
-                            className="btn xs primary"
-                            disabled={!s.still}
-                            title={s.still ? undefined : `Waiting for its fix to stay within ${STILL_MM} mm for ${STILL_MS / 1000} s`}
-                            onClick={() => {
-                              if (!first) {
-                                setFirst({ id: b.id, p });
-                                onMove(zeroAt(p, null, move.note));
-                              } else if (first.id !== b.id) {
-                                onMove(zeroAt(first.p, p, move.note));
-                              }
-                            }}
-                          >
-                            {!first ? "Zero here" : first.id === b.id ? "Zero" : "x axis through"}
-                          </button>
-                        ) : null}
-                      </td>
-                    </tr>
-                    {!trusted && (
-                      <tr>
-                        <td colSpan={4} className="l" style={{ borderTop: 0, paddingTop: 0 }}>
-                          <div className="note">
-                            {held.kind === "not-reported"
-                              ? `It does not report which calibration it holds, and its fix is in that calibration's frame.`
-                              : `It holds ${held.kind === "other" ? held.id8 : "no calibration"}, not ${props.calibrationId!.slice(0, 8)}: its fix is in another frame.`}
-                          </div>
-                          <div className="acts" style={{ marginTop: 4 }}>
-                            <button type="button" className="btn xs" onClick={() => setAssume(new Set([...assume, b.id]))}>
-                              Capture, assuming it holds {props.calibrationId!.slice(0, 8)}
-                            </button>
-                            <button type="button" className="btn xs" onClick={() => props.onMode("turn")}>
-                              Type the point instead
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
+                  <tr key={b.id} className={a ? "on" : undefined}>
+                    <td>…{tail(b.id)}</td>
+                    <td>
+                      {p[0].toFixed(0)}, {p[1].toFixed(0)}
+                    </td>
+                    <td className="l">{s.still ? <Badge tone="ok">still</Badge> : <Badge>{s.measuring ? "measuring…" : "moving"}</Badge>}</td>
+                    <td>
+                      <NumField label={`spot x of …${tail(b.id)}`} prefix="x" absolute min={0} placeholder="mm" value={a?.spot[0] ?? half[0]} onApply={(v) => set(0, v)} />
+                    </td>
+                    <td>
+                      <NumField label={`spot y of …${tail(b.id)}`} prefix="y" absolute min={0} placeholder="mm" value={a?.spot[1] ?? half[1]} onApply={(v) => set(1, v)} />
+                      {err !== null && (
+                        <div className="note" style={{ marginTop: 2 }} data-testid="anchor-error">
+                          {err.toFixed(1)} mm off
+                        </div>
+                      )}
+                    </td>
+                  </tr>
                 );
               })}
             </tbody>
           </table>
         )}
-        {first && (
-          <div className="note" style={{ marginTop: 8 }}>
-            Zero at ({first.p[0].toFixed(0)}, {first.p[1].toFixed(0)}) from …{tail(first.id)}.{" "}
-            <button type="button" className="btn xs ghost" onClick={() => (setFirst(null), onMove({ ...move, theta_deg: 0, dx: 0, dy: 0 }))}>
-              Start over
-            </button>
+        {anchors.length > 0 && (
+          <div className="callout info" style={{ marginTop: 10 }} data-testid="anchors-fit">
+            <div className="h">
+              <Icon name="info" size={14} /> {anchors.length === 1 ? "Origin from one robot: shifted, not turned" : `Fitted on ${anchors.length} robots`}
+            </div>
+            Turn {move.theta_deg.toFixed(2)}°, the origin moves by ({move.dx}, {move.dy}) mm{worst !== null && anchors.length > 1 ? ` · the dots are up to ${worst.toFixed(1)} mm off their spots` : ""}.
+            <div className="nudge" tabIndex={0} onKeyDown={nudge} data-testid="nudge-pad" title="Click here, then use the arrow keys">
+              <Icon name="select" size={12} /> Nudge with the arrows: 1 mm · Shift 10 mm · Alt turns 0.1° (Shift Alt 1°)
+            </div>
+            <div className="acts">
+              <button type="button" className="btn xs" onClick={() => setAnchors([])}>
+                Clear the spots
+              </button>
+            </div>
           </div>
         )}
         {status}
+        <div style={{ marginTop: 8 }}>
+          <TextField label="New note on where the origin is (optional)" value={move.note ?? ""} placeholder={props.note || "the tape cross by the door"} onApply={(t) => onMove({ ...move, note: t.trim() || null })} />
+        </div>
       </div>
     );
   }
@@ -280,7 +375,7 @@ export const FramePanel: React.FC<FramePanelProps> = (props) => {
   return (
     <div data-testid="frame-turn">
       <div className="ins-h">
-        <span className="kind">Frame</span>
+        <span className="kind">Floor</span>
         <span className="name" style={{ fontFamily: "var(--font-ui)" }}>
           Turn or shift the origin
         </span>
@@ -313,3 +408,10 @@ export const FramePanel: React.FC<FramePanelProps> = (props) => {
     </div>
   );
 };
+
+function turnBy(p: Point, deg: number): Point {
+  const t = (deg * Math.PI) / 180;
+  const c = Math.cos(t);
+  const s = Math.sin(t);
+  return [c * p[0] - s * p[1], s * p[0] + c * p[1]];
+}

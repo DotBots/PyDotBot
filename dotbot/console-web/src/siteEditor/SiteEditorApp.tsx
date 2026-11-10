@@ -31,9 +31,9 @@ import { CheckMarkPanel } from "./CheckMarkPanel";
 import { goals as goalsOf, serveStep, verdict as verdictOf, type CheckRecord, type GoalAction } from "./checks";
 import { ChecksPane } from "./ChecksPane";
 import { CompareSheet } from "./CompareSheet";
-import { FramePanel } from "./FramePanel";
+import { anchorsOverlay, FramePanel } from "./FramePanel";
 import { FrameSheet } from "./FrameSheet";
-import { moves, NO_MOVE, toOld, type FrameMove } from "./frameMove";
+import { moves, NO_MOVE, toOld, type Anchor, type FrameMove } from "./frameMove";
 import { ServeSheet } from "./ServeSheet";
 import { heldCalibrationId } from "../botFacts";
 import { splitFloor, type Coverage } from "./coverage";
@@ -42,6 +42,7 @@ import "./editor.css";
 import { EditorFleet } from "./EditorFleet";
 import { SitesSheet, StartScreen } from "./SitesSheet";
 import { dismissSpin } from "../api";
+import { fetchOverlay } from "./api";
 import { mountOverlay, NewRoomPanel, placeOverlay, type PlacePreview } from "./NewRoomPanel";
 import { KV } from "./fields";
 import { FileView } from "./FileView";
@@ -229,6 +230,8 @@ export const SiteEditorApp: React.FC = () => {
   const [comparing, setComparing] = useState<[LibraryRow, LibraryRow] | null>(null);
   const [toast, setToast] = useState<{ text: string; push?: string; undo?: () => void } | null>(null);
   const [frameMove, setFrameMove] = useState<FrameMove>(NO_MOVE);
+  const [anchors, setAnchors] = useState<Anchor[]>([]);
+  const [measured, setMeasured] = useState<Point[]>([]);
   const [frameReview, setFrameReview] = useState<FrameResult | null>(null);
   const [servedCoverage, setServedCoverage] = useState<Coverage | null>(null);
   const [checks, setChecks] = useState<CheckRecord[]>([]);
@@ -532,7 +535,20 @@ export const SiteEditorApp: React.FC = () => {
   useEffect(() => {
     const [w, h] = draft?.doc.extent_mm ?? [0, 0];
     setFrameMove(tool === "turn" && w ? { ...NO_MOVE, pivot: [Math.round(w / 2), Math.round(h / 2)] } : NO_MOVE);
+    setAnchors([]);
   }, [tool, kind]);
+  // Where the origin may go: every measured point of the calibration in use
+  useEffect(() => {
+    if (kind !== "frame" || tool !== "capture" || !servedId) return setMeasured([]);
+    let live = true;
+    fetchOverlay(servedId).then(
+      (o) => live && setMeasured((o.stations ?? []).flatMap((s) => (s.circles ?? []).map((c) => [c.x, c.y] as Point))),
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, [kind, tool, servedId]);
   // A verification takes the right pane: the frame tool and its ghost go
   useEffect(() => {
     if (checking) setTool("select");
@@ -1029,6 +1045,9 @@ export const SiteEditorApp: React.FC = () => {
             onMode={(m) => setTool(m)}
             nextStep={serveStep(rows)}
             onAction={goalAction}
+            anchors={anchors}
+            onAnchors={setAnchors}
+            points={measured}
           />
         ) : rightTab === "inspect" && kind === "stations" && !selected.some((k) => k.startsWith("robot:")) ? (
           <StationsPanel
@@ -1328,9 +1347,16 @@ export const SiteEditorApp: React.FC = () => {
                       ? mountOverlay(draft.doc.extent_mm)
                       : kind === "stations"
                     ? stationsOverlay(coverage && coverage.id === shown?.id ? coverage : null, showNext && coverageMode === "error", probe?.at ?? null)
-                    : kind === "frame" && moves(frameMove) && (tool === "turn" || tool === "capture")
-                      ? frameGhost(frameMove, draft.doc.extent_mm ?? [1000, 1000])
-                      : undefined
+                    : kind === "frame" && tool === "capture"
+                      ? (p: PlanPaint) => (
+                          <>
+                            {anchorsOverlay(frameMove, anchors, measured)(p)}
+                            {moves(frameMove) ? frameGhost(frameMove, draft.doc.extent_mm ?? [1000, 1000])(p) : null}
+                          </>
+                        )
+                      : kind === "frame" && moves(frameMove) && tool === "turn"
+                        ? frameGhost(frameMove, draft.doc.extent_mm ?? [1000, 1000])
+                        : undefined
                 }
                 onProbe={(at, px) => setProbe(at && px ? { at, px } : null)}
                 onPoint={(p) => setFrameMove((m) => ({ ...m, pivot: p }))}

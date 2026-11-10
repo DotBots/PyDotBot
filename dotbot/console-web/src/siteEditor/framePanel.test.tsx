@@ -33,3 +33,63 @@ describe("the frame panel with nothing served", () => {
     }
   });
 });
+
+describe("the origin from robots on spots", () => {
+  const bot = (id: string, x: number, y: number) => ({ id, state: "Running", position: { x, y }, swarmit: null }) as unknown as import("../types").UnifiedBot;
+
+  const Harness: React.FC<{ onMove?: (m: import("./frameMove").FrameMove) => void }> = ({ onMove }) => {
+    const [move, setMove] = React.useState({ theta_deg: 0, pivot: [0, 0] as [number, number], dx: 0, dy: 0, note: null as string | null });
+    const [anchors, setAnchors] = React.useState<import("./frameMove").Anchor[]>([]);
+    return (
+      <FramePanel
+        mode="capture"
+        move={move}
+        onMove={(m) => (setMove(m), onMove?.(m))}
+        site="inria-2lh"
+        calibrationId="4640cfde014c7232"
+        revision="r"
+        frameId="f0237ffd"
+        extent={[1060, 1220]}
+        note=""
+        bots={[bot("DE00000000000001", 430, 458), bot("DE00000000000003", 630, 658)]}
+        live
+        onReview={() => {}}
+        onMode={() => {}}
+        anchors={anchors}
+        onAnchors={setAnchors}
+        points={[
+          [200, 300],
+          [900, 1100],
+        ]}
+      />
+    );
+  };
+
+  it("fits the move to the spots typed, says how far the dots are, and nudges by arrows", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ frame: "f2", from_frame: "f1", calibration: { id: "x", id8: "x", tag: "" }, source: "", warnings: [], push: "", steps: [] }), { status: 200 })));
+    const moves: import("./frameMove").FrameMove[] = [];
+    render(<Harness onMove={(m) => moves.push(m)} />);
+    expect(screen.getByTestId("capture-untrusted").textContent).toContain("cannot say which calibration they have");
+    const type = (label: string, v: string) => {
+      const f = screen.getByLabelText(label);
+      fireEvent.change(f, { target: { value: v } });
+      fireEvent.keyDown(f, { key: "Enter" });
+    };
+    type("spot x of …0001", "300");
+    type("spot y of …0001", "400");
+    expect(screen.getByTestId("anchors-fit").textContent).toContain("Origin from one robot");
+    const one = moves[moves.length - 1];
+    expect([one.dx, one.dy]).toEqual([130, 58]);
+    type("spot x of …0003", "500");
+    type("spot y of …0003", "600");
+    expect(screen.getByTestId("anchors-fit").textContent).toContain("Fitted on 2 robots");
+    expect(screen.getAllByTestId("anchor-error").map((e) => e.textContent)).toEqual(["0.0 mm off", "0.0 mm off"]);
+    const before = moves[moves.length - 1];
+    fireEvent.keyDown(screen.getByTestId("nudge-pad"), { key: "ArrowRight", shiftKey: true });
+    const after = moves[moves.length - 1];
+    expect(after.dx - before.dx).toBeCloseTo(10, 5);
+    fireEvent.click(screen.getByRole("button", { name: "Clear the spots" }));
+    expect(screen.queryByTestId("anchors-fit")).toBeNull();
+    vi.unstubAllGlobals();
+  });
+});

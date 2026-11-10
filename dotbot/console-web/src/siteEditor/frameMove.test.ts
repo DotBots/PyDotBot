@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { frameTwin, toNew, toOld, zeroAt } from "./frameMove";
+import { anchorErrors, fitAnchors, forbidden, frameTwin, NO_MOVE, toNew, toOld, withOrigin, zeroAt } from "./frameMove";
 
 describe("a move of the frame", () => {
   it("goes there and back", () => {
@@ -37,5 +37,39 @@ describe("the stillness gate", () => {
     expect(stillness(track.slice(-2), 2000).still).toBe(false);
     const moving = track.map((s, i) => ({ ...s, p: [100 + 10 * i, 200] as [number, number] }));
     expect(stillness(moving, 2000).still).toBe(false);
+  });
+});
+
+describe("the origin from robots on spots", () => {
+  it("shifts for one robot and recovers a turn and shift for two", () => {
+    const one = fitAnchors([{ robot: "a", fix: [430, 458], spot: [300, 400] }], null)!;
+    expect(one.theta_deg).toBe(0);
+    expect(toOld(one, [300, 400])).toEqual([430, 458]);
+    // A known move: turn 5 degrees about (530, 610), origin shifted by (40, -20)
+    const truth = { theta_deg: 5, pivot: [530, 610] as [number, number], dx: 40, dy: -20, note: null };
+    const spots: [number, number][] = [
+      [300, 400],
+      [900, 700],
+      [600, 1000],
+    ];
+    const fitted = fitAnchors(spots.map((spot, i) => ({ robot: String(i), fix: toOld(truth, spot), spot })), null)!;
+    expect(fitted.theta_deg).toBeCloseTo(5, 1);
+    for (const e of anchorErrors(fitted, spots.map((spot, i) => ({ robot: String(i), fix: toOld(truth, spot), spot })))) expect(e).toBeLessThan(1.5);
+  });
+
+  it("keeps the origin out of the quadrant that would give a measured point a negative coordinate", () => {
+    const points: [number, number][] = [
+      [200, 300],
+      [800, 900],
+    ];
+    const ok = forbidden({ ...NO_MOVE, dx: 100, dy: 100 }, points)!;
+    expect(ok.originOk).toBe(true);
+    expect(ok.corner).toEqual([200, 300]);
+    const bad = forbidden({ ...NO_MOVE, dx: 250, dy: 100 }, points)!;
+    expect(bad.originOk).toBe(false);
+    const moved = withOrigin({ ...NO_MOVE, dx: 250, dy: 100 }, bad.corner);
+    expect(toOld(moved, [0, 0])).toEqual([200, 300]);
+    expect(forbidden(moved, points)!.originOk).toBe(true);
+    expect(forbidden(NO_MOVE, [])).toBeNull();
   });
 });
