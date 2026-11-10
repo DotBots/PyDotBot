@@ -126,17 +126,18 @@ export const StationsPanel: React.FC<StationsPanelProps> = (props) => {
           </span>
           <span className="kind">Station</span>
           <span className="name">S{sel.index} box</span>
-          <span className="sp" />
-          <div className="seg">
+        </div>
+        <div className="seg" style={{ display: "inline-flex", margin: "6px 0 4px" }} role="tablist" aria-label="Station">
+          <span style={{ display: "contents" }}>
             {boxes.map((b) => (
               <button key={b.index} type="button" className={b.index === sel.index ? "on" : undefined} onClick={() => props.onSelectBox(b.index)}>
                 S{b.index}
               </button>
             ))}
             <button type="button" onClick={() => props.onSelectBox(null)}>
-              All
+              All stations
             </button>
-          </div>
+          </span>
         </div>
         <div className="ins-sub">
           Where a robot trusts S{sel.index}'s fix. Set to <b>channel {sel.index + 1}</b> on the device. Drag an edge on the plan, or pick one and use the arrows (Alt 1 mm,
