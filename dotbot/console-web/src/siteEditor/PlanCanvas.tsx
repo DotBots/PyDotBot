@@ -146,6 +146,12 @@ interface PlanCanvasProps {
 }
 
 const MIN_AREA_MM = 20;
+
+/** "Floor, field and S0 coverage are the same rectangle". */
+export function sameRectangle(labels: string[]): string {
+  const said = labels.length > 1 ? `${labels.slice(0, -1).join(", ")} and ${labels[labels.length - 1]}` : labels[0];
+  return `${said.charAt(0).toUpperCase()}${said.slice(1)} are the same rectangle`;
+}
 const SNAP_REACH_PX = 8;
 
 /** The scale bar's length: the longest round length under `maxPx` on screen. */
@@ -440,7 +446,7 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
   const outlines = coincident([
     { label: "floor", rect: [0, 0, extent[0], extent[1]] },
     ...shown.areas.map((a) => ({ label: a.name, rect: [a.x, a.y, a.x + a.w, a.y + a.h] as [number, number, number, number] })),
-    ...(props.layers.boxes ? props.boxes.map((b) => ({ label: `S${b.index} box`, rect: b.rect })) : []),
+    ...(props.layers.boxes ? props.boxes.map((b) => ({ label: `S${b.index} coverage`, rect: b.rect })) : []),
   ]);
 
   const areaNodes = shown.areas.map((a) => {
@@ -750,7 +756,7 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
             y
           </text>
           <text className="tl halo" x={zx + 10 * chrome} y={zy - 9 * chrome} fontSize={10 * label} strokeWidth={3 * chrome}>
-            zero (0, 0)
+            origin (0, 0)
           </text>
         </>
       )}
@@ -879,7 +885,7 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
       {props.chrome !== false && outlines.length > 0 && (
         <div className="float chipc" data-testid="coincident-chip" title="These rectangles are the same, so they are drawn as one outline">
           <Icon name="rect" size={13} />
-          One rectangle: {outlines[0].join(" = ")}
+          {sameRectangle(outlines[0])}
         </div>
       )}
       {props.chrome !== false && (

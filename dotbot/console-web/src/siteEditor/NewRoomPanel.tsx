@@ -108,7 +108,7 @@ export const NewRoomPanel: React.FC<{
 
   const hasField = doc.areas.some((a) => a.role === "field" || a.name === "field");
   const gap = marks ? Math.abs(marks.tapeMm - marks.spinMm) : 0;
-  const blocked = !move || !proposal ? "Pick how to place it." : proposal.below.length ? `${proposal.below.map((n) => `…${tail(n)}`).join(", ")} would land below zero, which robots cannot carry: move zero.` : "";
+  const blocked = !move || !proposal ? "Pick how to place it." : proposal.below.length ? `${proposal.below.map((n) => `…${tail(n)}`).join(", ")} would get a negative position, which robots cannot report: move the origin.` : "";
 
   const write = async () => {
     if (!placeId || !move || !proposal || blocked) return;
@@ -314,8 +314,8 @@ export const NewRoomPanel: React.FC<{
                         </select>
                       </div>
                       <div className="grid2" style={{ marginTop: 4 }}>
-                        <NumField label={`${label} x`} prefix="x" absolute min={0} placeholder="mm from zero" value={mark.at[0]} onApply={(v) => setMark({ ...mark, at: [v, mark.at[1]] })} />
-                        <NumField label={`${label} y`} prefix="y" absolute min={0} placeholder="mm from zero" value={mark.at[1]} onApply={(v) => setMark({ ...mark, at: [mark.at[0], v] })} />
+                        <NumField label={`${label} x`} prefix="x" absolute min={0} placeholder="mm from the origin" value={mark.at[0]} onApply={(v) => setMark({ ...mark, at: [v, mark.at[1]] })} />
+                        <NumField label={`${label} y`} prefix="y" absolute min={0} placeholder="mm from the origin" value={mark.at[1]} onApply={(v) => setMark({ ...mark, at: [mark.at[0], v] })} />
                       </div>
                     </div>
                   );
@@ -348,7 +348,7 @@ export const NewRoomPanel: React.FC<{
                   rows={[
                     ["Floor", `${proposal.extent[0]} × ${proposal.extent[1]} mm${extentKnown ? ", as in site.toml" : ", proposed"}`],
                     ["Field", hasField ? "kept as in site.toml" : `${proposal.field[2]} × ${proposal.field[3]} mm at (${proposal.field[0]}, ${proposal.field[1]})`],
-                    ...(move && method !== "around" ? ([["Move", `turn ${move.theta_deg.toFixed(1)}°, zero to (${move.dx.toFixed(0)}, ${move.dy.toFixed(0)})`]] as [string, string][]) : []),
+                    ...(move && method !== "around" ? ([["Move", `turn ${move.theta_deg.toFixed(1)}°, origin to (${move.dx.toFixed(0)}, ${move.dy.toFixed(0)})`]] as [string, string][]) : []),
                   ]}
                 />
               </div>

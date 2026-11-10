@@ -103,7 +103,8 @@ body {
 }
 @media (max-width: 640px) {
   .se .sitesw,
-  .se .selbl {
+  .se .selbl,
+  .se [data-testid="title-bar"] > div:nth-child(-n + 2) {
     display: none;
   }
 }
@@ -149,6 +150,29 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
+  flex: 0 1 auto;
+}
+.se .sline .st b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 60px;
+  flex: 0 1 auto;
+}
+.se .sline .st .m {
+  flex: none;
+}
+.se .sline .btn {
+  flex: none;
+}
+/* With a second part, the in-use name keeps room and the details give way */
+.se .sline:has(.sside) .st {
+  flex: 0 3 auto;
+  min-width: 110px;
+}
+.se .sline .sside > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 .se .sline .st b {
   font-weight: 600;
@@ -174,7 +198,9 @@ body {
   border-radius: 6px;
   font-size: 11px;
   white-space: nowrap;
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
   background: color-mix(in srgb, var(--warn) 16%, transparent);
 }
 .se .sline .sside.looking {
@@ -991,7 +1017,7 @@ body {
   align-items: center;
   gap: 2px;
   padding: 3px;
-  max-width: calc(100% - 210px);
+  max-width: calc(100% - 300px);
   overflow: hidden;
 }
 .se .kinds .lbl2 {
@@ -2347,4 +2373,30 @@ body {
 }
 .se .strip tr.on td {
   background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+/* A phone: the status line keeps its name and its action, the rest is in its
+   tooltip; the view switch drops below the editing switch */
+@media (max-width: 640px) {
+  .se .sline {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 150px;
+  }
+  .se .sline .st .m:not(.w):not(.u) {
+    display: none;
+  }
+  .se [data-testid="title-bar"] button[aria-label="Undo"],
+  .se [data-testid="title-bar"] button[aria-label="Redo"] {
+    display: none;
+  }
+  .se .views {
+    top: 56px;
+  }
+  .se .kinds {
+    max-width: calc(100% - 24px);
+  }
+  .se .shortbtn {
+    display: none;
+  }
 }

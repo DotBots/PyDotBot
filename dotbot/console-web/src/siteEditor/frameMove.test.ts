@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { anchorErrors, fitAnchors, forbidden, frameTwin, NO_MOVE, toNew, toOld, withOrigin, zeroAt } from "./frameMove";
+import { anchorErrors, fitAnchors, forbidden, frameTwin, NO_MOVE, plainWarning, toNew, toOld, withOrigin, zeroAt } from "./frameMove";
 
 describe("a move of the frame", () => {
   it("goes there and back", () => {
@@ -71,5 +71,13 @@ describe("the origin from robots on spots", () => {
     expect(toOld(moved, [0, 0])).toEqual([200, 300]);
     expect(forbidden(moved, points)!.originOk).toBe(true);
     expect(forbidden(NO_MOVE, [])).toBeNull();
+  });
+});
+
+describe("a move's warnings", () => {
+  it("drop ids and say floor", () => {
+    expect(plainWarning("340088da: 2 spin circle(s) (222A34F9458E8AAD, 901B4217EE67C999) land outside the site's extent, where robots drop their positions")).toBe(
+      "2 measured spots land outside the floor, where robots drop their positions",
+    );
   });
 });

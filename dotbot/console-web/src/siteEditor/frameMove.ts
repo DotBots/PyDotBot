@@ -124,3 +124,12 @@ export function frameTwin(site: string, calibration: string, m: FrameMove): stri
   parts.push(`--calibration ${calibration}`);
   return parts.join(" ");
 }
+
+/** A server warning about a move, without ids: "2 measured spots land
+ * outside the floor, where robots drop their positions". */
+export function plainWarning(w: string): string {
+  return w
+    .replace(/^[0-9a-f]{8,}: /, "")
+    .replace(/(\d+) spin circle\(s\) \([^)]*\) land outside the site's extent/, (_, n) => `${n} measured spot${n === "1" ? "" : "s"} land${n === "1" ? "s" : ""} outside the floor`)
+    .replace(/(\d+) placement point\(s\) land outside the site's extent/, (_, n) => `${n} placement point${n === "1" ? "" : "s"} land${n === "1" ? "s" : ""} outside the floor`);
+}

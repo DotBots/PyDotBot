@@ -34,7 +34,7 @@ export const Inset: React.FC<{ geometry: Geometry; extent: [number, number]; hei
     <svg viewBox={`0 0 ${width} ${height}`} className="inset" role="img" aria-label="Where the stations stand, estimated" data-testid="inset" style={{ display: "block", width: "100%", height: "auto", borderRadius: 8, background: "var(--canvas)", border: "1px solid var(--hairline)" }}>
       <polygon points={floor.map((p) => p.join(",")).join(" ")} fill="color-mix(in srgb, var(--text) 6%, transparent)" stroke="var(--muted)" strokeWidth={1} />
       <text x={P(0, 0)[0]} y={P(0, 0)[1] - 6} fontSize={9} fill="var(--muted)" textAnchor="middle" fontFamily="var(--font-mono)">
-        zero
+        origin
       </text>
       {pts.map(([s, p]) => {
         const hue = `var(--st-${Number(s) % 2})`;

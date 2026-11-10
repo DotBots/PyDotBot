@@ -58,6 +58,7 @@ export const ServeSheet: React.FC<{
   const n = rows.filter((r) => ticked.has(r.id)).length;
   const stops = rows.filter((r) => ticked.has(r.id) && r.appStops).length;
   const host = window.location.host;
+  const specName = (spec: string) => (served && spec !== "none" && (served.id.startsWith(spec) || served.tag === spec) ? nameOf(served) : spec);
 
   const go = async (send: boolean) => {
     setConflict("");
@@ -67,15 +68,9 @@ export const ServeSheet: React.FC<{
       ctx = await putServed(row.id, persist, context.served?.id ?? "none");
     } catch (e) {
       if (e instanceof HttpError && e.status === 409) {
-        let message = e.message.replace(/^\d+: /, "");
-        try {
-          message = JSON.parse(message).message ?? message;
-        } catch {
-          // the message stands as it came
-        }
         const fresh = await onStale().catch(() => context);
         setContext(fresh);
-        setConflict(`${message}. Now using ${fresh.served ? nameOf(fresh.served) : "nothing"}.`);
+        setConflict(`Another page switched it to ${fresh.served ? nameOf(fresh.served) : "none"} while this sheet was open.`);
         setPhase({ kind: "ask" });
         return;
       }
@@ -133,7 +128,7 @@ export const ServeSheet: React.FC<{
                   {context.persist_path
                     ? `Writes it to the controller's config.${flagWins ? ` This controller was started with --lh2-calibration ${started?.spec}, which wins over the config until it is restarted without the flag.` : ""}`
                     : "This controller has no config file to write to."}
-                  {!persist && ` Otherwise the controller starts with ${context.next_start?.spec ?? started?.spec ?? "none"} next time.`}
+                  {!persist && ` Otherwise the controller starts with ${specName(context.next_start?.spec ?? started?.spec ?? "none")} next time.`}
                 </span>
               </span>
             </label>

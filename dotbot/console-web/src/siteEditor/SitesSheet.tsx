@@ -55,7 +55,7 @@ const NewSiteForm: React.FC<{
         Where the origin is, in words
       </span>
       <div className="fld">
-        <input aria-label="Note on zero" placeholder="the corner by the door, at the tape cross" value={note} onChange={(e) => setNote(e.target.value)} />
+        <input aria-label="Where the origin is" placeholder="the corner by the door, at the tape cross" value={note} onChange={(e) => setNote(e.target.value)} />
       </div>
       <div className="note">How someone else finds the origin in the room. It can be written later.</div>
       <span className="lbl" style={{ marginTop: 10 }}>
@@ -127,7 +127,7 @@ const SiteSwitch: React.FC<{ list: SiteList | null; onDone: () => void }> = ({ l
           <span style={{ flex: 1, minWidth: 0 }}>
             <b className="mono">{s.name}</b>
             <span className="s" style={{ display: "block" }}>
-              {s.error ? s.error : `${s.extent_mm ? `${s.extent_mm[0]} × ${s.extent_mm[1]} mm` : "floor not measured"} · ${s.areas ?? 0} area(s)${s.anchor ? ` · zero: ${s.anchor}` : ""}`}
+              {s.error ? s.error : `${s.extent_mm ? `${s.extent_mm[0]} × ${s.extent_mm[1]} mm` : "floor not measured"} · ${s.areas ?? 0} area(s)${s.anchor ? ` · origin: ${s.anchor}` : ""}`}
             </span>
             <span className="s mono" style={{ display: "block" }}>
               {s.shown_path}

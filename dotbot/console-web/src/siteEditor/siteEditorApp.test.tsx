@@ -383,7 +383,7 @@ describe("the Use sheet", () => {
     await waitFor(() => expect(screen.getByTestId("serve-sheet")).toBeTruthy());
     expect(screen.getByTestId("serve-sheet").textContent).toContain("Use tag-a1b41f12?");
     fireEvent.click(screen.getByTestId("serve-confirm"));
-    await waitFor(() => expect(screen.getByTestId("serve-conflict").textContent).toContain("now uses 0ac36f3e"));
+    await waitFor(() => expect(screen.getByTestId("serve-conflict").textContent).toContain("Another page switched it to"));
     fireEvent.click(screen.getByTestId("serve-confirm"));
     await waitFor(() => expect(screen.getByTestId("serve-result").textContent).toContain("Now using tag-a1b41f12"));
     const bodies = calls.filter((c) => c.url === "api/served").map((c) => JSON.parse(c.init!.body as string));

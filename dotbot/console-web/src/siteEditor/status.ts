@@ -60,7 +60,7 @@ export function restartOf(context: EditorContext): string {
 }
 
 /** Where the calibration in use came from, without paths. */
-export function reasonOf(context: EditorContext): string {
+export function reasonOf(context: EditorContext, label: (spec: string) => string = (spec) => spec): string {
   if (context.mode !== "controller") {
     const c = context.configured;
     if (!c) return "No controller opened this page, and the config names no calibration for this site.";
@@ -69,11 +69,11 @@ export function reasonOf(context: EditorContext): string {
   const s = context.served;
   if (!s) return "The controller uses no calibration: robots keep whatever they hold.";
   if (s.source.startsWith("the site editor")) {
-    return s.source.endsWith("for this run") ? `Chosen here, until the controller restarts; then it starts with ${restartOf(context)}.` : "Chosen here, and kept for the next start.";
+    return s.source.endsWith("for this run") ? `Chosen here, until the controller restarts; then it starts with ${label(restartOf(context))}.` : "Chosen here, and kept for the next start.";
   }
   const from = s.source === "the command line" ? "its command line" : "its config";
   const next = context.next_start;
-  const restart = !next ? "A restart starts with none." : next.spec === s.spec || s.id.startsWith(next.spec) ? "Kept after a restart." : `A restart starts with ${next.spec}.`;
+  const restart = !next ? "A restart starts with none." : next.spec === s.spec || s.id.startsWith(next.spec) ? "Kept after a restart." : `A restart starts with ${label(next.spec)}.`;
   return `In use since the controller started, from ${from}. ${restart}`;
 }
 
@@ -85,6 +85,15 @@ export interface StatusInputs {
   /** The coverage draft's source and, when it equals an existing file, that file. */
   edited: { from: LibraryRow | null; fromId: string; existing: { id: string; id8: string; tag: string; created_at?: string } | null } | null;
   originMoved: boolean;
+  /** The site's calibrations, to name a spec like "4640cfde" by its tag. */
+  rows?: LibraryRow[];
+}
+
+/** A calibration spec by name when one of `rows` answers to it. */
+export function specLabel(rows: LibraryRow[], spec: string): string {
+  const s = spec.toLowerCase();
+  const row = s === "none" ? undefined : rows.find((r) => r.id.toLowerCase().startsWith(s) || r.tag.toLowerCase() === s);
+  return row ? nameOf(row) : spec;
 }
 
 export function statusOf(i: StatusInputs): Status {
@@ -112,10 +121,10 @@ export function statusOf(i: StatusInputs): Status {
     when: shortWhen(base?.created_at ?? ""),
     fleet: live ? fleetOf(i.bots, id) : null,
     untilRestart,
-    restart,
+    restart: specLabel(i.rows ?? [], restart),
     originMoved: i.originMoved,
     side,
-    reason: c ? reasonOf(c) : "",
+    reason: c ? reasonOf(c, (spec) => specLabel(i.rows ?? [], spec)) : "",
   };
 }
 

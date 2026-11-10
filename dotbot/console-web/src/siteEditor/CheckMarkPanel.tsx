@@ -109,13 +109,13 @@ export const CheckMarkPanel: React.FC<{
               </div>
               <span className="lbl" style={{ marginTop: 8 }}>The spot, measured from the origin, mm</span>
               <div className="grid2">
-                <NumField label="mark x" prefix="x" value={mark[0]} absolute min={0} placeholder="mm from zero" onApply={(v) => setMark([v, mark[1]])} />
-                <NumField label="mark y" prefix="y" value={mark[1]} absolute min={0} placeholder="mm from zero" onApply={(v) => setMark([mark[0], v])} />
+                <NumField label="mark x" prefix="x" value={mark[0]} absolute min={0} placeholder="mm from the origin" onApply={(v) => setMark([v, mark[1]])} />
+                <NumField label="mark y" prefix="y" value={mark[1]} absolute min={0} placeholder="mm from the origin" onApply={(v) => setMark([mark[0], v])} />
               </div>
               {held && !trusted && (
                 <div className="callout warn" style={{ marginTop: 8 }}>
                   {held.kind === "not-reported" ? "This robot cannot say which calibration it has" : `This robot has ${held.kind === "other" ? held.id8 : "no calibration"}`}, so its position may
-                  not be in {calibrationId.slice(0, 8)}'s frame. A check read anyway is recorded as unverified.
+                  not come from the calibration in use. A check read anyway is recorded as unverified.
                   <div className="acts">
                     <button type="button" className="btn xs" onClick={() => setAssume(true)}>
                       Read it anyway
@@ -152,7 +152,7 @@ export const CheckMarkPanel: React.FC<{
           {err !== null && still.still && (
             <div className={`callout ${wild ? "err" : passes ? "ok" : "warn"}`} style={{ marginTop: 8 }} data-testid="check-verdict">
               {wild
-                ? `${err.toFixed(0)} mm off: far more than any calibration error. Is it the right robot, on the right mark, and the mark measured from zero? Check before recording.`
+                ? `${err.toFixed(0)} mm off: far more than any calibration error. Is it the right robot, on the right mark, and the mark measured from the origin? Check before recording.`
                 : passes
                   ? `Agrees: within the ${Math.max(limit, 2 * (predicted ?? 0)).toFixed(1)} mm a check allows here.`
                   : `Off: over the ${Math.max(limit, 2 * (predicted ?? 0)).toFixed(1)} mm a check allows here (the limit, or twice the prediction). The prediction covers the calibration, not the tape or the robot's placement; record it as it is, then check the tape or move the origin.`}

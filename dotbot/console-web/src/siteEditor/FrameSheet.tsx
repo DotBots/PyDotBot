@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 
 import { Badge } from "../shared/Badge";
 import { postFrame, type FrameResult } from "./api";
-import { frameTwin, type FrameMove } from "./frameMove";
+import { frameTwin, plainWarning, type FrameMove } from "./frameMove";
 import { Icon } from "./icons";
 
 // The frame change, reviewed and written as one ordered change: the file,
@@ -11,6 +11,8 @@ import { Icon } from "./icons";
 export const FrameSheet: React.FC<{
   site: string;
   calibrationId: string;
+  /** The calibration in use, by name. */
+  sourceName?: string;
   move: FrameMove;
   revision: string;
   planned: FrameResult;
@@ -19,10 +21,11 @@ export const FrameSheet: React.FC<{
   onDone: (result: FrameResult) => void;
   /** Sends the new calibration to the robots, from here. */
   onSend?: (id: string) => void;
-}> = ({ site, calibrationId: openedOn, move: openedWith, revision, planned, live, onClose, onDone, onSend }) => {
+}> = ({ site, calibrationId: openedOn, sourceName: openedName, move: openedWith, revision, planned, live, onClose, onDone, onSend }) => {
   // What the sheet was opened on, kept while the page moves on after the change
   const [calibrationId] = useState(openedOn);
   const [move] = useState(openedWith);
+  const [sourceName] = useState(openedName);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<FrameResult | null>(null);
   const [error, setError] = useState("");
@@ -60,7 +63,9 @@ export const FrameSheet: React.FC<{
   };
 
   const id8 = calibrationId.slice(0, 8);
-  const what = [move.theta_deg ? `turn ${move.theta_deg}° about (${move.pivot[0]}, ${move.pivot[1]})` : "", move.dx || move.dy ? `zero moved by (${move.dx}, ${move.dy}) mm` : ""]
+  const from = sourceName || id8;
+  const made = planned.calibration.tag || planned.calibration.id8;
+  const what = [move.theta_deg ? `turn ${move.theta_deg}° about (${move.pivot[0]}, ${move.pivot[1]})` : "", move.dx || move.dy ? `origin moved by (${move.dx}, ${move.dy}) mm` : ""]
     .filter(Boolean)
     .join(", ");
   const steps = result?.steps ?? [];
@@ -73,14 +78,15 @@ export const FrameSheet: React.FC<{
         </button>
         <h2>
           <Icon name="frame" size={16} /> {result ? (result.ok ? "Origin moved" : "Origin moved in part") : "Move the origin"}
-          <Badge>frame {planned.from_frame} → {planned.frame}</Badge>
         </h2>
-        <div className="sub">{what}. One change in order; a refused step stops the ones after it.</div>
+        <div className="sub">
+          {what}.{result ? "" : " Nothing is written until you press Move the origin; a refused step stops the ones after it."}
+        </div>
         {[
           {
             icon: "file" as const,
-            title: `1 · A new calibration, ${planned.calibration.id8}`,
-            body: `Made from ${id8}, with the new origin. ${id8} itself is kept.`,
+            title: `1 · A new calibration from ${from}`,
+            body: `Named ${made}, with the new origin. ${from} itself is kept.`,
             step: steps.find((s) => s.step === "calibration"),
           },
           {
@@ -91,8 +97,8 @@ export const FrameSheet: React.FC<{
           },
           {
             icon: "served" as const,
-            title: `3 · Use ${planned.calibration.id8}`,
-            body: live ? "On this controller, until it restarts." : "No controller opened this page: use it from one later.",
+            title: "3 · The controller uses it",
+            body: live ? "Now, until the controller restarts." : "No controller opened this page: use it from one later.",
             step: steps.find((s) => s.step === "serve"),
           },
           {
@@ -111,18 +117,21 @@ export const FrameSheet: React.FC<{
             </div>
             <div className="pb">
               {p.body}
-              {p.step && <span className="mono" style={{ display: "block", marginTop: 3, overflowWrap: "anywhere" }}>{p.step.detail}</span>}
+              {p.step?.status === "refused" && <span className="mono" style={{ display: "block", marginTop: 3, overflowWrap: "anywhere" }}>{p.step.detail}</span>}
             </div>
           </div>
         ))}
         {planned.warnings.length > 0 && (
           <div className="callout warn" style={{ marginTop: 10 }}>
             {planned.warnings.map((w) => (
-              <div key={w}>{w}</div>
+              <div key={w}>{plainWarning(w)}</div>
             ))}
           </div>
         )}
         <h3>Same from a terminal</h3>
+        <div className="note" style={{ marginBottom: 6 }}>
+          frame {planned.from_frame} → {planned.frame} · calibration {id8} → {planned.calibration.id8}
+        </div>
         <div className="cli">
           {frameTwin(site, id8, move)}
           <span className="c">{"\n"}# then send it to the robots:{"\n"}</span>

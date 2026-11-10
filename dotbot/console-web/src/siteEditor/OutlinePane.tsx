@@ -127,7 +127,7 @@ export const OutlinePane: React.FC<{
             <span className="stpin" style={{ background: `var(--st-${b.index % 2})` }}>
               S{b.index}
             </span>
-            <span>box</span>
+            <span>coverage</span>
             <span className="meta">
               x {b.rect[0]}-{b.rect[2]} · y {b.rect[1]}-{b.rect[3]}
             </span>

@@ -47,7 +47,7 @@ export const StatusLine: React.FC<{
         </span>
       ) : (
         <span className="st">
-          <span className="m">Using</span> <b>{s.name}</b>
+          <span className="m u">Using</span> <b>{s.name}</b>
           {s.originMoved && <span className="m"> (origin moved)</span>}
           {!compact && s.when && <span className="m"> · {s.when}</span>}
           {f && (
@@ -56,7 +56,7 @@ export const StatusLine: React.FC<{
               · {fleetText(f)}
             </span>
           )}
-          {s.untilRestart && (
+          {s.untilRestart && !compact && (
             <span className="m" title={`The controller starts with ${s.restart} unless you keep this one.`}>
               {" "}
               · until restart

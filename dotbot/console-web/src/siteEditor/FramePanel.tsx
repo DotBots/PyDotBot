@@ -5,7 +5,7 @@ import type { UnifiedBot } from "../types";
 import { postFrame, type FrameAnswer } from "./api";
 import type { GoalAction } from "./checks";
 import { KV, NumField, Sec, TextField } from "./fields";
-import { anchorErrors, fitAnchors, forbidden, frameTwin, moves, toOld as toOldPoint, withOrigin, type Anchor, type FrameMove } from "./frameMove";
+import { anchorErrors, fitAnchors, forbidden, frameTwin, moves, plainWarning, toOld as toOldPoint, withOrigin, type Anchor, type FrameMove } from "./frameMove";
 import { Icon } from "./icons";
 import type { Point } from "./model";
 import type { PlanPaint } from "./PlanCanvas";
@@ -217,7 +217,7 @@ export const FramePanel: React.FC<FramePanelProps> = (props) => {
       </div>
     </div>
   ) : checking && !check ? (
-    <div className="note" style={{ marginTop: 10 }}>Checking every measured point stays at or above zero…</div>
+    <div className="note" style={{ marginTop: 10 }}>Checking every measured point keeps a positive position…</div>
   ) : check && !check.ok ? (
     <div className="callout err" role="alert" style={{ marginTop: 10 }} data-testid="frame-refusal">
       <div className="h">
@@ -238,8 +238,8 @@ export const FramePanel: React.FC<FramePanelProps> = (props) => {
       <div className="h">
         <Icon name="check" size={14} /> The origin can move there
       </div>
-      Applying makes a new calibration ({check.result.calibration.id8}) from the one in use
-      {check.result.warnings.length ? `; ${check.result.warnings.join("; ")}` : ""}.
+      Applying moves the origin and makes a new calibration from the one in use
+      {check.result.warnings.length ? `; ${check.result.warnings.map(plainWarning).join("; ")}` : ""}.
       <div className="acts">
         <button type="button" className="btn sm primary" onClick={() => props.onReview(check.result)} data-testid="frame-review">
           Apply the move…
@@ -289,8 +289,8 @@ export const FramePanel: React.FC<FramePanelProps> = (props) => {
         {props.live && robots.length === 0 && <div className="note" style={{ marginTop: 10 }}>No robot has a position right now.</div>}
         {untrusted.length > 0 && (
           <div className="callout" style={{ marginTop: 10 }} data-testid="capture-untrusted">
-            {untrusted.length === robots.length ? "These robots" : `${untrusted.length} of these robots`} cannot say which calibration they have, so their positions are read as if they had{" "}
-            {props.calibrationId.slice(0, 8)}. If one has another calibration, its spot will not fit.
+            {untrusted.length === robots.length ? "These robots" : `${untrusted.length} of these robots`} cannot say which calibration they have, so their positions are read as if they had the one in
+            use. If one has another calibration, its spot will not fit.
           </div>
         )}
         {robots.length > 0 && (

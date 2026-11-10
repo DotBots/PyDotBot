@@ -36,7 +36,7 @@ import { FrameSheet } from "./FrameSheet";
 import { moves, NO_MOVE, toOld, type Anchor, type FrameMove } from "./frameMove";
 import { ServeSheet } from "./ServeSheet";
 import { heldCalibrationId } from "../botFacts";
-import { splitFloor, type Coverage } from "./coverage";
+import { coverageTag, splitFloor, type Coverage } from "./coverage";
 import { forget, newDraft, pending, persist, reapply, redo, restore, serialize, step, storageKey, undo, type Change, type Draft, type KeyValue, type Snap } from "./draft";
 import "./editor.css";
 import { EditorFleet } from "./EditorFleet";
@@ -434,6 +434,7 @@ export const SiteEditorApp: React.FC = () => {
     looking: previewId ? shown : null,
     edited: boxDraft ? { from: rows.find((r) => r.id === boxDraft.from) ?? null, fromId: boxDraft.from, existing: dry?.existing ?? null } : null,
     originMoved: frameOpen,
+    rows,
   });
   const boxesKey = JSON.stringify(boxDraft?.boxes ?? null);
   const circles = !previewId && fleetSite?.calibration?.id === servedId ? (fleetSite?.calibration?.circles ?? []) : [];
@@ -662,9 +663,11 @@ export const SiteEditorApp: React.FC = () => {
       if (!shown) return;
       setDraft((d) => {
         if (!d) return d;
-        const tag = d.boxes?.from === shown.id ? d.boxes.tag : shown.tag ? `${shown.tag}-boxes` : "";
         const before = d.boxes?.from === shown.id ? d.boxes.boxes : Object.fromEntries(shown.stations.map((st) => [st.index, st.box]));
         const merged = { ...before, ...next };
+        // The offered name follows the layout until the operator types one
+        const typed = d.boxes?.from === shown.id && d.boxes.tag !== coverageTag(shown.tag, before);
+        const tag = typed ? d.boxes!.tag : coverageTag(shown.tag, merged);
         const unchanged = shown.stations.every((st) => (merged[st.index] ?? st.box).join() === st.box.join());
         return step(d, { boxes: unchanged ? null : { from: shown.id, boxes: merged, tag } });
       });
@@ -779,7 +782,7 @@ export const SiteEditorApp: React.FC = () => {
 
   const leftAsRail = width < LEFT_FOLD_PX || leftFolded;
   const rightAsRail = width < RIGHT_FOLD_PX || rightFolded;
-  const narrow = width < 1360;
+  const narrow = width < 1480;
   const consoleHref = live ? "/console" : null;
 
   const servedRow = rows.find((r) => r.id === servedId) ?? null;
@@ -788,10 +791,10 @@ export const SiteEditorApp: React.FC = () => {
     <div className={`card${context.served ? " on" : ""}`} data-testid="serving-card">
       <div style={{ display: "flex", alignItems: "baseline", gap: 7, minWidth: 0 }}>
         <span style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={status.id ?? undefined}>
-          {status.name}
+          {status.kind === "none" ? "No calibration in use" : status.name}
         </span>
         <span className="sp" />
-        {live ? <Badge tone={status.kind === "using" ? "ok" : "unknown"}>{status.kind === "using" ? "in use" : "none"}</Badge> : <Badge tone="unknown">files only</Badge>}
+        {live ? status.kind === "using" && <Badge tone="ok">in use</Badge> : <Badge tone="unknown">files only</Badge>}
       </div>
       <div style={{ fontSize: 12, lineHeight: 1.45, margin: "6px 0 8px" }}>{status.reason}</div>
       {servedRow && (
@@ -1136,7 +1139,7 @@ export const SiteEditorApp: React.FC = () => {
         <div className="sp" />
         <StatusLine
           status={status}
-          compact={width < 1200}
+          compact={narrow}
           onChoose={
             rows.length
               ? () => {
@@ -1619,6 +1622,7 @@ export const SiteEditorApp: React.FC = () => {
         <FrameSheet
           site={payload?.name ?? ""}
           calibrationId={servedId}
+          sourceName={servedRowNow ? nameOf(servedRowNow) : undefined}
           move={frameMove}
           revision={draft.revision}
           planned={frameReview}
