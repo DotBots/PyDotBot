@@ -3,9 +3,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { putRgbLed } from "../api";
 import { ShortcutsPanel } from "../ShortcutsPanel";
 import { Badge } from "../shared/Badge";
-import { CalibrationChip } from "../shared/CalibrationChip";
 import { CheckRow } from "../shared/CheckRow";
-import { ChipModel, configuredChip, servedChip } from "../shared/served";
+import { PushSheet } from "../shared/PushSheet";
 import { Tabs } from "../shared/Tabs";
 import { TitleBar } from "../shared/TitleBar";
 import { holds, typingIn } from "../shortcuts";
@@ -46,8 +45,10 @@ import { Icon, type IconName } from "./icons";
 import { Inspector } from "./Inspector";
 import { EDITOR_SHORTCUTS, KIND_KEY, KIND_LABEL, keyAction, SHARED_KEY, TOOL_ICON, TOOL_LABEL, TOOLS, type EditKind, type Tool } from "./keys";
 import { LibraryPane, type LibraryAction } from "./LibraryPane";
-import { residuals, when } from "./library";
+import { coverageText, residuals, when } from "./library";
 import { docFromPayload, docFromSite, type Doc, type Point } from "./model";
+import { statusOf, statusText } from "./status";
+import { StatusLine } from "./StatusLine";
 import { OutlinePane } from "./OutlinePane";
 import { DEFAULT_LAYERS, kindOfKey, PlanCanvas, type PlanLayers, type PlanPaint } from "./PlanCanvas";
 import { edgeMoved, handleAt, movedAll, removed, resized, type Handle } from "./plan";
@@ -58,50 +59,8 @@ import { problems as rulesOf } from "./rules";
 import { TableView, type TableTab } from "./TableView";
 import type { EditorContext, Library, LibraryRow, Rect, SitePayload } from "./types";
 
-/** The top bar's chip: the served id first, a preview or a draft as its second part. */
-export function editorChip(context: EditorContext | null, shown: LibraryRow | null): ChipModel {
-  const base =
-    context?.mode === "controller"
-      ? servedChip(context.served)
-      : configuredChip(context?.configured?.id8 ? { ...context.configured, spec: context.configured.spec } : null);
-  if (shown && shown.id8 !== base.id8) return { ...base, side: { kind: "preview", id8: shown.id8 } };
-  // Serving now what a restart serves too is not a run-only state
-  if (context?.mode === "controller" && context.served?.source.endsWith("for this run") && !(base.id8 && restartOf(context).startsWith(base.id8)))
-    return { ...base, side: { kind: "run-only", restart: restartOf(context) } };
-  return base;
-}
-
-/** What a restart of the controller serves, in a word: an id, or "none". */
-export function restartOf(context: EditorContext): string {
-  const started = context.started_with;
-  if (started?.source === "the command line") return started.spec;
-  return context.next_start?.spec ?? started?.spec ?? "none";
-}
-
-/** Where the served calibration came from, in words. */
-export function servedReason(context: EditorContext): string {
-  if (context.mode !== "controller") {
-    const c = context.configured;
-    if (!c) return "No controller opened this editor, and the config names no calibration for this site.";
-    return c.error
-      ? `The config names ${c.spec} (${c.source}), which does not resolve: ${c.error}`
-      : `No controller serves it here: the config names it (${c.source}).`;
-  }
-  const s = context.served;
-  if (!s) return "The controller serves no calibration: robots keep whatever they hold.";
-  if (s.source.startsWith("the site editor"))
-    return s.source.endsWith("for this run")
-      ? `Served from the site editor for this run; a restart serves ${restartOf(context)}.`
-      : `Served from the site editor, and written to the config for the next start (${context.next_start?.source ?? "the config"}).`;
-  const from = s.source === "the command line" ? "named on the controller's command line" : `named in ${s.source}`;
-  const next = context.next_start;
-  const restart = !next
-    ? "A restart without --lh2-calibration serves none."
-    : next.spec === s.spec || s.id.startsWith(next.spec)
-      ? "A restart serves the same."
-      : `A restart serves ${next.spec}, from ${next.source}.`;
-  return `Loaded at start, ${from} (${s.spec}). ${restart}`;
-}
+/** Whether two contexts say the same thing, so a poll does not redraw for nothing. */
+const sameContext = (a: EditorContext | null, b: EditorContext) => JSON.stringify(a) === JSON.stringify(b);
 
 /** Below these widths a pane folds into a rail of icons that opens it as a drawer. */
 export const LEFT_FOLD_PX = 1100;
@@ -247,6 +206,7 @@ export const SiteEditorApp: React.FC = () => {
   const [dry, setDry] = useState<DryRun | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
   const [serving, setServing] = useState<LibraryRow | null>(null);
+  const [pushing, setPushing] = useState<string | null>(null);
   const [comparing, setComparing] = useState<[LibraryRow, LibraryRow] | null>(null);
   const [toast, setToast] = useState<{ text: string; push?: string; undo?: () => void } | null>(null);
   const [frameMove, setFrameMove] = useState<FrameMove>(NO_MOVE);
@@ -310,7 +270,8 @@ export const SiteEditorApp: React.FC = () => {
     if (draft) persist(storage(), draft);
   }, [draft]);
 
-  const unsaved = draft ? pending(draft) : 0;
+  // A coverage draft that equals a file already saved writes nothing
+  const unsaved = draft ? pending(draft) - (draft.boxes && dry?.existing ? 1 : 0) : 0;
   useEffect(() => {
     if (unsaved === 0) return;
     const guard = (e: BeforeUnloadEvent) => {
@@ -349,8 +310,12 @@ export const SiteEditorApp: React.FC = () => {
     });
   }, [loadLibrary]);
 
+  // The file and the controller are both polled: site.toml for a change on
+  // disk, the context for a calibration served or restarted elsewhere
   const revisionRef = useRef<string | null>(null);
   revisionRef.current = draft?.revision ?? null;
+  const contextRef = useRef<EditorContext | null>(null);
+  contextRef.current = context;
   useEffect(() => {
     if (reviewing) return;
     const id = window.setInterval(() => {
@@ -360,9 +325,29 @@ export const SiteEditorApp: React.FC = () => {
         },
         () => {},
       );
+      fetchContext().then(
+        (c) => {
+          if (!sameContext(contextRef.current, c)) setContext(c);
+        },
+        () => {},
+      );
     }, FILE_POLL_MS);
     return () => window.clearInterval(id);
   }, [onStale, reviewing]);
+
+  // What is in use changed under the page: the list, the summary block and
+  // a preview of what is now in use follow it
+  const servedSeen = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (!context) return;
+    const now = context.served?.id ?? null;
+    if (servedSeen.current !== undefined && servedSeen.current !== now) {
+      loadLibrary();
+      setChecksRefresh((n) => n + 1);
+      setPreviewId((p) => (p && p === now ? null : p));
+    }
+    servedSeen.current = now;
+  }, [context?.served?.id, context, loadLibrary]);
 
   const rows = useMemo(() => (library ? [...library.groups.flatMap((g) => g.rows), ...library.not_placed] : []), [library]);
   const servedId = context?.served?.id ?? context?.configured?.id ?? null;
@@ -375,7 +360,6 @@ export const SiteEditorApp: React.FC = () => {
         .map(([k, rect]) => ({ index: Number(k), rect }))
         .sort((a, b) => a.index - b.index)
     : fileBoxes;
-  const baseChip = editorChip(context, previewId ? shown : null);
   const frameChange = context?.frame_change && servedId === context.frame_change.to_id ? context.frame_change : null;
   const frameHeld = frameChange ? bots.filter((b) => heldCalibrationId(b).toLowerCase() === frameChange.to_id.toLowerCase()).length : 0;
   const frameOpen = !!frameChange && (bots.length === 0 || frameHeld < bots.length);
@@ -394,11 +378,13 @@ export const SiteEditorApp: React.FC = () => {
       live = false;
     };
   }, [servedRowNow?.id, servedRowNow?.in_frame]);
-  const chip: ChipModel = boxDraft
-    ? { ...baseChip, side: { kind: "draft", from: boxDraft.from.slice(0, 8) } }
-    : frameOpen && !previewId
-      ? { ...baseChip, side: { kind: "frame-change" } }
-      : baseChip;
+  const status = statusOf({
+    context,
+    bots,
+    looking: previewId ? shown : null,
+    edited: boxDraft ? { from: rows.find((r) => r.id === boxDraft.from) ?? null, fromId: boxDraft.from, existing: dry?.existing ?? null } : null,
+    originMoved: frameOpen,
+  });
   const boxesKey = JSON.stringify(boxDraft?.boxes ?? null);
   const circles = !previewId && fleetSite?.calibration?.id === servedId ? (fleetSite?.calibration?.circles ?? []) : [];
   const live = context?.mode === "controller";
@@ -448,6 +434,10 @@ export const SiteEditorApp: React.FC = () => {
   });
   const goalAction = (a: GoalAction) => {
     const go = a.go;
+    if (go.push) {
+      setPushing(go.push);
+      return;
+    }
     if (go.href) {
       window.open(go.href, "dotbot-console");
       return;
@@ -563,7 +553,7 @@ export const SiteEditorApp: React.FC = () => {
   const libraryAction = (action: LibraryAction, row: LibraryRow) => {
     if (action === "preview") setPreviewId(row.id === servedId ? null : row.id);
     else if (action === "serve") setServing(row);
-    else if (action === "push") window.open(`/console?push=${row.id8}`, "dotbot-console");
+    else if (action === "push") setPushing(row.id);
     else if (action === "place") {
       setPlaceId(row.id);
       setNewRoom(true);
@@ -704,26 +694,33 @@ export const SiteEditorApp: React.FC = () => {
   const consoleHref = live ? "/console" : null;
 
   const servedRow = rows.find((r) => r.id === servedId) ?? null;
+  const fleet = status.fleet;
   const servedCard = context && (
     <div className={`card${context.served ? " on" : ""}`} data-testid="serving-card">
       <div style={{ display: "flex", alignItems: "baseline", gap: 7, minWidth: 0 }}>
-        <span className="mono" style={{ fontWeight: 600 }}>
-          {(context.served?.id ?? context.configured?.id ?? "").slice(0, 8) || "none"}
-        </span>
-        <span className="muted" style={{ fontSize: 11.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {context.served?.tag || context.configured?.tag}
+        <span style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={status.id ?? undefined}>
+          {status.name}
         </span>
         <span className="sp" />
-        {live ? <Badge tone="ok">live</Badge> : <Badge tone="unknown">configured</Badge>}
+        {live ? <Badge tone={status.kind === "using" ? "ok" : "unknown"}>{status.kind === "using" ? "in use" : "none"}</Badge> : <Badge tone="unknown">files only</Badge>}
       </div>
-      <div style={{ fontSize: 12, lineHeight: 1.45, margin: "6px 0 8px" }}>{servedReason(context)} This page never picks the newest file.</div>
+      <div style={{ fontSize: 12, lineHeight: 1.45, margin: "6px 0 8px" }}>{status.reason}</div>
       {servedRow && (
         <KV
           rows={[
             ["Measured", `${when(servedRow.created_at)} UTC`],
-            ["Residual", residuals(servedRow)],
-            ["Boxes", servedRow.reading],
-            ["Robots holding it", live ? `${bots.filter((b) => b.swarmit?.info && (b.swarmit.info.lh2_calibration_id ?? "") === servedId).length} of ${bots.length} report it` : "no controller"],
+            ["Fit", residuals(servedRow)],
+            ["Coverage", coverageText(servedRow.reading)],
+            [
+              "On robots",
+              !fleet
+                ? "no controller"
+                : fleet.total === 0
+                  ? "no robot reporting"
+                  : fleet.unknown === fleet.total
+                    ? "cannot tell: the robots send no device info"
+                    : `${fleet.have} of ${fleet.total}${fleet.unknown ? ` · ${fleet.unknown} cannot tell` : ""}`,
+            ],
           ]}
         />
       )}
@@ -741,7 +738,19 @@ export const SiteEditorApp: React.FC = () => {
         <button type="button" className="btn xs" onClick={() => pickKind("stations")}>
           Stations
         </button>
+        {status.kind === "using" && fleet && fleet.have < fleet.total - fleet.unknown && servedId && (
+          <button type="button" className="btn xs primary" onClick={() => setPushing(servedId)}>
+            Send to robots…
+          </button>
+        )}
       </div>
+      <details style={{ marginTop: 8, fontSize: 11.5 }}>
+        <summary className="muted">Details</summary>
+        <div className="mono muted" style={{ marginTop: 4, overflowWrap: "anywhere" }}>
+          {status.id ?? "no id"}
+          {context.served?.source ? ` · from ${context.served.source}` : context.configured?.source ? ` · named in ${context.configured.source}` : ""}
+        </div>
+      </details>
     </div>
   );
 
@@ -876,8 +885,8 @@ export const SiteEditorApp: React.FC = () => {
               setPlacePreview(null);
               dismissSpin().catch(() => {});
               setToast({
-                text: `Placed in ${payload?.name}: ${placed?.slice(0, 8)} written${served ? " and served" : ""}. Robots get it when you push it.`,
-                push: placed ? placed.slice(0, 8) : undefined,
+                text: `Placed in ${payload?.name}: ${placed?.slice(0, 8)} written${served ? " and in use" : ""}. Robots get it when you send it.`,
+                push: placed ?? undefined,
               });
             }}
           />
@@ -993,7 +1002,32 @@ export const SiteEditorApp: React.FC = () => {
           </span>
         )}
         <div className="sp" />
-        <CalibrationChip chip={chip} compact={width < 1200} onClearSide={previewId ? () => setPreviewId(null) : undefined} />
+        <StatusLine
+          status={status}
+          compact={width < 1200}
+          onChoose={
+            rows.length
+              ? () => {
+                  setLeftTab("library");
+                  if (leftAsRail) setDrawer("left");
+                }
+              : undefined
+          }
+          onSend={live && servedId ? () => setPushing(servedId) : undefined}
+          onUse={
+            live
+              ? (id) => {
+                  const r = rows.find((x) => x.id === id);
+                  if (!r) return;
+                  if (boxDraft) setDraft((d) => (d ? step(d, { boxes: null }) : d));
+                  setServing(r);
+                }
+              : undefined
+          }
+          onBack={previewId ? () => setPreviewId(null) : undefined}
+          onSave={editable ? () => setReviewing(true) : undefined}
+          onDiscard={editable ? () => setDraft((d) => (d ? step(d, { boxes: null }) : d)) : undefined}
+        />
         {editable && (
         <>
         <button type="button" className="btn icon ghost" title="Undo (Ctrl/Cmd Z)" aria-label="Undo" disabled={!draft?.past.length} onClick={() => setDraft((d) => (d ? undo(d) : d))}>
@@ -1190,71 +1224,6 @@ export const SiteEditorApp: React.FC = () => {
                     area={draft.doc.areas.find((a) => probe.at[0] >= a.x && probe.at[0] <= a.x + a.w && probe.at[1] >= a.y && probe.at[1] <= a.y + a.h)?.name ?? null}
                   />
                 )}
-                {frameOpen && !boxDraft && !previewId && (
-                  <div className="float banner frame" data-testid="frame-banner" style={{ left: tools.length ? 62 : 12 }}>
-                    <Icon name="frame" size={15} />
-                    <span className="tx">
-                      <b>Frame change, push needed:</b> robots report in the old frame {frameChange!.from_frame} until they hold {frameChange!.to_id.slice(0, 8)} ({frameHeld} of{" "}
-                      {bots.length} do). Data already logged stays in the old frame.
-                    </span>
-                    <a className="btn sm primary" href={`/console?push=${frameChange!.to_id.slice(0, 8)}`} target="dotbot-console" rel="noreferrer">
-                      Push in the console ↗
-                    </a>
-                  </div>
-                )}
-                {previewId && !boxDraft && shown && (
-                  <div className="float banner prev" data-testid="preview-banner" style={{ left: tools.length ? 62 : 12 }}>
-                    <Icon name="view" size={15} />
-                    <span className="tx">
-                      <b>Previewing {shown.id8}</b> {shown.tag ? `"${shown.tag}"` : ""}: the plan, the strip and the inspector follow it. The controller still serves {chip.id8 || "nothing"}.
-                    </span>
-                    {live && shown.in_frame && (
-                      <button type="button" className="btn sm primary" onClick={() => setServing(shown)} data-testid="serve-this">
-                        Serve this…
-                      </button>
-                    )}
-                    <button type="button" className="btn sm" onClick={() => setPreviewId(null)}>
-                      Back to served
-                    </button>
-                  </div>
-                )}
-                {boxDraft && (
-                  <div className={`float banner ${dry?.existing ? "same" : "draft"}`} data-testid="box-banner" style={{ left: tools.length ? 62 : 12 }}>
-                    <Icon name={dry?.existing ? "check" : "pin"} size={15} />
-                    <span className="tx">
-                      {dry?.existing ? (
-                        <>
-                          <b>Same as {dry.existing.id8}</b> "{dry.existing.tag}": these boxes are that file already, so Save writes nothing new.
-                        </>
-                      ) : (
-                        <>
-                          <b>Draft boxes from {boxDraft.from.slice(0, 8)}</b>, not saved: Save writes a new calibration{dry ? ` (${dry.id8})` : ""} and serves nothing.
-                        </>
-                      )}
-                    </span>
-                    {dry?.existing && (
-                      <button
-                        type="button"
-                        className="btn sm"
-                        onClick={() => {
-                          const id = dry.existing!.id;
-                          setDraft((d) => (d ? step(d, { boxes: null }) : d));
-                          setPreviewId(id === servedId ? null : id);
-                        }}
-                      >
-                        Show {dry.existing.id8}
-                      </button>
-                    )}
-                    <button type="button" className="btn sm" onClick={() => setDraft((d) => (d ? step(d, { boxes: null }) : d))}>
-                      Discard
-                    </button>
-                    {!dry?.existing && (
-                      <button type="button" className="btn sm" onClick={() => setReviewing(true)}>
-                        Review
-                      </button>
-                    )}
-                  </div>
-                )}
               </PlanCanvas>
             ) : view === "table" ? (
               <TableView
@@ -1290,7 +1259,7 @@ export const SiteEditorApp: React.FC = () => {
               <span className="dot" style={{ width: 12, height: 12, background: verdict.state === "ready" ? "var(--ok)" : "var(--warn)" }} />
               <b>{verdict.title}</b>
               <span className="muted" style={{ fontSize: 15 }}>
-                {live ? `${goalList.find((g) => g.id === "robots")?.detail ?? ""} · ` : ""}serving {chip.id8 || "nothing"}
+                {statusText(status)}
               </span>
               <span className="sp" style={{ flex: 1 }} />
               <button type="button" className="btn" onClick={stopPresent}>
@@ -1386,11 +1355,6 @@ export const SiteEditorApp: React.FC = () => {
             "saved"
           )}
         </span>
-        {chip.id8 && (
-          <span>
-            {chip.live ? "serving" : "configured"} <b>{chip.id8}</b>
-          </span>
-        )}
       </div>
       )}
       {reviewing && draft && payload && (
@@ -1499,9 +1463,19 @@ export const SiteEditorApp: React.FC = () => {
             loadLibrary();
             setToast({
               text: `Serving ${serving.id8}${persist ? ", also at the next start" : ", this run only"}. Robots still hold what they hold.`,
-              push: serving.id8,
+              push: serving.id,
             });
           }}
+        />
+      )}
+      {pushing && live && (
+        <PushSheet
+          calibrationId={pushing}
+          tag={rows.find((r) => r.id === pushing || r.id8 === pushing)?.tag}
+          site={payload?.name ?? ""}
+          bots={bots}
+          onClose={() => setPushing(null)}
+          onPushed={() => fetchContext().then(setContext, () => {})}
         />
       )}
       {comparing && (
@@ -1521,10 +1495,10 @@ export const SiteEditorApp: React.FC = () => {
         <div className="toast" role="status" data-testid="toast">
           <Icon name={toast.push ? "served" : "check"} size={15} />
           <span>{toast.text}</span>
-          {toast.push && (
-            <a className="btn sm primary" href={`/console?push=${toast.push}`} target="dotbot-console" rel="noreferrer">
-              Push in the console ↗
-            </a>
+          {toast.push && live && (
+            <button type="button" className="btn sm primary" onClick={() => (setPushing(toast.push!), setToast(null))} data-testid="toast-send">
+              Send to robots…
+            </button>
           )}
           {toast.undo && (
             <button type="button" className="btn sm" onClick={() => (toast.undo?.(), setToast(null))}>

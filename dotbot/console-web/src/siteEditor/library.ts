@@ -13,6 +13,39 @@ export function when(createdAt: string): string {
   return m ? `${m[1]} ${m[2]}` : createdAt || "unknown time";
 }
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** "9 Nov 08:12", from an ISO stamp; "" when it does not parse. */
+export function shortWhen(createdAt: string): string {
+  const m = /^\d{4}-(\d{2})-(\d{2})T(\d{2}:\d{2})/.exec(createdAt ?? "");
+  return m ? `${Number(m[2])} ${MONTHS[Number(m[1]) - 1]} ${m[3]}` : "";
+}
+
+/** How a calibration is named on the page: its tag, else the spin's date;
+ * the id stays for tooltips and copies. */
+export function nameOf(c: { tag?: string | null; created_at?: string | null; id8?: string } | null | undefined): string {
+  if (!c) return "none";
+  if (c.tag) return c.tag;
+  const d = shortWhen(c.created_at ?? "");
+  return d ? `spin of ${d}` : (c.id8 ?? "unnamed");
+}
+
+/** A coverage layout in a few words: where the handover is, or that there is none. */
+export function coverageText(reading: string): string {
+  const h = /S(\d+)\/S(\d+) handover ([xy]) ([\d.]+)/.exec(reading);
+  if (h) return `handover at ${h[3]} ${Math.round(Number(h[4]))} mm`;
+  if (/share one box/.test(reading)) return "both cover the whole floor, no handover";
+  if (/share a centre/.test(reading)) return "boxes share a centre, no handover";
+  const only = /S(\d+) only in a \d+ mm strip/.exec(reading);
+  if (only) {
+    const other = /S(\d+) x/.exec(reading);
+    return other ? `S${other[1]} only (S${only[1]} is a 1 mm strip)` : `S${only[1]} only in a 1 mm strip`;
+  }
+  const wins = /S(\d+) wins where S\d+ and S\d+ overlap/.exec(reading);
+  if (wins) return `S${wins[1]} where both can`;
+  return reading;
+}
+
 /** A group's heading: one measurement, how many box layouts. */
 export function groupTitle(group: Library["groups"][number]): string {
   const n = group.rows.length;

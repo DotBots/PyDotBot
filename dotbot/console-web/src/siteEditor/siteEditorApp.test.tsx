@@ -12,8 +12,8 @@ vi.mock("../useOrchestration", () => {
 });
 
 import { filtered, groupTitle } from "./library";
-import { editorChip, servedReason, SiteEditorApp } from "./SiteEditorApp";
-import type { EditorContext, Library, LibraryRow, Rect } from "./types";
+import { SiteEditorApp } from "./SiteEditorApp";
+import type { Library, LibraryRow, Rect } from "./types";
 
 const WHOLE: Rect = [0, 0, 1060, 1220];
 
@@ -59,7 +59,7 @@ const LIBRARY: Library = {
   not_placed: free,
 };
 
-const CONTEXT: EditorContext = {
+const CONTEXT = {
   mode: "controller",
   site: "inria-2lh",
   path: "/sites/inria-2lh/site.toml",
@@ -120,34 +120,6 @@ describe("the library", () => {
   });
 });
 
-describe("the chip and the serving card", () => {
-  it("keeps the served id first while previewing another file", () => {
-    const chip = editorChip(CONTEXT, handover);
-    expect(chip.id8).toBe("4640cfde");
-    expect(chip.side).toEqual({ kind: "preview", id8: "a1b41f12" });
-  });
-
-  it("says where the served calibration came from and what a restart serves", () => {
-    expect(servedReason(CONTEXT)).toBe(
-      "Loaded at start, named on the controller's command line (4640cfde). A restart without --lh2-calibration serves none.",
-    );
-    expect(
-      servedReason({ ...CONTEXT, next_start: { spec: "4640cfde", source: "dotbot.local.toml" } }),
-    ).toContain("A restart serves the same.");
-  });
-
-  it("names a configured calibration without claiming it is served", () => {
-    const standalone: EditorContext = {
-      ...CONTEXT,
-      mode: "standalone",
-      served: null,
-      configured: { spec: "4640cfde", source: "dotbot.local.toml", id8: "4640cfde", id: served.id },
-    };
-    expect(editorChip(standalone, null)).toMatchObject({ id8: "4640cfde", live: false });
-    expect(servedReason(standalone)).toContain("No controller serves it here");
-  });
-});
-
 describe("the editor page", () => {
   it("opens on the served calibration, lists one group of 7 and 5 free spins, and previews on click", async () => {
     stubFetch();
@@ -157,13 +129,13 @@ describe("the editor page", () => {
     await waitFor(() => expect(screen.getAllByTestId("library-group")).toHaveLength(1));
     expect(screen.getByTestId("library-group").textContent).toBe("Spin of 2026-11-09 08:12 · 7 box layouts");
     expect(screen.getByRole("tab", { name: "Not placed yet 5" })).toBeTruthy();
-    expect(screen.getByTestId("calibration-chip").textContent).toContain("SERVING4640cfde");
-    expect(screen.getByTestId("serving-card").textContent).toContain("named on the controller's command line");
+    expect(screen.getByTestId("status-line").textContent).toContain("Using inria-hil-r3-inria-2lh");
+    expect(screen.getByTestId("serving-card").textContent).toContain("from its command line");
     fireEvent.click(screen.getByTestId("library-row-a1b41f12"));
-    expect(screen.getByTestId("calibration-chip-side").textContent).toContain("previewing a1b41f12");
-    expect(screen.getByTestId("calibration-chip").textContent).toContain("4640cfde");
-    fireEvent.click(screen.getByLabelText("Back to the served calibration"));
-    expect(screen.queryByTestId("calibration-chip-side")).toBeNull();
+    expect(screen.getByTestId("status-side").textContent).toContain("looking at tag-a1b41f12");
+    expect(screen.getByTestId("status-line").textContent).toContain("Using inria-hil-r3-inria-2lh");
+    fireEvent.click(screen.getByLabelText("Back to the calibration in use"));
+    expect(screen.queryByTestId("status-side")).toBeNull();
     fireEvent.click(screen.getByRole("tab", { name: "Not placed yet 5" }));
     expect(screen.getByTestId("library-not-placed").textContent).toContain("5 spins");
   });
@@ -291,8 +263,8 @@ describe("the collapse order", () => {
     await waitFor(() => expect(screen.getByTestId("plan")).toBeTruthy());
     expect(screen.getByTestId("rail-left")).toBeTruthy();
     expect(screen.getByTestId("pane-right")).toBeTruthy();
-    // The chip's id and Save stay
-    expect(screen.getByTestId("calibration-chip").textContent).toContain("4640cfde");
+    // The status line's name and Save stay
+    expect(screen.getByTestId("status-line").textContent).toContain("inria-hil-r3-inria-2lh");
     expect(screen.getByTestId("save")).toBeTruthy();
     unmount();
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 960 });

@@ -16,7 +16,7 @@ export type GoalState = "ok" | "warn" | "fail" | "unknown" | "info" | "optional"
 export interface GoalAction {
   label: string;
   /** Where the fix lives in the editor. */
-  go: { kind?: EditKind; tool?: string; tab?: "library" | "outline"; select?: string; sheet?: "check" | "split" | "newroom"; mode?: "fix" | "error"; href?: string };
+  go: { kind?: EditKind; tool?: string; tab?: "library" | "outline"; select?: string; sheet?: "check" | "split" | "newroom"; mode?: "fix" | "error"; href?: string; push?: string };
 }
 
 export interface Goal {
@@ -218,7 +218,7 @@ export function goals(i: GoalInputs): Goal[] {
               ? `${unknown} of ${i.robots.length} not reported: the fleet server sent no device info`
               : `all ${i.robots.length} hold ${i.servedId?.slice(0, 8)}`,
       summary: ["Which calibration robots hold: ", unpushed ? "push needed" : other ? `${other} hold another` : unknown ? "not reported" : `all hold ${i.servedId?.slice(0, 8)}`],
-      action: (unpushed || other) && i.servedId ? { label: "Push in the console…", go: { href: `/console?push=${i.servedId.slice(0, 8)}` } } : undefined,
+      action: (unpushed || other) && i.servedId ? { label: "Send to robots…", go: { push: i.servedId } } : undefined,
     });
   } else {
     out.push({ id: "robots", group: "run", title: "Robots", state: "unknown", detail: "no controller opened this page, so no robot is known" });
