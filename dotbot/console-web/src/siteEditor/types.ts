@@ -28,6 +28,8 @@ export interface EditorContext {
   /** Standalone: what the config names for this site. */
   configured: { spec: string; source: string; id?: string; id8?: string; tag?: string; error?: string } | null;
   controller?: { version: string; port: number };
+  /** False on a page opened from another machine: it may only view. */
+  can_write?: boolean;
 }
 
 export interface LibraryStation {

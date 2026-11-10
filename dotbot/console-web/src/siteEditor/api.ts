@@ -138,3 +138,20 @@ export async function postFrame(request: FrameRequest): Promise<FrameAnswer> {
   if (detail && typeof detail === "object" && !Array.isArray(detail)) return { ok: false, status: response.status, message: String(detail.message), offer: detail.offer ?? null };
   return { ok: false, status: response.status, message: typeof detail === "string" ? detail : response.statusText, offer: null };
 }
+
+export const fetchChecks = () => json<{ checks: import("./checks").CheckRecord[]; path: string }>("api/checks");
+export const postCheck = (check: { calibration: string; mark_mm: [number, number]; measured_mm: [number, number]; robot: string; predicted_mm: number | null }) =>
+  json<import("./checks").CheckRecord>("api/checks", post(check));
+export const fetchProvenance = () => json<{ lines: string[]; text: string }>("api/provenance");
+
+export interface RestorePoint {
+  id: string;
+  name: string;
+  at: string;
+  served: string | null;
+  revision: string;
+}
+export const fetchPoints = () => json<RestorePoint[]>("api/points");
+export const savePoint = (name: string) => json<RestorePoint>("api/points", post({ name }));
+export const restorePoint = (id: string, revision: string, serve: boolean) =>
+  json<SitePayload & { steps: ApplyStep[] }>(`api/points/${encodeURIComponent(id)}/restore`, post({ revision, serve }));
