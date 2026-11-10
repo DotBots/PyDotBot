@@ -55,7 +55,8 @@ export const TestbedControls: React.FC<{
   armed?: TestbedAction | null;
   /** How many robots the armed action would reach. */
   armedCount?: number;
-  onStart: () => void;
+  /** Without it there is no Start: the site editor carries Stop alone. */
+  onStart?: () => void;
   onStop: () => void;
   onSelectIds: (ids: string[]) => void;
 }> = ({ selected, busy, outcome, armed = null, armedCount = 0, onStart, onStop, onSelectIds }) => {
@@ -76,6 +77,7 @@ export const TestbedControls: React.FC<{
           </>
         )}
       </span>
+      {onStart && (
       <button
         type="button"
         onClick={busy === "start" && armed !== "start" ? undefined : onStart}
@@ -86,6 +88,7 @@ export const TestbedControls: React.FC<{
       >
         &#9654; {label("start", "Start", "Starting…")} <span style={kbd}>{ACTION_KEY.start}</span>
       </button>
+      )}
       <button
         type="button"
         onClick={onStop}

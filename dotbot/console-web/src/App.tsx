@@ -63,6 +63,7 @@ import { ShortcutsPanel } from "./ShortcutsPanel";
 import { StepCard } from "./StepCard";
 import { TestbedControls } from "./TestbedControls";
 import { CalibrationChip } from "./shared/CalibrationChip";
+import { TitleBar } from "./shared/TitleBar";
 import { servedChip } from "./shared/served";
 import { TestbedAction, targetsOf } from "./testbed";
 import { useTestbedConfirm } from "./testbedConfirm";
@@ -914,21 +915,7 @@ export const App: React.FC = () => {
         fontSize: 13,
       }}
     >
-      {/* Title bar */}
-      <div
-        style={{
-          height: 44,
-          flex: "none",
-          display: "flex",
-          alignItems: "center",
-          gap: 14,
-          padding: "0 16px",
-          background: "var(--surface)",
-          borderBottom: "1px solid var(--hairline)",
-        }}
-      >
-        <div style={{ fontWeight: 700, letterSpacing: ".3px", fontSize: 15 }}>DotBots</div>
-        <div style={{ width: 1, height: 20, background: "var(--hairline)" }} />
+      <TitleBar>
         <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--muted)" }}>{window.location.host}</span>
         <CalibrationChip chip={servedChip(site?.calibration)} compact />
         {conn && (
@@ -1025,7 +1012,7 @@ export const App: React.FC = () => {
             </div>
           ))}
         </div>
-      </div>
+      </TitleBar>
 
       {/* Body row: testbed rail + view area */}
       <div style={{ position: "relative", flex: 1, overflow: "hidden", display: "flex" }}>
