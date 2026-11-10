@@ -699,7 +699,7 @@ export const SiteEditorApp: React.FC = () => {
           options={[
             { value: "checks", text: `Checks${verdict.state === "not-ready" ? " !" : ""}` },
             { value: "outline", text: "Outline" },
-            { value: "library", text: `Calibrations${library ? ` ${library.count}` : ""}` },
+            { value: "library", text: `Calibrations${library && width >= 1360 ? ` ${library.count}` : ""}` },
           ]}
         />
         <button type="button" className="collapse" title={drawer ? "Close" : "Fold this pane ([)"} aria-label={drawer ? "Close the drawer" : "Fold the left pane"} onClick={() => (drawer ? setDrawer(null) : setLeftFolded(true))}>
