@@ -215,6 +215,7 @@ def test_the_comment_is_edited_and_removed():
     "change, message",
     [
         (lambda m: m["areas"][1].update(role="field"), "at most one field"),
+        (lambda m: m["areas"][1].update(y=900), "overlap by"),
         (lambda m: m["areas"][1].update(name="field"), "two areas are named"),
         (lambda m: m["areas"][1].update(name="a,b"), "comma"),
         (lambda m: m["areas"][1].update(name=""), "needs a name"),
@@ -225,6 +226,13 @@ def test_a_model_the_schema_refuses_is_an_error(change, message):
     change(model)
     with pytest.raises(SiteTomlError, match=message):
         patched_text(ARENA, model)
+
+
+def test_a_corner_may_overlap_the_field_and_staging_may_touch_it():
+    model = _loaded(ARENA)
+    model["areas"][1].update(y=model["areas"][0]["h"])
+    model["areas"].append({"name": "c", "x": 0, "y": 0, "w": 50, "h": 50, "role": "corner"})
+    assert "[areas.c]" in patched_text(ARENA, model)
 
 
 def test_the_revision_is_the_hash_of_the_bytes():

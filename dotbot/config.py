@@ -295,6 +295,27 @@ class SiteSection(_Strict):
             )
         return self
 
+    @model_validator(mode="after")
+    def _field_and_staging_apart(self) -> SiteSection:
+        def of(role: str) -> list[tuple[str, AreaSection]]:
+            return [
+                (name, area)
+                for name, area in self.areas.items()
+                if area_role(name, area.role) == role
+            ]
+
+        for fname, f in of("field"):
+            for sname, s in of("staging"):
+                w = min(f.x + f.w, s.x + s.w) - max(f.x, s.x)
+                h = min(f.y + f.h, s.y + s.h) - max(f.y, s.y)
+                if w > 0 and h > 0:
+                    raise ValueError(
+                        f"field {fname} and staging {sname} overlap by {w} x {h} "
+                        "mm; a point is in one or the other, so shrink one until "
+                        "they only touch (a corner may overlap anything)"
+                    )
+        return self
+
 
 _CONTROLLER_REMOVED = {
     key: f"[run.controller] {key} is gone: pass {flag} instead"

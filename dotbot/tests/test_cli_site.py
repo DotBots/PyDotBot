@@ -123,7 +123,7 @@ def test_an_area_named_after_a_role_has_it_unless_it_declares_another():
         # the field, wherever it is declared
         (
             "staging = { x = 0, y = 0, w = 10, h = 10 }\n"
-            'main = { x = 5, y = 5, w = 10, h = 10, role = "field" }\n',
+            'main = { x = 10, y = 0, w = 10, h = 10, role = "field" }\n',
             "main",
         ),
         # no field: the first area that is neither staging nor a corner
