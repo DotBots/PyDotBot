@@ -1,41 +1,71 @@
 import type { Doc } from "./model";
+import type { Rect } from "./types";
 
 // One draft for the whole page: the doc as loaded, the doc as edited, and one
 // history of edits. It is kept in this browser per site, site.toml revision
 // and shown calibration, so a reload brings it back.
 
-export interface Draft {
+/** New station boxes for a calibration, saved as a new file on Save. */
+export interface BoxDraft {
+  /** The full id of the calibration the boxes start from. */
+  from: string;
+  boxes: Record<number, Rect>;
+  /** The new file's tag. */
+  tag: string;
+}
+
+/** One step of the history: everything a Save would write. */
+export interface Snap {
+  doc: Doc;
+  /** site.toml as edited by hand on the page, patched instead of the file. */
+  text: string | null;
+  boxes: BoxDraft | null;
+}
+
+export interface Draft extends Snap {
   site: string;
   revision: string;
   calibration: string | null;
   base: Doc;
-  doc: Doc;
-  past: Doc[];
-  future: Doc[];
+  past: Snap[];
+  future: Snap[];
 }
 
 export const HISTORY_MAX = 200;
 
 export function newDraft(site: string, revision: string, calibration: string | null, base: Doc): Draft {
-  return { site, revision, calibration, base, doc: base, past: [], future: [] };
+  return { site, revision, calibration, base, doc: base, text: null, boxes: null, past: [], future: [] };
+}
+
+const snapOf = (d: Snap): Snap => ({ doc: d.doc, text: d.text, boxes: d.boxes });
+
+/** `draft` with `next` as the next step of its history. */
+export function step(draft: Draft, next: Partial<Snap>): Draft {
+  const merged = { ...snapOf(draft), ...next };
+  if (merged.doc === draft.doc && merged.text === draft.text && merged.boxes === draft.boxes) return draft;
+  return { ...draft, ...merged, past: [...draft.past, snapOf(draft)].slice(-HISTORY_MAX), future: [] };
 }
 
 /** `draft` with `doc` as the next step of its history. */
 export function edit(draft: Draft, doc: Doc): Draft {
-  if (doc === draft.doc) return draft;
-  return { ...draft, doc, past: [...draft.past, draft.doc].slice(-HISTORY_MAX), future: [] };
+  return step(draft, { doc });
 }
 
 export function undo(draft: Draft): Draft {
   const prev = draft.past[draft.past.length - 1];
   if (!prev) return draft;
-  return { ...draft, doc: prev, past: draft.past.slice(0, -1), future: [draft.doc, ...draft.future] };
+  return { ...draft, ...prev, past: draft.past.slice(0, -1), future: [snapOf(draft), ...draft.future] };
 }
 
 export function redo(draft: Draft): Draft {
   const [next, ...rest] = draft.future;
   if (!next) return draft;
-  return { ...draft, doc: next, past: [...draft.past, draft.doc], future: rest };
+  return { ...draft, ...next, past: [...draft.past, snapOf(draft)], future: rest };
+}
+
+/** How many separate things a Save would write or change. */
+export function pending(draft: Draft): number {
+  return changes(draft.base, draft.doc).length + (draft.boxes ? 1 : 0) + (draft.text !== null && changes(draft.base, draft.doc).length === 0 ? 1 : 0);
 }
 
 // --- What changed --------------------------------------------------------
@@ -92,11 +122,11 @@ export const storageKey = (site: string) => `${PREFIX}${site}`;
 export function persist(storage: KeyValue | null, draft: Draft): void {
   if (!storage) return;
   try {
-    if (changes(draft.base, draft.doc).length === 0) storage.removeItem(storageKey(draft.site));
+    if (pending(draft) === 0) storage.removeItem(storageKey(draft.site));
     else
       storage.setItem(
         storageKey(draft.site),
-        JSON.stringify({ revision: draft.revision, calibration: draft.calibration, base: draft.base, doc: draft.doc }),
+        JSON.stringify({ revision: draft.revision, calibration: draft.calibration, base: draft.base, doc: draft.doc, text: draft.text, boxes: draft.boxes }),
       );
   } catch {
     // a browser that refuses storage keeps the draft in memory only
@@ -117,6 +147,8 @@ export interface Restored {
   conflicts: Change[];
   /** True when the kept draft was made on another revision of the file. */
   reapplied: boolean;
+  /** True when hand edits to the old file's text could not follow. */
+  textDropped?: boolean;
 }
 
 /**
@@ -131,19 +163,21 @@ export function restore(storage: KeyValue | null, site: string, revision: string
     return null;
   }
   if (!raw) return null;
-  let kept: { revision: string; calibration: string | null; base: Doc; doc: Doc };
+  let kept: { revision: string; calibration: string | null; base: Doc; doc: Doc; text?: string | null; boxes?: BoxDraft | null };
   try {
     kept = JSON.parse(raw);
   } catch {
     return null;
   }
+  const first: Snap = { doc: loaded, text: null, boxes: null };
   if (kept.revision === revision) {
-    const draft = { ...newDraft(site, revision, kept.calibration, loaded), doc: kept.doc, past: [loaded] };
+    const draft = { ...newDraft(site, revision, kept.calibration, loaded), doc: kept.doc, text: kept.text ?? null, boxes: kept.boxes ?? null, past: [first] };
     return { draft, conflicts: [], reapplied: false };
   }
+  // A hand edit was made on the old file's text, so it cannot follow onto a new one
   const { doc, conflicts } = reapply(kept.base, kept.doc, loaded);
-  const draft = { ...newDraft(site, revision, kept.calibration, loaded), doc, past: [loaded] };
-  return { draft, conflicts, reapplied: true };
+  const draft = { ...newDraft(site, revision, kept.calibration, loaded), doc, boxes: kept.boxes ?? null, past: [first] };
+  return { draft, conflicts, reapplied: true, textDropped: (kept.text ?? null) !== null };
 }
 
 // --- Re-applying a draft onto a newer file --------------------------------
