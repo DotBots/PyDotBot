@@ -140,7 +140,7 @@ export async function postFrame(request: FrameRequest): Promise<FrameAnswer> {
 }
 
 export const fetchChecks = () => json<{ checks: import("./checks").CheckRecord[]; path: string }>("api/checks");
-export const postCheck = (check: { calibration: string; mark_mm: [number, number]; measured_mm: [number, number]; robot: string; predicted_mm: number | null }) =>
+export const postCheck = (check: { calibration: string; mark_mm: [number, number]; measured_mm: [number, number]; robot: string; predicted_mm: number | null; assumed?: boolean; revision?: string }) =>
   json<import("./checks").CheckRecord>("api/checks", post(check));
 export const fetchProvenance = () => json<{ lines: string[]; text: string }>("api/provenance");
 

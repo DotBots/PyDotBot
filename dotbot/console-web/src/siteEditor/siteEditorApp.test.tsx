@@ -248,7 +248,7 @@ describe("capturing zero", () => {
     render(<SiteEditorApp />);
     await waitFor(() => expect(screen.getByTestId("plan")).toBeTruthy());
     fireEvent.click(screen.getByLabelText("More"));
-    fireEvent.click(screen.getByRole("menuitem", { name: /Mount, spin and place/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Set up a room/ }));
     expect(screen.getByTestId("new-room")).toBeTruthy();
     keyDown("1");
     keyDown("c");

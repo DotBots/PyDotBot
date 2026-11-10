@@ -28,15 +28,15 @@ export function heldBy(bot: UnifiedBot, servedId: string | null): Held {
 export function heldText(h: Held): string {
   switch (h.kind) {
     case "served":
-      return `holds ${h.id8}, the served calibration`;
+      return `has ${h.id8}, the one in use`;
     case "other":
-      return `holds ${h.id8}${h.site ? ` (${h.site})` : ""}, not the served one`;
+      return `has ${h.id8}${h.site ? ` (${h.site})` : ""}, not the one in use`;
     case "none":
-      return "holds no calibration";
+      return "has no calibration";
     case "old-firmware":
-      return "its firmware predates the held id: reflash to read it";
+      return "its firmware is too old to say: reflash to read it";
     default:
-      return "not reported";
+      return "cannot tell: no device info";
   }
 }
 

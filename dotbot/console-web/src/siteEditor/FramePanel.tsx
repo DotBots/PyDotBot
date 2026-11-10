@@ -10,7 +10,7 @@ import { Icon } from "./icons";
 import type { Point } from "./model";
 import { heldBy, tail } from "./robots";
 
-// The Frame kind's two tools: turn or shift zero, previewed on the plan and
+// The Floor kind's two tools: turn or shift the origin, previewed on the plan and
 // checked by the server before anything is written; and capture zero from
 // a robot's live fix, which fills the same move in.
 
@@ -109,8 +109,8 @@ export const FramePanel: React.FC<FramePanelProps> = (props) => {
   if (!props.calibrationId) {
     return (
       <div className="callout" style={{ marginTop: 12 }} data-testid="frame-unserved">
-        <div className="h">No calibration served</div>
-        {props.mode === "capture" ? "Capturing zero" : "Moving zero"} re-expresses the served calibration in a new frame, so one has to be served first. This panel picks up as
+        <div className="h">No calibration in use</div>
+        {props.mode === "capture" ? "Setting the origin" : "Moving the origin"} makes a new calibration from the one in use, so one has to be in use first. This panel picks up as
         soon as one is.
         {props.nextStep && (
           <div className="acts">
@@ -129,7 +129,7 @@ export const FramePanel: React.FC<FramePanelProps> = (props) => {
         Turn or shift
       </button>
       <button type="button" role="tab" aria-selected={props.mode === "capture"} className={props.mode === "capture" ? "on" : undefined} onClick={() => props.onMode("capture")}>
-        From a robot
+        From robots
       </button>
     </div>
   );
@@ -143,7 +143,7 @@ export const FramePanel: React.FC<FramePanelProps> = (props) => {
   ) : check && !check.ok ? (
     <div className="callout err" role="alert" style={{ marginTop: 10 }} data-testid="frame-refusal">
       <div className="h">
-        <Icon name="err" size={14} /> This move is refused
+        <Icon name="err" size={14} /> The origin cannot go there
       </div>
       {check.message.replace(/^calibration [0-9a-f]+: /, "")}
       {check.offer && (
@@ -157,18 +157,18 @@ export const FramePanel: React.FC<FramePanelProps> = (props) => {
           </button>
         </div>
       )}
-      <div className="note" style={{ marginTop: 6 }}>Offered, not applied: robots carry positions as unsigned millimetres, so nothing measured may fall below zero.</div>
+      <div className="note" style={{ marginTop: 6 }}>Robots cannot report negative positions, so every measured point must stay right of and below the origin.</div>
     </div>
   ) : check && check.ok ? (
     <div className="callout ok" style={{ marginTop: 10 }} data-testid="frame-ok">
       <div className="h">
-        <Icon name="check" size={14} /> Legal: frame {check.result.from_frame} becomes {check.result.frame}
+        <Icon name="check" size={14} /> The origin can move there
       </div>
-      {props.calibrationId.slice(0, 8)} is re-expressed as {check.result.calibration.id8}
+      Applying makes a new calibration ({check.result.calibration.id8}) from the one in use
       {check.result.warnings.length ? `; ${check.result.warnings.join("; ")}` : ""}.
       <div className="acts">
         <button type="button" className="btn sm primary" onClick={() => props.onReview(check.result)} data-testid="frame-review">
-          Review the frame change…
+          Apply the move…
         </button>
         <button type="button" className="btn sm" onClick={() => onMove({ ...move, theta_deg: 0, dx: 0, dy: 0, note: null })}>
           Reset
@@ -184,7 +184,7 @@ export const FramePanel: React.FC<FramePanelProps> = (props) => {
         <div className="ins-h">
           <span className="kind">Frame</span>
           <span className="name" style={{ fontFamily: "var(--font-ui)" }}>
-            Capture zero with a robot
+            Set the origin from robots
           </span>
         </div>
         {tabs}
@@ -282,13 +282,13 @@ export const FramePanel: React.FC<FramePanelProps> = (props) => {
       <div className="ins-h">
         <span className="kind">Frame</span>
         <span className="name" style={{ fontFamily: "var(--font-ui)" }}>
-          Turn or shift zero
+          Turn or shift the origin
         </span>
       </div>
       {tabs}
       <div className="ins-sub" style={{ marginTop: 8 }}>
-        One change: the served calibration is re-expressed in the new frame as a new file, site.toml takes a new frame id, and the controller serves the new file. The plan
-        shows the new floor dashed. Robots report in the old frame until you push.
+        One change: a new calibration is made from the one in use, the room file records the new origin, and the controller uses the new file. The plan shows the new
+        floor dashed. Robots keep the old origin until you send it to them.
       </div>
       <span className="lbl" style={{ marginTop: 8 }}>Turn</span>
       <div className="grid2">
@@ -297,13 +297,13 @@ export const FramePanel: React.FC<FramePanelProps> = (props) => {
         <NumField label="about x" prefix="about x" value={move.pivot[0]} onApply={(v) => onMove({ ...move, pivot: [v, move.pivot[1]] })} />
         <NumField label="about y" prefix="about y" value={move.pivot[1]} onApply={(v) => onMove({ ...move, pivot: [move.pivot[0], v] })} />
       </div>
-      <span className="lbl" style={{ marginTop: 8 }}>Move zero by, mm</span>
+      <span className="lbl" style={{ marginTop: 8 }}>Move the origin by, mm</span>
       <div className="grid2">
         <NumField label="shift x" prefix="x" value={move.dx} onApply={(v) => onMove({ ...move, dx: v })} />
         <NumField label="shift y" prefix="y" value={move.dy} onApply={(v) => onMove({ ...move, dy: v })} />
       </div>
       <div style={{ marginTop: 8 }}>
-        <TextField label="New note on where zero is (optional)" value={move.note ?? ""} placeholder={props.note || "where zero is in the room"} onApply={(t) => onMove({ ...move, note: t.trim() || null })} />
+        <TextField label="New note on where the origin is (optional)" value={move.note ?? ""} placeholder={props.note || "where the origin is in the room"} onApply={(t) => onMove({ ...move, note: t.trim() || null })} />
       </div>
       {status}
       <Sec title="Same from a terminal">

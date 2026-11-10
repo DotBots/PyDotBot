@@ -19,9 +19,11 @@ export const CheckMarkPanel: React.FC<{
   robotId: string | null;
   calibrationId: string;
   coverage: Coverage | null;
+  /** The room file's revision, kept with a check read as unverified. */
+  revision?: string;
   onClose: () => void;
   onRecorded: (check: CheckRecord) => void;
-}> = ({ bots, robotId, calibrationId, coverage, onClose, onRecorded }) => {
+}> = ({ bots, robotId, calibrationId, coverage, revision, onClose, onRecorded }) => {
   const located = bots.filter((b) => b.position);
   const [robot, setRobot] = useState<string>(robotId ?? located[0]?.id ?? "");
   const [mark, setMark] = useState<[number | null, number | null]>([null, null]);
@@ -61,7 +63,7 @@ export const CheckMarkPanel: React.FC<{
   const record = async () => {
     if (!measured || !typed) return;
     try {
-      const c = await postCheck({ calibration: calibrationId, mark_mm: typed, measured_mm: measured, robot, predicted_mm: predicted });
+      const c = await postCheck({ calibration: calibrationId, mark_mm: typed, measured_mm: measured, robot, predicted_mm: predicted, assumed: assume, revision });
       setRecorded(c);
       setStep(3);
       onRecorded(c);
@@ -73,7 +75,7 @@ export const CheckMarkPanel: React.FC<{
   return (
     <div className="card" style={{ marginTop: 12, background: "var(--surface)" }} data-testid="check-mark">
       <div className="sec-h" style={{ margin: 0 }}>
-        Check on a mark · step {step} of 3
+        Verify a position · step {step} of 3
         <span className="sp" style={{ flex: 1 }} />
         <button type="button" className="btn icon ghost" aria-label="Close the check" onClick={onClose} style={{ height: 22, width: 22 }}>
           <Icon name="x" size={12} />
@@ -86,10 +88,10 @@ export const CheckMarkPanel: React.FC<{
       </div>
       {step === 1 && (
         <>
-          <div style={{ fontWeight: 600, fontSize: 13, margin: "6px 0 4px" }}>Park a robot on a taped mark</div>
+          <div style={{ fontWeight: 600, fontSize: 13, margin: "6px 0 4px" }}>Park a robot on a spot you measured</div>
           <div className="note">
-            Put the robot's sensor (the dot inside its ring on the plan) on a mark whose position you measured from zero with a tape, then type it. The page reads the robot's
-            fix while it stays still and compares.
+            Put the robot's sensor (the dot inside its ring on the plan) on a spot you measured from the origin with a tape, then type it. The page reads the robot's
+            position while it stays still and compares.
           </div>
           {located.length === 0 ? (
             <div className="callout" style={{ marginTop: 8 }}>No robot has a fix right now.</div>
@@ -105,18 +107,18 @@ export const CheckMarkPanel: React.FC<{
                   ))}
                 </select>
               </div>
-              <span className="lbl" style={{ marginTop: 8 }}>The mark, measured from zero, mm</span>
+              <span className="lbl" style={{ marginTop: 8 }}>The spot, measured from the origin, mm</span>
               <div className="grid2">
                 <NumField label="mark x" prefix="x" value={mark[0]} absolute min={0} placeholder="mm from zero" onApply={(v) => setMark([v, mark[1]])} />
                 <NumField label="mark y" prefix="y" value={mark[1]} absolute min={0} placeholder="mm from zero" onApply={(v) => setMark([mark[0], v])} />
               </div>
               {held && !trusted && (
                 <div className="callout warn" style={{ marginTop: 8 }}>
-                  {held.kind === "not-reported" ? "This robot does not report which calibration it holds" : `This robot holds ${held.kind === "other" ? held.id8 : "no calibration"}`}, so its fix may be
-                  in another frame than {calibrationId.slice(0, 8)}'s.
+                  {held.kind === "not-reported" ? "This robot cannot say which calibration it has" : `This robot has ${held.kind === "other" ? held.id8 : "no calibration"}`}, so its position may
+                  not be in {calibrationId.slice(0, 8)}'s frame. A check read anyway is recorded as unverified.
                   <div className="acts">
                     <button type="button" className="btn xs" onClick={() => setAssume(true)}>
-                      Read it, assuming it holds {calibrationId.slice(0, 8)}
+                      Read it anyway
                     </button>
                   </div>
                 </div>
@@ -153,7 +155,7 @@ export const CheckMarkPanel: React.FC<{
                 ? `${err.toFixed(0)} mm off: far more than any calibration error. Is it the right robot, on the right mark, and the mark measured from zero? Check before recording.`
                 : passes
                   ? `Agrees: within the ${Math.max(limit, 2 * (predicted ?? 0)).toFixed(1)} mm a check allows here.`
-                  : `Off: over the ${Math.max(limit, 2 * (predicted ?? 0)).toFixed(1)} mm a check allows here (the limit, or twice the prediction). The prediction covers the solve, not the tape or the robot's placement; record it as it is, then check the tape or capture zero again.`}
+                  : `Off: over the ${Math.max(limit, 2 * (predicted ?? 0)).toFixed(1)} mm a check allows here (the limit, or twice the prediction). The prediction covers the calibration, not the tape or the robot's placement; record it as it is, then check the tape or move the origin.`}
             </div>
           )}
           {error && <div className="callout err" style={{ marginTop: 8 }}>{error}</div>}
@@ -162,7 +164,7 @@ export const CheckMarkPanel: React.FC<{
               Back
             </button>
             <button type="button" className="btn sm primary" disabled={!still.still} onClick={record} data-testid="check-record">
-              Record with {calibrationId.slice(0, 8)}
+              {assume ? "Record as unverified" : "Record"}
             </button>
           </div>
         </>
@@ -170,7 +172,7 @@ export const CheckMarkPanel: React.FC<{
       {step === 3 && recorded && (
         <>
           <div style={{ fontWeight: 600, fontSize: 13, margin: "6px 0 4px" }}>
-            Recorded: {recorded.error_mm.toFixed(1)} mm, {recorded.error_mm <= Math.max(limit, 2 * (recorded.predicted_mm ?? 0)) ? "agrees" : "off"}
+            Recorded: {recorded.error_mm.toFixed(1)} mm, {recorded.error_mm <= Math.max(limit, 2 * (recorded.predicted_mm ?? 0)) ? "agrees" : "off"}{recorded.assumed ? " (unverified)" : ""}
           </div>
           <div className="infile">
             <div className="ih">
@@ -178,10 +180,10 @@ export const CheckMarkPanel: React.FC<{
             </div>
             <pre>{`[[check]]\ncalibration = "${recorded.calibration}"\nmark_mm = [${recorded.mark_mm.join(", ")}]\nmeasured_mm = [${recorded.measured_mm.join(", ")}]\nerror_mm = ${recorded.error_mm}\nrobot = "${recorded.robot}"\nat = "${recorded.at}"`}</pre>
           </div>
-          <div className="note" style={{ marginTop: 6 }}>The calibration file itself is never rewritten. The Checks home and the provenance block now name this check.</div>
+          <div className="note" style={{ marginTop: 6 }}>The calibration file itself is never rewritten. The Checks home and the setup summary now name this check.</div>
           <div className="acts">
             <button type="button" className="btn sm" onClick={() => (setStep(1), setRecorded(null))}>
-              Another mark
+              Another spot
             </button>
             <button type="button" className="btn sm primary" onClick={onClose}>
               Done

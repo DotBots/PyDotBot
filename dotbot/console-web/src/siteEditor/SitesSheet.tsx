@@ -9,7 +9,7 @@ import { parseFloorSize, siteNameProblem, SITE_NAME_MAX } from "./sites";
 
 const STARTS: { value: NewSiteStart; title: string; detail: string }[] = [
   { value: "empty", title: "An empty floor, measured later", detail: "The floor and the field come from the robots' spins once the stations are mounted." },
-  { value: "size", title: "A floor of a known size", detail: "You measured the room: its width and height, from the corner that will be zero." },
+  { value: "size", title: "A floor of a known size", detail: "You measured the room: its width and height, from the corner that will be the origin." },
   { value: "spin", title: "Around a spin already done", detail: "A spin calibration in its own frame: the floor goes round the robots that spun." },
 ];
 
@@ -52,12 +52,12 @@ const NewSiteForm: React.FC<{
         {problem || `Up to ${SITE_NAME_MAX} letters, digits, - and _: robots receive it with every calibration.`}
       </div>
       <span className="lbl" style={{ marginTop: 10 }}>
-        Where zero is, in words
+        Where the origin is, in words
       </span>
       <div className="fld">
         <input aria-label="Note on zero" placeholder="the corner by the door, at the tape cross" value={note} onChange={(e) => setNote(e.target.value)} />
       </div>
-      <div className="note">How someone else finds zero in the room. It can be written later.</div>
+      <div className="note">How someone else finds the origin in the room. It can be written later.</div>
       <span className="lbl" style={{ marginTop: 10 }}>
         Start from
       </span>
@@ -103,7 +103,7 @@ const NewSiteForm: React.FC<{
       )}
       <footer>
         <span className="note" style={{ flex: 1 }}>
-          The controller switches to it at once; robots keep what they hold.
+          The controller switches to it at once; robots keep what they have.
         </span>
         <button type="button" className="btn primary" disabled={!ready || busy} onClick={submit} data-testid="new-site-create">
           {busy ? "Writing…" : "Create and open"}
@@ -152,7 +152,7 @@ const SiteSwitch: React.FC<{ list: SiteList | null; onDone: () => void }> = ({ l
       <label className="note" style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 8 }}>
         <input type="checkbox" checked={persist} onChange={(e) => setPersist(e.target.checked)} /> Also when the controller next starts
       </label>
-      <div className="note">The calibration served stays only if it is in the other site's frame; robots keep what they hold.</div>
+      <div className="note">The calibration in use stays only if it belongs to the other site; robots keep what they have.</div>
       {error && (
         <div className="callout err" style={{ marginTop: 8 }} role="alert">
           {error}
@@ -222,7 +222,7 @@ export const StartScreen: React.FC<{ siteName: string; spinId?: string | null; e
         </p>
         <ol className="steps-list">
           <li>
-            <b>Name the room</b> and say where zero is.
+            <b>Name the room</b> and say where the origin is.
           </li>
           <li>
             <b>Mount two stations</b> at opposite corners, outside the floor, high enough to see all of it.
@@ -231,7 +231,7 @@ export const StartScreen: React.FC<{ siteName: string; spinId?: string | null; e
             <b>Spin robots in the console</b>: the circles they trace measure the stations.
           </li>
           <li>
-            <b>Place the spin in the room</b>, from two robots on taped marks or from typed numbers, then serve and push it.
+            <b>Put the spin in the room</b>, from two robots on measured spots or from typed numbers, then use it and send it to the robots.
           </li>
         </ol>
         {editable ? (

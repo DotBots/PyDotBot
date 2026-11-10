@@ -75,7 +75,7 @@ export const OutlinePane: React.FC<{
   const barriers = [...doc.walls, ...doc.obstacles];
   return (
     <div data-testid="outline" style={{ paddingTop: 4 }}>
-      <Group title="Floor and zero" icon="frame" count={1} kindKey={KIND_KEY.frame} active={kind === "frame"}>
+      <Group title="Floor and origin" icon="frame" count={1} kindKey={KIND_KEY.frame} active={kind === "frame"}>
         <Row on={on("floor")} onPick={() => onPick("floor", "frame", false)}>
           <span className="sw" style={{ border: "1px solid var(--muted)" }} />
           <span>floor</span>

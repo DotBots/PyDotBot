@@ -60,7 +60,7 @@ export function editorKeys(): Set<string> {
 
 export const KIND_LABEL: Record<EditKind, string> = {
   view: "View",
-  frame: "Frame",
+  frame: "Floor",
   areas: "Areas",
   walls: "Walls",
   objects: "Objects",
@@ -77,8 +77,8 @@ export const TOOL_LABEL: Record<Tool, string> = {
   landmark: "Landmark",
   camera: "Camera position",
   probe: "Point inspector",
-  turn: "Turn or shift zero",
-  capture: "Capture zero with a robot",
+  turn: "Turn or shift the origin",
+  capture: "Set the origin from robots",
   measure: "Measure",
 };
 
@@ -120,7 +120,7 @@ export const EDITOR_SHORTCUTS: ShortcutGroup[] = [
       { keys: ["alt", "drag"], does: "Move or draw without snapping" },
       { keys: ["arrows"], does: "Nudge the selection or a picked edge 10 mm (Alt 1, Shift 100)" },
       { keys: ["Escape"], does: "Back to View; cancels a drawing, never commits it" },
-      { keys: ["1 to 5"], does: "Frame, Areas, Walls, Objects, Stations" },
+      { keys: ["1 to 5"], does: "Floor, Areas, Walls, Objects, Stations" },
       { keys: ["Delete"], does: "Delete the selection" },
     ],
   },

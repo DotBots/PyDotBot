@@ -10,6 +10,7 @@ import type { Doc, DocArea, DocBarrier, DocObject, ObjectKind } from "./model";
 import { arranged, ARRANGE_LABEL, removed, type Arrange } from "./plan";
 import { heldBy, heldText, tail, whereItStands } from "./robots";
 import { AREA_NAME, roleOf, type Problem } from "./rules";
+import { coverageText, nameOf } from "./library";
 import type { LibraryRow, Rect } from "./types";
 
 // The right pane's Inspect tab: the selection's fields, or, with nothing
@@ -18,13 +19,13 @@ import type { LibraryRow, Rect } from "./types";
 
 const GLOSSARY: { term: string; means: string; swatch: React.ReactNode }[] = [
   { term: "Floor", means: "the room's rectangle; robots' positions outside it are dropped", swatch: <span style={{ width: 14, height: 10, border: "1px solid var(--muted)", borderRadius: 2 }} /> },
-  { term: "Zero", means: "(0, 0), the floor's top-left corner; x right, y down, mm", swatch: <Icon name="fit" size={14} /> },
+  { term: "Origin", means: "(0, 0), the floor's top-left corner; x right, y down, mm", swatch: <Icon name="fit" size={14} /> },
   { term: "Field", means: "the area experiments run in (staging: where robots park)", swatch: <span style={{ width: 14, height: 10, border: "1.5px dashed var(--area-0)", borderRadius: 2 }} /> },
   { term: "Station", means: "an LH2 base station, S0 to S15 (S0 is set to channel 1)", swatch: <span className="stpin" style={{ background: "var(--st-0)" }}>S0</span> },
-  { term: "Station box", means: "where a robot trusts that station's fix", swatch: <span style={{ width: 14, height: 10, border: "1.5px solid var(--st-1)", borderRadius: 2 }} /> },
+  { term: "Coverage", means: "where robots use that station", swatch: <span style={{ width: 14, height: 10, border: "1.5px solid var(--st-1)", borderRadius: 2 }} /> },
   { term: "Spin circle", means: "where a robot spun to measure the stations; its ring is the sensor's path", swatch: <span style={{ width: 12, height: 12, border: "1.5px solid var(--st-0)", borderRadius: "50%" }} /> },
-  { term: "Who gives the fix", means: "which station's solve a robot keeps, by the robots' own rule", swatch: <span style={{ width: 14, height: 10, background: "color-mix(in srgb, var(--st-0) 45%, transparent)", borderRadius: 2 }} /> },
-  { term: "Serving", means: "the calibration this controller uses now", swatch: <span className="dot" style={{ background: "var(--ok)" }} /> },
+  { term: "Handover", means: "where robots switch from one station to the other", swatch: <span style={{ width: 14, height: 10, background: "color-mix(in srgb, var(--st-0) 45%, transparent)", borderRadius: 2 }} /> },
+  { term: "In use", means: "the calibration this controller uses now", swatch: <span className="dot" style={{ background: "var(--ok)" }} /> },
   { term: "Robot", means: "live, drawn as the console draws it; read only here", swatch: <span className="dot" style={{ background: "var(--s-Running)", borderRadius: 2 }} /> },
 ];
 
@@ -227,10 +228,10 @@ export const Inspector: React.FC<InspectorProps> = (props) => {
         <Sec title="Localization here">
           <div className="note">
             {boxes.length === 0
-              ? "No calibration shown, so who gives the fix here is unknown."
+              ? "No calibration shown, so coverage here is unknown."
               : here.length
-                ? `Every point is in a station box of ${shown?.id8 ?? "the shown calibration"} (${here.map((b) => `S${b.index}`).join(", ")}).`
-                : `Part of it lies outside every station box of ${shown?.id8 ?? "the shown calibration"}: robots there have no fix.`}
+                ? `Covered by ${here.map((b) => `S${b.index}`).join(", ")} of ${shown ? nameOf(shown) : "the shown calibration"}.`
+                : `Part of it is outside every station's coverage in ${shown ? nameOf(shown) : "the shown calibration"}: robots there have no position.`}
           </div>
         </Sec>
         <div className="infile">
@@ -328,23 +329,22 @@ export const Inspector: React.FC<InspectorProps> = (props) => {
     const st = shown?.stations.find((s) => s.index === box.index);
     return (
       <div data-testid="inspector-box">
-        <Head kind="Station box" name={`S${box.index}`} swatch={<span className="stpin" style={{ background: `var(--st-${box.index % 2})` }}>S{box.index}</span>} />
-        <div className="ins-sub">Where a robot trusts S{box.index}'s fix. It belongs to calibration {shown?.id8 ?? "the shown one"}.</div>
+        <Head kind="Coverage" name={`S${box.index}`} swatch={<span className="stpin" style={{ background: `var(--st-${box.index % 2})` }}>S{box.index}</span>} />
+        <div className="ins-sub">Where robots use S{box.index}. Part of {shown ? nameOf(shown) : "the shown calibration"}.</div>
         <KV
           rows={[
             ["x", `${box.rect[0]} to ${box.rect[2]} mm`],
             ["y", `${box.rect[1]} to ${box.rect[3]} mm`],
-            ["Residual", st ? `${st.residual_mm.toFixed(2)} mm` : "unknown"],
-            ["Solved from", st?.solved_from ?? "unknown"],
+            ["Fit", st ? `${st.residual_mm.toFixed(2)} mm` : "unknown"],
           ]}
         />
         {shown && (
           <div className="callout info" style={{ marginTop: 10 }}>
-            {shown.reading}
+            {coverageText(shown.reading)}
           </div>
         )}
         <div className="note" style={{ marginTop: 10 }}>
-          A calibration file is never rewritten: a box changed here saves as a new calibration, and the one served keeps working.
+          A coverage change saves as a new calibration; the one in use keeps working until you choose the new one.
         </div>
       </div>
     );
@@ -385,32 +385,29 @@ export const Inspector: React.FC<InspectorProps> = (props) => {
               testid="robot-where"
               rows={[
                 ["Area", where.area ?? (where.inFloor ? "none" : "off the floor")],
-                ["Station boxes holding it", where.boxes.length ? where.boxes.map((s) => `S${s}`).join(", ") : boxes.length ? "none: no fix" : "no calibration shown"],
-                [
-                  "Who gives the fix",
-                  where.fix.length === 0 ? "nobody" : where.fix.length === 1 ? `S${where.fix[0]}` : `${where.fix.map((s) => `S${s}`).join(" or ")}: not decided by the boxes`,
-                ],
+                ["Covered by", where.boxes.length ? where.boxes.map((s) => `S${s}`).join(", ") : boxes.length ? "no station: no position" : "no calibration shown"],
+                ["Uses", where.fix.length === 0 ? "no station" : where.fix.length === 1 ? `S${where.fix[0]}` : `${where.fix.map((s) => `S${s}`).join(" or ")}: no handover here`],
                 ["Nearest edge", where.edge ? `${where.edge.mm} mm, ${where.edge.side}` : "no floor"],
               ]}
             />
             {where.fix.length > 1 && (
               <div className="callout info" style={{ marginTop: 10 }}>
-                The boxes leave it to the solves: the robot keeps whichever of {where.fix.map((s) => `S${s}`).join(" and ")} lands nearer the shared centre. The robot
-                prints the winner on its serial port; it is not sent over the radio today.
+                No handover here: the robot keeps whichever of {where.fix.map((s) => `S${s}`).join(" and ")} lands closer to the centre. Which one it was stays on the
+                robot's serial port; it is not sent over the radio.
               </div>
             )}
           </Sec>
         )}
-        <Sec title="Calibration it holds">
+        <Sec title="Calibration it has">
           <div className="callout" data-testid="robot-held">
             {held.kind === "not-reported" ? (
               <>
-                <Badge tone="unknown">not reported</Badge> Robots report it in swarmit's device info, which this page reads as the console does; swarmit gave none for
-                this robot. Nothing here assumes it holds {props.servedId?.slice(0, 8) ?? "a calibration"}.
+                <Badge tone="unknown">cannot tell</Badge> This robot sends no device info, which is where the id would be. Nothing here assumes it has the calibration in
+                use.
               </>
             ) : (
               <>
-                <Badge tone={held.kind === "served" ? "ok" : held.kind === "other" ? "warn" : "plain"}>{held.kind === "served" ? "holds it" : held.kind === "other" ? held.id8 : held.kind === "none" ? "none" : "old firmware"}</Badge>{" "}
+                <Badge tone={held.kind === "served" ? "ok" : held.kind === "other" ? "warn" : "plain"}>{held.kind === "served" ? "has it" : held.kind === "other" ? held.id8 : held.kind === "none" ? "none" : "old firmware"}</Badge>{" "}
                 {heldText(held)}.
               </>
             )}
@@ -429,7 +426,7 @@ export const Inspector: React.FC<InspectorProps> = (props) => {
           )}
           {props.onCheck && bot.position && (
             <button type="button" className="btn sm" onClick={() => props.onCheck?.(bot.id)}>
-              <Icon name="pin" size={13} /> Check on a mark
+              <Icon name="pin" size={13} /> Verify a position
             </button>
           )}
         </div>
@@ -443,7 +440,7 @@ export const Inspector: React.FC<InspectorProps> = (props) => {
     return (
       <div data-testid="inspector-floor">
         <Head kind="Floor" name={doc.extent_mm ? `${doc.extent_mm[0]} × ${doc.extent_mm[1]} mm` : "not measured"} swatch={<Icon name="frame" size={14} />} />
-        <div className="ins-sub">The rectangle robots report positions in. Zero is its top-left corner; x runs right, y down.</div>
+        <div className="ins-sub">The rectangle robots report positions in. The origin is its top-left corner; x runs right, y down.</div>
         <span className="lbl" style={{ marginTop: 8 }}>Size, mm</span>
         <div className="grid2">
           <NumField label="width" prefix="w" value={doc.extent_mm?.[0] ?? null} min={1} disabled={!editable} onApply={(w) => onEdit({ ...doc, extent_mm: [w, doc.extent_mm?.[1] ?? w] })} />
@@ -456,26 +453,26 @@ export const Inspector: React.FC<InspectorProps> = (props) => {
           ))}
         <div style={{ marginTop: 10 }}>
           <TextArea
-            label="Where zero is in the room"
+            label="Where the origin is, in the room"
             value={doc.anchor ?? ""}
             disabled={!editable}
-            placeholder="a note on how to find zero on the floor: the mark, the wall, the corner"
+            placeholder="how to find the origin on the floor: the tape cross, the wall, the corner"
             onApply={(t) => onEdit({ ...doc, anchor: t.trim() || null })}
           />
         </div>
         <KV rows={[["Frame id", props.frameId ? `${props.frameId}${doc.frame ? "" : " (from the name and note)"}` : "unknown"]]} />
         <div className="note" style={{ marginTop: 6 }}>
-          A free note: calibrations match the frame id, not these words, so fixing a typo orphans nothing. The first save that edits it writes the id into site.toml first.
+          A free note: calibrations match the frame id, not these words, so fixing a typo orphans nothing.
         </div>
         {editable && props.onFrameTool && (
-          <Sec title="Move zero">
-            <div className="note">Turn the frame, shift zero, or put zero on a robot parked on a taped mark: one change, reviewed before anything is written.</div>
+          <Sec title="Move the origin">
+            <div className="note">Turn the room, shift the origin, or put it where robots stand on known spots: one change, reviewed before anything is written.</div>
             <div className="acts">
               <button type="button" className="btn sm" onClick={() => props.onFrameTool?.("turn")}>
-                <Icon name="turn" size={13} /> Turn or shift zero (T)
+                <Icon name="turn" size={13} /> Turn or shift the origin (T)
               </button>
               <button type="button" className="btn sm" onClick={() => props.onFrameTool?.("capture")}>
-                <Icon name="capture" size={13} /> Capture zero with a robot (C)
+                <Icon name="capture" size={13} /> Set the origin from robots (C)
               </button>
             </div>
           </Sec>
@@ -497,14 +494,14 @@ export const Inspector: React.FC<InspectorProps> = (props) => {
           testid="site-summary"
           rows={[
             ["Floor", doc.extent_mm ? `${doc.extent_mm[0]} × ${doc.extent_mm[1]} mm` : "not measured"],
-            ["Zero", "top-left corner"],
+            ["Origin", "top-left corner"],
             ["Areas", doc.areas.length ? doc.areas.map((a) => a.name).join(", ") : "none"],
             ["Stations", boxes.length ? boxes.map((b) => `S${b.index}`).join(", ") : "none shown"],
             ["Robots", props.robots.length ? `${props.robots.length} live · ${inField.length} in the field` : "none live"],
           ]}
         />
       </Sec>
-      <Sec title="Serving">{props.servedCard}</Sec>
+      <Sec title="In use">{props.servedCard}</Sec>
       <Sec title="How to read the plan">
         {GLOSSARY.map((g) => (
           <div className="gloss" key={g.term}>

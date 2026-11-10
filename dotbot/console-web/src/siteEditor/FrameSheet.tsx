@@ -17,7 +17,9 @@ export const FrameSheet: React.FC<{
   live: boolean;
   onClose: () => void;
   onDone: (result: FrameResult) => void;
-}> = ({ site, calibrationId: openedOn, move: openedWith, revision, planned, live, onClose, onDone }) => {
+  /** Sends the new calibration to the robots, from here. */
+  onSend?: (id: string) => void;
+}> = ({ site, calibrationId: openedOn, move: openedWith, revision, planned, live, onClose, onDone, onSend }) => {
   // What the sheet was opened on, kept while the page moves on after the change
   const [calibrationId] = useState(openedOn);
   const [move] = useState(openedWith);
@@ -70,33 +72,33 @@ export const FrameSheet: React.FC<{
           <Icon name="x" size={14} />
         </button>
         <h2>
-          <Icon name="frame" size={16} /> {result ? (result.ok ? "Frame changed" : "Frame changed in part") : "Change the frame"}
+          <Icon name="frame" size={16} /> {result ? (result.ok ? "Origin moved" : "Origin moved in part") : "Move the origin"}
           <Badge>frame {planned.from_frame} → {planned.frame}</Badge>
         </h2>
-        <div className="sub">{what}. One ordered change; a refused step stops the ones after it.</div>
+        <div className="sub">{what}. One change in order; a refused step stops the ones after it.</div>
         {[
           {
             icon: "file" as const,
             title: `1 · A new calibration, ${planned.calibration.id8}`,
-            body: `${id8} re-expressed in the new frame, saved as a new file. ${id8} itself is never rewritten.`,
+            body: `Made from ${id8}, with the new origin. ${id8} itself is kept.`,
             step: steps.find((s) => s.step === "calibration"),
           },
           {
             icon: "frame" as const,
-            title: "2 · site.toml",
-            body: `Takes frame ${planned.frame}${move.note ? ` and the note "${move.note}"` : ""}. Areas, walls and objects keep their numbers: they move with the frame.`,
+            title: "2 · The room file",
+            body: `Records the new origin${move.note ? ` and the note "${move.note}"` : ""}. Areas, walls and objects keep their numbers: they move with the room.`,
             step: steps.find((s) => s.step === "site.toml"),
           },
           {
             icon: "served" as const,
-            title: `3 · Serve ${planned.calibration.id8}`,
-            body: live ? "On this controller, this run only, so its console compares robots with the new frame." : "No controller opened this page: serve it from one later.",
+            title: `3 · Use ${planned.calibration.id8}`,
+            body: live ? "On this controller, until it restarts." : "No controller opened this page: use it from one later.",
             step: steps.find((s) => s.step === "serve"),
           },
           {
             icon: "robot" as const,
-            title: "4 · Push, in the console",
-            body: "Robots report in the old frame until they hold the new calibration. Data already logged stays in the old frame; the provenance block names both.",
+            title: "4 · Send to the robots",
+            body: "Robots keep the old origin until they have the new calibration. Data logged before keeps the old origin; the setup summary names both.",
             step: undefined,
           },
         ].map((p) => (
@@ -123,7 +125,7 @@ export const FrameSheet: React.FC<{
         <h3>Same from a terminal</h3>
         <div className="cli">
           {frameTwin(site, id8, move)}
-          <span className="c">{"\n"}# then serve it and push it:{"\n"}</span>
+          <span className="c">{"\n"}# then send it to the robots:{"\n"}</span>
           {planned.push}
         </div>
         {error && (
@@ -136,13 +138,17 @@ export const FrameSheet: React.FC<{
           <button ref={cancelRef} type="button" className="btn" onClick={onClose} disabled={busy}>
             {result ? "Close" : "Cancel"}
           </button>
-          {result ? (
+          {result && onSend ? (
+            <button type="button" className="btn primary" onClick={() => onSend(result.calibration.id)}>
+              Send to robots…
+            </button>
+          ) : result ? (
             <a className="btn primary" href={`/console?push=${result.calibration.id8}`} target="dotbot-console" rel="noreferrer">
-              Push in the console ↗
+              Send in the console ↗
             </a>
           ) : (
             <button type="button" className="btn primary" onClick={go} disabled={busy} data-testid="frame-confirm">
-              {busy ? "Changing…" : "Change the frame"}
+              {busy ? "Moving…" : "Move the origin"}
             </button>
           )}
         </footer>

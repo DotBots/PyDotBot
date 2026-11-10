@@ -142,8 +142,8 @@ export function stationsOverlay(coverage: Coverage | null, showNext: boolean, pr
 export const StationsLegend: React.FC<{ mode: CoverageMode; coverage: Coverage | null; boxes: Boxes; showNext: boolean; stale: boolean }> = ({ mode, coverage, boxes, showNext, stale }) => (
   <div className="float legend" data-testid="legend">
     <div className="lh">
-      {mode === "fix" ? "Who gives the fix" : "Predicted error"}
-      <span className="cnd">{mode === "fix" ? "when every station sees the robot" : `the station the robot keeps, one standard deviation${stale ? " · updating…" : ""}`}</span>
+      {mode === "fix" ? "Coverage" : "Accuracy"}
+      <span className="cnd">{mode === "fix" ? "which station a robot uses, when both see it" : `predicted error of the station used${stale ? " · updating…" : ""}`}</span>
     </div>
     <div className="rowset">
       {mode === "fix" ? (
@@ -155,11 +155,11 @@ export const StationsLegend: React.FC<{ mode: CoverageMode; coverage: Coverage |
           ))}
           <span className="row">
             <span className="lsw" style={{ background: "repeating-linear-gradient(135deg, color-mix(in srgb, var(--st-0) 60%, transparent) 0 4px, color-mix(in srgb, var(--st-1) 60%, transparent) 4px 8px)" }} />
-            boxes do not decide
+            both can, no handover
           </span>
           <span className="row">
             <span className="lsw" style={{ background: "repeating-linear-gradient(135deg, color-mix(in srgb, var(--muted) 40%, transparent) 0 3px, transparent 3px 7px)" }} />
-            no fix
+            no position
           </span>
         </>
       ) : (
@@ -203,16 +203,16 @@ export const Readout: React.FC<{ at: Point; px: Point; boxes: Boxes; coverage: C
         <span>{area ?? "none"}</span>
       </div>
       <div className="r">
-        <span>Station boxes</span>
+        <span>Covered by</span>
         <span>{inside.join(", ") || "none"}</span>
       </div>
       <div className="r">
-        <span>Who gives the fix</span>
-        <span>{who.length === 0 ? "nobody" : who.map((s) => `S${s}`).join(" or ")}</span>
+        <span>Uses</span>
+        <span>{who.length === 0 ? "no station" : who.map((s) => `S${s}`).join(" or ")}</span>
       </div>
       <div className="r">
-        <span>Predicted error</span>
-        <span>{kept !== null ? `≤ ${kept.toFixed(2)} mm` : "-"}</span>
+        <span>Accuracy</span>
+        <span>{kept !== null ? `within ${kept.toFixed(2)} mm` : "-"}</span>
       </div>
       {alone.length > 0 && (
         <div className="r">
@@ -222,10 +222,10 @@ export const Readout: React.FC<{ at: Point; px: Point; boxes: Boxes; coverage: C
       )}
       <div className="why">
         {who.length > 1
-          ? "The boxes share a centre here: the station whose solve lands nearer it wins, so the stations' sub-mm disagreement decides, not the boxes."
+          ? "No handover here: a robot keeps whichever station's fix lands closer to the centre, so the two can flicker."
           : who.length === 1
-            ? `S${who[0]}'s solve is kept here: it is nearest its own box's centre${inside.length > 1 ? " of the boxes holding the robot" : ""}.`
-            : "No station's box holds this point: a robot here has no fix."}
+            ? `A robot here uses S${who[0]}.`
+            : "No station covers this point: a robot here has no position."}
       </div>
     </div>
   );

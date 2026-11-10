@@ -5,6 +5,7 @@ import { applySave, fetchHistory, HttpError, previewSite, restoreVersion, type A
 import { lineDiff } from "./diff";
 import { changes, type BoxDraft, type Change } from "./draft";
 import { Icon } from "./icons";
+import { coverageText, nameOf } from "./library";
 import { siteModel, type Doc } from "./model";
 import type { Problem } from "./rules";
 import type { LibraryRow, SitePayload } from "./types";
@@ -162,7 +163,7 @@ export const ReviewSheet: React.FC<ReviewSheetProps> = (props) => {
         <div className="sub">
           {phase.kind === "done"
             ? "Each step below ran in order; a refused step stops the ones after it."
-            : "What Save writes, in the order it writes it. Nothing here moves a robot or changes what the controller serves."}
+            : "What Save writes, in the order it writes it. Nothing here moves a robot or changes what the controller uses."}
         </div>
         {conflicts.length > 0 && phase.kind !== "done" && (
           <div className="callout warn" data-testid="review-conflicts">
@@ -243,27 +244,20 @@ export const ReviewSheet: React.FC<ReviewSheetProps> = (props) => {
             <span>2 · A new calibration</span>
           </div>
           {!props.boxes ? (
-            <div className="pb">Nothing new: no station box was edited.</div>
+            <div className="pb">Nothing new: the coverage was not edited.</div>
           ) : props.dry?.existing ? (
             <div className="pb" data-testid="review-boxes">
-              These boxes are <b>{props.dry.existing.id8}</b> "{props.dry.existing.tag}" already: nothing new is written. Serve that file instead.
+              This coverage is already <b>{nameOf(props.dry.existing)}</b>: nothing new is written. Use that file instead.
             </div>
           ) : (
             <div className="pb" data-testid="review-boxes">
-              A <b>rebox</b> of {props.boxes.from.slice(0, 8)}: same homographies, new boxes, saved as a new file
-              {props.dry ? (
-                <>
-                  {" "}
-                  with id <b className="mono">{props.dry.id8}</b>. {props.dry.reading}.
-                </>
-              ) : (
-                "."
-              )}{" "}
-              The file it starts from is never rewritten, and nothing is served or pushed.
+              A new calibration from <b>{props.boxSource ? nameOf(props.boxSource) : props.boxes.from.slice(0, 8)}</b>: the same measurement with the edited coverage
+              {props.dry ? <> ({coverageText(props.dry.reading)})</> : null}. The original is kept; nothing changes on the controller or the robots until you use the new
+              one.
               <div style={{ marginTop: 8, maxWidth: 360 }}>
-                <span className="lbl">Tag of the new file</span>
+                <span className="lbl">Name of the new file</span>
                 <div className="fld">
-                  <input aria-label="Tag of the new file" value={props.boxes.tag} onChange={(e) => props.onTag?.(e.target.value)} placeholder="no tag" />
+                  <input aria-label="Name of the new file" value={props.boxes.tag} onChange={(e) => props.onTag?.(e.target.value)} placeholder="no name" />
                 </div>
               </div>
               <div className="cli" style={{ marginTop: 8 }}>
@@ -278,7 +272,7 @@ export const ReviewSheet: React.FC<ReviewSheetProps> = (props) => {
             <Icon name="robot" size={15} />
             <span>3 · Robots</span>
           </div>
-          <div className="pb">Saving never touches robots. Serving a calibration and pushing it to robots are separate steps.</div>
+          <div className="pb">Saving never touches robots. Using a calibration and sending it to robots are separate steps.</div>
         </div>
         {phase.kind === "done" && (
           <div className="part" data-testid="review-result">

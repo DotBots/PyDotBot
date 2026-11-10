@@ -128,7 +128,7 @@ function frameGhost(m: FrameMove, extent: [number, number]) {
         <line x1={zero[0]} y1={zero[1]} x2={yEnd[0]} y2={yEnd[1]} stroke="var(--accent)" strokeWidth={1.8 * p.chrome} />
         <circle cx={zero[0]} cy={zero[1]} r={6 * p.chrome} fill="var(--canvas)" stroke="var(--accent)" strokeWidth={1.6 * p.chrome} />
         <text className="halo" x={zero[0] + 9 * p.chrome} y={zero[1] - 8 * p.chrome} fontSize={10.5 * p.label} fill="var(--accent)" strokeWidth={3 * p.chrome}>
-          new zero
+          new origin
         </text>
         {m.theta_deg !== 0 && (
           <g>
@@ -468,7 +468,7 @@ export const SiteEditorApp: React.FC = () => {
     if (go.sheet === "split" && editable && boxes.length === 2) {
       setCoverageMode("fix");
       editBoxes(splitFloor(draft?.doc.extent_mm ?? [1000, 1000], servedCoverage?.geometry ?? shown?.geometry ?? null, [boxes[0].index, boxes[1].index]));
-      setToast({ text: "The floor split between the stations, as a draft: drag the boxes if needed, then Save writes it as a new calibration file." });
+      setToast({ text: "A handover down the middle, as a draft: drag the line if needed, then Save writes it as a new calibration." });
     }
     setRightTab("inspect");
   };
@@ -876,6 +876,7 @@ export const SiteEditorApp: React.FC = () => {
             onPreview={setPlacePreview}
             onClose={() => (setNewRoom(false), setPlacePreview(null))}
             onCheck={() => (setNewRoom(false), setChecking(true))}
+            onSend={live ? (id) => setPushing(id) : undefined}
             servedId={servedId && servedRowNow?.in_frame !== false ? servedId : null}
             onWritten={(p, placed, served) => {
               if (p) onSaved(p);
@@ -896,6 +897,7 @@ export const SiteEditorApp: React.FC = () => {
             robotId={typeof checking === "string" ? checking : null}
             calibrationId={servedId}
             coverage={servedCoverage}
+            revision={draft.revision}
             onClose={() => setChecking(null)}
             onRecorded={(c) => {
               setChecks((cs) => [...cs, c]);
@@ -968,8 +970,8 @@ export const SiteEditorApp: React.FC = () => {
             {(
               [
                 ["grid", "Grid", "100 mm when zoomed in, as in the console"],
-                ["robots", "Robots", "live, as the console draws them; ids up to 200 robots"],
-                ["boxes", "Station boxes", `of ${shown?.id8 ?? "the shown calibration"}`],
+                ["robots", "Robots", "live, as the console draws them; labels up to 200 robots"],
+                ["boxes", "Coverage", `of ${shown ? nameOf(shown) : "the shown calibration"}`],
                 ["circles", "Spin circles", "where robots spun to measure the stations"],
               ] as [keyof PlanLayers, string, string][]
             ).map(([k, text, hint]) => (
@@ -1097,7 +1099,7 @@ export const SiteEditorApp: React.FC = () => {
                   <Icon name="pin" /> Switch site…
                 </button>
                 <button type="button" className="mi" role="menuitem" onClick={() => (setNewRoom(true), setRightTab("inspect"), rightAsRail && setDrawer("right"), setMenu(false))}>
-                  <Icon name="mount" /> Mount, spin and place, step by step
+                  <Icon name="mount" /> Set up a room, step by step
                 </button>
               </>
             )}
@@ -1105,10 +1107,10 @@ export const SiteEditorApp: React.FC = () => {
               <Icon name="present" /> Present, for a projector
             </button>
             <button type="button" className="mi" role="menuitem" onClick={() => (setLeftTab("checks"), setMenu(false))}>
-              <Icon name="restore" /> Restore points and provenance
+              <Icon name="restore" /> Snapshots and setup summary
             </button>
             <button type="button" className="mi" role="menuitem" onClick={() => (setView("file"), setMenu(false))}>
-              <Icon name="file" /> site.toml as Save would write it
+              <Icon name="file" /> The room file, as Save writes it
             </button>
             <button type="button" className="mi" role="menuitem" onClick={() => (setShortcuts(true), setMenu(false))}>
               <Icon name="key" /> Keyboard shortcuts <span className="s">?</span>
@@ -1440,6 +1442,7 @@ export const SiteEditorApp: React.FC = () => {
           planned={frameReview}
           live={live}
           onClose={() => setFrameReview(null)}
+          onSend={live ? (id) => setPushing(id) : undefined}
           onDone={() => {
             setFrameMove(NO_MOVE);
             setTool("select");

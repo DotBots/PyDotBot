@@ -50,8 +50,10 @@ export const NewRoomPanel: React.FC<{
   onPreview: (p: PlacePreview | null) => void;
   onWritten: (payload: SitePayload | null, placedId: string | null, served: boolean) => void;
   onClose: () => void;
-  /** Opens the check on a mark, once a placed calibration is served */
+  /** Opens the verification, once a placed calibration is in use */
   onCheck?: () => void;
+  /** Sends a calibration to the robots, from here */
+  onSend?: (id: string) => void;
   /** What the controller serves in this room's frame, if anything */
   servedId?: string | null;
 }> = (props) => {
@@ -125,7 +127,7 @@ export const NewRoomPanel: React.FC<{
         const saved = await applySave(revision, siteModel(next));
         payload = saved;
         revision = saved.revision;
-        done.push(`site.toml written: floor ${next.extent_mm![0]} × ${next.extent_mm![1]} mm${hasField ? "" : ", field added"}`);
+        done.push(`room file written: floor ${next.extent_mm![0]} × ${next.extent_mm![1]} mm${hasField ? "" : ", field added"}`);
       }
       const placed = await placeCalibration(placeId, move);
       done.push(`${placed.id8} written from ${placed.source}${placed.warnings.length ? ` (${placed.warnings.join("; ")})` : ""}`);
@@ -133,7 +135,7 @@ export const NewRoomPanel: React.FC<{
       if (props.live) {
         await putServed(placed.id, false);
         served = true;
-        done.push(`${placed.id8} served, this run only`);
+        done.push(`${placed.id8} in use, until the controller restarts`);
       }
       setSteps(done);
       setWritten({ id: placed.id, served });
@@ -221,21 +223,27 @@ export const NewRoomPanel: React.FC<{
               </ul>
             ) : (
               <div className="note">
-                {written.id.slice(0, 8)} is served in this room's frame. To place another spin, pick it in Calibrations and choose Place in this room.
+                {written.id.slice(0, 8)} is in use in this room. To put another spin in it, pick the spin in Calibrations and choose Put in this room.
               </div>
             )}
           </Step>
-          <Step n={4} title="Push it, then check it" state="on">
+          <Step n={4} title="Send it, then verify" state="on">
             <div className="note">
-              Robots still compute positions with what they hold. Push {written.id.slice(0, 8)} to them in the console, then park one on a taped mark to check the room's zero.
+              Robots still use what they have. Send {written.id.slice(0, 8)} to them, then park one on a measured spot to verify the origin.
             </div>
             <div className="acts">
-              <a className="btn sm primary" href={`/console?push=${written.id.slice(0, 8)}`} target="dotbot-console" rel="noreferrer" data-testid="newroom-push">
-                Push in the console <Icon name="ext" size={11} />
-              </a>
+              {props.onSend ? (
+                <button type="button" className="btn sm primary" onClick={() => props.onSend?.(written.id)} data-testid="newroom-push">
+                  Send to robots…
+                </button>
+              ) : (
+                <a className="btn sm primary" href={`/console?push=${written.id.slice(0, 8)}`} target="dotbot-console" rel="noreferrer" data-testid="newroom-push">
+                  Send in the console <Icon name="ext" size={11} />
+                </a>
+              )}
               {props.onCheck && written.served && (
                 <button type="button" className="btn sm" onClick={props.onCheck}>
-                  Check on a mark…
+                  Verify…
                 </button>
               )}
             </div>
@@ -254,13 +262,13 @@ export const NewRoomPanel: React.FC<{
             </select>
           </div>
         )}
-        {!placeId && <div className="note">A spin, once saved, is placed here: it is in its own frame until then, zero at its robots' top-left.</div>}
+        {!placeId && <div className="note">A spin, once saved, is put in the room here: until then its origin is at its robots' top-left.</div>}
         {error && !busy && <div className="callout err">{error}</div>}
-        {overlay && !overlay.free && <div className="callout">{overlay.id8} is already in a room's frame; this step is for a spin in its own frame.</div>}
+        {overlay && !overlay.free && <div className="callout">{overlay.id8} is already in a room; this step is for a spin that is not yet.</div>}
         {overlay?.free && (
           <>
             <div className="note">
-              <b className="mono">{overlay.id8}</b> saw {robots.length} robot(s). Where should zero be?
+              <b className="mono">{overlay.id8}</b> saw {robots.length} robot(s). Where should the origin be?
             </div>
             <div className="seg" role="tablist" aria-label="How to place it" style={{ margin: "8px 0" }}>
               {(
@@ -277,15 +285,15 @@ export const NewRoomPanel: React.FC<{
             </div>
             {method === "around" && (
               <>
-                <div className="note">Zero is a margin above and left of the robots, x along the rows they stood in. Quick to start; the room's real zero can be captured later.</div>
+                <div className="note">The origin is a margin above and left of the robots, x along the rows they stood in. Quick to start; the room's real origin can be set later.</div>
                 <NumField label="margin" prefix="margin" value={margin} onApply={(v) => setMargin(Math.max(0, v))} />
               </>
             )}
             {method === "marks" && (
               <>
                 <div className="note">
-                  Two robots spun with their turning centre (the middle of the axle) on taped marks. Type where each mark is, measured from zero: the first goes on its mark, the second sets the x
-                  direction.
+                  Two robots spun with their turning centre (the middle of the axle) on measured spots. Type where each spot is, measured from the origin: the first goes on its spot, the
+                  second sets the x direction.
                 </div>
                 {[
                   [markA, setMarkA, "First mark"],
@@ -322,7 +330,7 @@ export const NewRoomPanel: React.FC<{
             )}
             {method === "typed" && (
               <>
-                <div className="note">The turn about the spin's zero, then where its zero lands, mm.</div>
+                <div className="note">The turn about the spin's origin, then where its origin lands, mm.</div>
                 <NumField label="turn" prefix="turn" unit="°" value={typed.theta_deg} onApply={(v) => setTyped({ ...typed, theta_deg: v })} />
                 <div className="grid2" style={{ marginTop: 4 }}>
                   <NumField label="shift x" prefix="x" value={typed.dx} onApply={(v) => setTyped({ ...typed, dx: v })} />
@@ -331,7 +339,7 @@ export const NewRoomPanel: React.FC<{
               </>
             )}
             <div style={{ marginTop: 10 }}>
-              <TextField label="Where zero is, in words" value={note} placeholder="the tape cross by the door" onApply={setNote} />
+              <TextField label="Where the origin is, in words" value={note} placeholder="the tape cross by the door" onApply={setNote} />
             </div>
             {proposal && (
               <div style={{ marginTop: 8 }}>
@@ -360,10 +368,10 @@ export const NewRoomPanel: React.FC<{
             )}
             <div className="acts">
               <button type="button" className="btn sm primary" disabled={!props.editable || busy || !!blocked} onClick={write} data-testid="place-write" title={props.editable ? "Writes site.toml, then the spin placed in it, then serves it" : "Only on the controller's own machine"}>
-                {busy ? "Writing…" : props.live ? "Write and serve" : "Write"}
+                {busy ? "Saving…" : props.live ? "Save and use" : "Save"}
               </button>
             </div>
-            <div className="note">Writes site.toml first, then the calibration placed in it (the spin's file is kept), then serves it. Robots get it when you push it in the console.</div>
+            <div className="note">Saves the room file, then the calibration placed in it (the spin's file is kept), then uses it. Robots get it when you send it to them.</div>
           </>
         )}
       </Step>
