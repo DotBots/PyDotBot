@@ -146,12 +146,14 @@ export function deriveMissions(bots: UnifiedBot[], planned: PlannedMission[]): M
 export const TestbedRail: React.FC<TestbedRailProps> = (props) => {
   // ?rail=testbed|missions|localization picks which tab is on top.
   const railParam = new URLSearchParams(window.location.search).get("rail");
+  // ?push=<calibration> opens Localization with the push sheet on that file
+  const pushParam = new URLSearchParams(window.location.search).get("push");
   const mode = props.collapsed ? "collapsed" : "panel";
   const expand = () => props.setCollapsed(false);
   const [top, setTop] = useState<"testbed" | "missions" | "localization">(
     railParam === "missions"
       ? "missions"
-      : railParam === "localization"
+      : railParam === "localization" || pushParam
         ? "localization"
         : "testbed",
   );
@@ -565,6 +567,7 @@ export const TestbedRail: React.FC<TestbedRailProps> = (props) => {
               onCalibrate={props.onCalibrate}
               selection={props.selection}
               onPush={props.onPushCalibration}
+              pushOnOpen={pushParam}
             />
           )}
         </div>

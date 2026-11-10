@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 
+import { PushSheet } from "./shared/PushSheet";
 import {
   calibrationCoverage,
   camerasSummary,
@@ -82,6 +83,8 @@ interface LocalizationPanelProps {
   selection: ReadonlySet<string>;
   /** Push the saved calibration: to `stale` when given, else by the selection rule. */
   onPush: (stale?: string[]) => void;
+  /** A calibration to open the push sheet on, as the site editor's link names it. */
+  pushOnOpen?: string | null;
 }
 
 const TARGETS: { value: PushTarget; text: string; title: string }[] = [
@@ -156,7 +159,9 @@ export const LocalizationPanel: React.FC<LocalizationPanelProps> = ({
   onCalibrate,
   selection,
   onPush,
+  pushOnOpen = null,
 }) => {
+  const [pushing, setPushing] = useState<string | null>(pushOnOpen);
   // The fleet is compared with what the controller serves, or with what
   // this session saved, which is what a push would send.
   const served = site?.calibration ?? null;
@@ -244,6 +249,25 @@ export const LocalizationPanel: React.FC<LocalizationPanelProps> = ({
           )}
         </Section>
 
+        {served && (
+          <Section title="Push a calibration">
+            <div style={{ fontSize: 11.5, color: "var(--muted)", lineHeight: 1.5 }}>
+              Send a saved file to the robots you tick; nothing is ticked for you.
+            </div>
+            <div
+              role="button"
+              tabIndex={0}
+              data-testid="push-open"
+              onClick={() => setPushing(served.id)}
+              onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && setPushing(served.id)}
+              style={{ ...actionButton(false, false), marginTop: 8 }}
+              title="Choose the robots to push the served calibration to"
+            >
+              Push {served.id.slice(0, 8)} to robots…
+            </div>
+          </Section>
+        )}
+
         <Section title="Stations">
           <div style={{ fontSize: 13 }}>{stationsSummary(session, served)}</div>
           {rows.map((row) => (
@@ -272,6 +296,15 @@ export const LocalizationPanel: React.FC<LocalizationPanelProps> = ({
         </Section>
       </div>
 
+      {pushing && (
+        <PushSheet
+          calibrationId={pushing}
+          tag={served && pushing.startsWith(served.id.slice(0, 8)) ? served.tag : undefined}
+          site={site?.name ?? ""}
+          bots={bots}
+          onClose={() => setPushing(null)}
+        />
+      )}
       <div
         style={{
           flex: "none",

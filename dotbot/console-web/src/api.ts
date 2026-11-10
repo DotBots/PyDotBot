@@ -223,6 +223,11 @@ export async function pushCalibration(devices: string[] = []): Promise<Calibrati
   return controllerJson(`${SESSION}/push`, { method: "POST", body: { devices } });
 }
 
+/** Push a saved calibration file, by id, tag or path, to exactly `devices`. */
+export async function pushCalibrationFile(calibration: string, devices: string[]): Promise<CalibrationPushed> {
+  return controllerJson(`${CONTROLLER}/calibration/push`, { method: "POST", body: { calibration, devices } });
+}
+
 export async function abandonCalibration(): Promise<void> {
   await controllerJson(SESSION, { method: "DELETE" });
 }
