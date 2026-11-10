@@ -29,7 +29,7 @@ const Row: React.FC<{
   const [problem, setProblem] = useState("");
   const input = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
-    if (renaming !== null) input.current?.focus();
+    if (renaming !== null) input.current?.select();
   }, [renaming !== null]);
   const item = (action: LibraryAction | "rename", icon: Parameters<typeof Icon>[0]["name"], text: string, disabled = false, title?: string) => (
     <button

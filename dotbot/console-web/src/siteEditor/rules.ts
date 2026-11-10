@@ -58,6 +58,18 @@ function splitFixes(doc: Doc, field: DocArea, staging: DocArea): Fix[] {
     const x = staging.x + staging.w;
     fixes.push({ label: `Shrink the field to ${field.x + field.w - x} × ${field.h}`, note: scripts, doc: withArea(doc, field.key, { x, w: field.x + field.w - x }) });
   }
+  if (!fixes.length) {
+    // Staging spans neither side: give up the field's strip that meets it
+    const cuts: { area: number; patch: Partial<DocArea>; size: string }[] = [];
+    const fy1 = field.y + field.h;
+    const fx1 = field.x + field.w;
+    if (staging.y > field.y) cuts.push({ area: field.w * (staging.y - field.y), patch: { h: staging.y - field.y }, size: `${field.w} × ${staging.y - field.y}` });
+    if (staging.y + staging.h < fy1) cuts.push({ area: field.w * (fy1 - staging.y - staging.h), patch: { y: staging.y + staging.h, h: fy1 - staging.y - staging.h }, size: `${field.w} × ${fy1 - staging.y - staging.h}` });
+    if (staging.x > field.x) cuts.push({ area: field.h * (staging.x - field.x), patch: { w: staging.x - field.x }, size: `${staging.x - field.x} × ${field.h}` });
+    if (staging.x + staging.w < fx1) cuts.push({ area: field.h * (fx1 - staging.x - staging.w), patch: { x: staging.x + staging.w, w: fx1 - staging.x - staging.w }, size: `${fx1 - staging.x - staging.w} × ${field.h}` });
+    const best = cuts.sort((a, b) => b.area - a.area)[0];
+    if (best) fixes.push({ label: `Shrink the field to ${best.size}`, note: scripts, doc: withArea(doc, field.key, best.patch) });
+  }
   const ext = doc.extent_mm;
   if (ext) {
     const nearBottom = staging.y + staging.h / 2 > field.y + field.h / 2;
@@ -84,9 +96,23 @@ function splitFixes(doc: Doc, field: DocArea, staging: DocArea): Fix[] {
   return fixes;
 }
 
+/** What an area may be called: a word scripts can pass to --area unquoted. */
+export const AREA_NAME = /^[A-Za-z0-9_-]+(\+[A-Za-z0-9_-]+)*$/;
+
 /** Every rule the draft breaks, with what would fix it. */
 export function problems(doc: Doc): Problem[] {
   const out: Problem[] = [];
+  for (const a of doc.areas)
+    if (!AREA_NAME.test(a.name)) {
+      const fixed = a.name.trim().replace(/\s+/g, "-").replace(/[^A-Za-z0-9_+-]/g, "") || "area";
+      out.push({
+        keys: [a.key],
+        title: `"${a.name}" is not a name scripts can use`,
+        detail: "An area's name is passed as --area NAME: letters, digits, - and _ only.",
+        blocking: true,
+        fixes: [{ label: `Rename it ${fixed}`, doc: withArea(doc, a.key, { name: fixed }) }],
+      });
+    }
   const fields = doc.areas.filter((a) => roleOf(a) === "field");
   const stagings = doc.areas.filter((a) => roleOf(a) === "staging");
   if (fields.length > 1) {

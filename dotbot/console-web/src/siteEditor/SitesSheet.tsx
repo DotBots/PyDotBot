@@ -46,7 +46,7 @@ const NewSiteForm: React.FC<{
     <div data-testid="new-site">
       <span className="lbl">Name</span>
       <div className={`fld${problem ? " bad" : ""}`}>
-        <input aria-label="Site name" autoFocus placeholder="bench-b" value={name} maxLength={40} onChange={(e) => setName(e.target.value.trim())} onKeyDown={(e) => e.key === "Enter" && submit()} />
+        <input aria-label="Site name" autoFocus placeholder="bench-b" value={name} maxLength={40} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} />
       </div>
       <div className="note" style={{ color: problem ? "var(--err)" : undefined }}>
         {problem || `Up to ${SITE_NAME_MAX} letters, digits, - and _: robots receive it with every calibration.`}

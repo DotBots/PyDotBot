@@ -8,6 +8,7 @@ import { Icon } from "./icons";
 import { siteModel, type Doc } from "./model";
 import type { Problem } from "./rules";
 import type { LibraryRow, SitePayload } from "./types";
+import { plainError } from "./units";
 
 // Review and save: what each write changes, in three parts, then one ordered
 // write whose steps are reported one by one. Saving writes files only.
@@ -51,7 +52,7 @@ type Phase =
 
 const VERB: Record<Change["what"], string> = { added: "Adds", changed: "Changes", removed: "Removes" };
 
-const clean = (e: unknown) => (e as Error).message.replace(/^\d+: /, "");
+const clean = (e: unknown) => plainError((e as Error).message);
 
 export const ReviewSheet: React.FC<ReviewSheetProps> = (props) => {
   const { base, doc, revision, baseText, live, conflicts, onClose, onSaved, onStale } = props;

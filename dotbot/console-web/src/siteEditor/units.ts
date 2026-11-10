@@ -37,3 +37,16 @@ export function parseDeg(text: string, current: number): Parsed {
 
 /** A length as the fields show it: whole mm, or one decimal when it has one. */
 export const showMm = (v: number) => String(Math.round(v * 10) / 10);
+
+/** A server's refusal as a sentence: no status code, and a validation
+ * error reduced to what it says, without its type tags and links. */
+export function plainError(message: string): string {
+  const m = message.replace(/^\d+: /, "");
+  if (!/validation error/.test(m)) return m;
+  const said = m
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l && !/validation errors? for/.test(l) && !l.startsWith("For further information"))
+    .map((l) => l.replace(/^Value error, /, "").replace(/\s*\[type=.*$/, ""));
+  return said.join(" ") || m;
+}

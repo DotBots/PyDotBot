@@ -143,7 +143,7 @@ export const StationsLegend: React.FC<{ mode: CoverageMode; coverage: Coverage |
   <div className="float legend" data-testid="legend">
     <div className="lh">
       {mode === "fix" ? "Who gives the fix" : "Predicted error"}
-      <span className="cnd">{mode === "fix" ? "when every station sees the robot" : `the station the robot keeps, 1σ${stale ? " · updating…" : ""}`}</span>
+      <span className="cnd">{mode === "fix" ? "when every station sees the robot" : `the station the robot keeps, one standard deviation${stale ? " · updating…" : ""}`}</span>
     </div>
     <div className="rowset">
       {mode === "fix" ? (

@@ -137,7 +137,7 @@ export const FrameSheet: React.FC<{
             {result ? "Close" : "Cancel"}
           </button>
           {result ? (
-            <a className="btn primary" href={`/console?push=${result.calibration.id8}`} target="_blank" rel="noreferrer">
+            <a className="btn primary" href={`/console?push=${result.calibration.id8}`} target="dotbot-console" rel="noreferrer">
               Push in the console ↗
             </a>
           ) : (

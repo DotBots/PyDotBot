@@ -55,7 +55,9 @@ const Rule: React.FC<{ boxes: Boxes; coverage: Coverage | null; editable: boolea
         <li>Of the rest, the one nearest its own box's centre is kept; an exact tie keeps the lower number.</li>
       </ol>
       <div className="mono muted" style={{ fontSize: 10.5 }}>
-        swarmit bootloader lh2_select.c · this page agrees with {AGREEMENT.agree}/{AGREEMENT.total} shared fixtures
+        <span title={`The robots' firmware (swarmit bootloader, lh2_select.c); this page's copy of the rule agrees with it on ${AGREEMENT.agree} of ${AGREEMENT.total} shared test cases`}>
+          The robots' own rule, drawn by the same rule here ({AGREEMENT.agree} of {AGREEMENT.total} test cases agree)
+        </span>
       </div>
       {shared && (
         <div style={{ marginTop: 8 }}>
@@ -245,7 +247,7 @@ export const StationsPanel: React.FC<StationsPanelProps> = (props) => {
         </tbody>
       </table>
       <div className="note" style={{ marginTop: 8 }}>
-        Worst: predicted error (1σ, mm) where that station gives the fix, when every station sees the robot. Limit {coverage?.limit_mm ?? 2} mm, stored in site.toml. Moved?:
+        Worst: predicted error (one standard deviation, mm) where that station gives the fix, when every station sees the robot. Limit {coverage?.limit_mm ?? 2} mm, stored in site.toml. Moved?:
         {m.spins > 1 ? ` the ${m.spins} spins of this site compared (${m.ranges.join(", ")}); a moved tripod would show, a nudge would not.` : " one spin only, nothing to compare."}
       </div>
       {props.coverageError && (
@@ -262,7 +264,7 @@ export const StationsPanel: React.FC<StationsPanelProps> = (props) => {
             <Icon name={h.worst_mm > (coverage?.limit_mm ?? 2) ? "warn" : "check"} size={14} />≤ {h.worst_mm.toFixed(2)} mm on the floor, worst near ({h.at[0]}, {h.at[1]})
           </div>
           For the station the robot keeps{h.bound ? "; where the boxes do not decide, the worse of the candidates, a bound" : ""}, on the CLI's {h.cell_mm} mm cells: the same number{" "}
-          <span className="mono">calibrate-lh2 show</span> prints. Fused over every station it would be {h.fused_worst_mm.toFixed(2)} mm, which no robot does.
+          <span className="mono">calibrate-lh2 show</span> prints. A robot averaging every station would do better ({h.fused_worst_mm.toFixed(2)} mm), but robots keep one station's fix.
           {h.cells_over_limit > 0 && ` ${h.cells_over_limit} of ${h.cells} cells pass the ${coverage?.limit_mm ?? 2} mm limit.`}
           {coverage && coverage.next.length > 0 && (
             <div className="acts">

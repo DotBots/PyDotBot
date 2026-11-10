@@ -231,10 +231,12 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
 
   const finishPoly = useCallback(() => {
     const need = tool === "obstacle" ? 3 : 2;
-    if (poly.length >= need) {
+    // A double click, or a click then Enter, places its last point twice
+    const points = poly.filter((p, i) => i === 0 || p[0] !== poly[i - 1][0] || p[1] !== poly[i - 1][1]);
+    if (points.length >= need) {
       const k = tool === "obstacle" ? "obstacle" : "wall";
       const key = freshKey(doc, k);
-      const entry = { key, name: null, points: poly, comment: null, was: null };
+      const entry = { key, name: null, points, comment: null, was: null };
       props.onEdit(k === "wall" ? { ...doc, walls: [...doc.walls, entry] } : { ...doc, obstacles: [...doc.obstacles, entry] });
       props.onSelect([key]);
     }
@@ -832,9 +834,9 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
               {gridLines}
               {ruler}
               {props.underlay?.(paint, shownBoxes)}
-              <rect data-testid="floor" x={fx} y={fy} width={fw} height={fh} fill="none" stroke="var(--muted)" strokeWidth={chrome} style={{ pointerEvents: "none" }} />
+              <rect data-testid="floor" x={fx} y={fy} width={fw} height={fh} fill="none" stroke="var(--muted)" strokeWidth={chrome} strokeDasharray={doc.extent_mm ? undefined : `${3 * chrome} ${5 * chrome}`} style={{ pointerEvents: "none" }} />
               <text className="tl halo" x={fx + fw / 2} y={fy + fh + 16 * label} fontSize={10 * label} textAnchor="middle" strokeWidth={3 * chrome}>
-                floor {extent[0]} × {extent[1]} mm
+                {doc.extent_mm ? `floor ${extent[0]} × ${extent[1]} mm` : "floor not measured yet: a placeholder"}
               </text>
               {circleNodes}
               {boxNodes}

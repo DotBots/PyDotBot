@@ -17,9 +17,9 @@ export const STILL_MM = 3;
 export const STILL_MS = 2000;
 
 /** Whether a robot's fixes over the last `STILL_MS` stayed within `STILL_MM`. */
-export function stillness(track: { t: number; p: Point }[], now: number): { still: boolean; mean: Point | null } {
+export function stillness(track: { t: number; p: Point }[], now: number): { still: boolean; mean: Point | null; measuring?: boolean } {
   const recent = track.filter((s) => now - s.t <= STILL_MS);
-  if (recent.length < 2 || now - recent[0].t < STILL_MS * 0.8) return { still: false, mean: recent.length ? recent[recent.length - 1].p : null };
+  if (recent.length < 2 || now - recent[0].t < STILL_MS * 0.8) return { still: false, mean: recent.length ? recent[recent.length - 1].p : null, measuring: true };
   const mx = recent.reduce((a, s) => a + s.p[0], 0) / recent.length;
   const my = recent.reduce((a, s) => a + s.p[1], 0) / recent.length;
   const still = recent.every((s) => Math.hypot(s.p[0] - mx, s.p[1] - my) <= STILL_MM);
@@ -205,7 +205,7 @@ export const FramePanel: React.FC<FramePanelProps> = (props) => {
                       <td>
                         {p[0].toFixed(0)}, {p[1].toFixed(0)}
                       </td>
-                      <td className="l">{s.still ? <Badge tone="ok">still</Badge> : <Badge>moving</Badge>}</td>
+                      <td className="l">{s.still ? <Badge tone="ok">still</Badge> : <Badge>{s.measuring ? "measuring…" : "moving"}</Badge>}</td>
                       <td className="l">
                         {trusted ? (
                           <button

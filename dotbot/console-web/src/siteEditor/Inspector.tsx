@@ -22,6 +22,7 @@ const GLOSSARY: { term: string; means: string; swatch: React.ReactNode }[] = [
   { term: "Field", means: "the area experiments run in (staging: where robots park)", swatch: <span style={{ width: 14, height: 10, border: "1.5px dashed var(--area-0)", borderRadius: 2 }} /> },
   { term: "Station", means: "an LH2 base station, S0 to S15 (S0 is set to channel 1)", swatch: <span className="stpin" style={{ background: "var(--st-0)" }}>S0</span> },
   { term: "Station box", means: "where a robot trusts that station's fix", swatch: <span style={{ width: 14, height: 10, border: "1.5px solid var(--st-1)", borderRadius: 2 }} /> },
+  { term: "Spin circle", means: "where a robot spun to measure the stations; its ring is the sensor's path", swatch: <span style={{ width: 12, height: 12, border: "1.5px solid var(--st-0)", borderRadius: "50%" }} /> },
   { term: "Who gives the fix", means: "which station's solve a robot keeps, by the robots' own rule", swatch: <span style={{ width: 14, height: 10, background: "color-mix(in srgb, var(--st-0) 45%, transparent)", borderRadius: 2 }} /> },
   { term: "Serving", means: "the calibration this controller uses now", swatch: <span className="dot" style={{ background: "var(--ok)" }} /> },
   { term: "Robot", means: "live, drawn as the console draws it; read only here", swatch: <span className="dot" style={{ background: "var(--s-Running)", borderRadius: 2 }} /> },
@@ -422,7 +423,7 @@ export const Inspector: React.FC<InspectorProps> = (props) => {
             </button>
           )}
           {props.consoleHref && (
-            <a className="btn sm" href={`${props.consoleHref}?sel=${bot.id}`} target="_blank" rel="noreferrer">
+            <a className="btn sm" href={`${props.consoleHref}?sel=${bot.id}`} target="dotbot-console" rel="noreferrer">
               <Icon name="ext" size={13} /> Show in the console
             </a>
           )}
@@ -514,7 +515,7 @@ export const Inspector: React.FC<InspectorProps> = (props) => {
           </div>
         ))}
         <div className="note" style={{ marginTop: 10 }}>
-          Eight words on this view. File keys, ids and frame details live in the inspector, the Table and the File view.
+          One line each here. Ids, file keys and frame details are in the inspector, the Table and the File view.
         </div>
       </Sec>
     </div>

@@ -43,3 +43,27 @@ describe("the field and staging rule", () => {
     expect(p.fixes[0].label).toBe("Clip it to the floor (60 × 120)");
   });
 });
+
+describe("area names and a staging corner", () => {
+  it("refuses a name scripts cannot pass to --area, and offers one they can", () => {
+    const doc = docFromSite({ anchor: "x", extent_mm: [2000, 2000], areas: [{ name: "Parking Zone!", x: 0, y: 0, w: 100, h: 100 }] });
+    const [p] = problems(doc);
+    expect(p.blocking).toBe(true);
+    expect(p.fixes[0].label).toBe("Rename it Parking-Zone");
+    expect(problems(p.fixes[0].doc)).toEqual([]);
+  });
+
+  it("offers to shrink the field when staging overlaps one of its corners", () => {
+    const doc = docFromSite({
+      anchor: "x",
+      extent_mm: [2000, 2000],
+      areas: [
+        { name: "field", x: 0, y: 0, w: 1000, h: 1000 },
+        { name: "staging", x: 800, y: 900, w: 400, h: 300 },
+      ],
+    });
+    const fix = problems(doc)[0].fixes.find((f) => f.label.startsWith("Shrink"))!;
+    expect(fix.label).toBe("Shrink the field to 1000 × 900");
+    expect(problems(fix.doc)).toEqual([]);
+  });
+});

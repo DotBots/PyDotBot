@@ -8,6 +8,7 @@ export function siteNameProblem(name: string, taken: string[] = []): string {
   if (!name) return "";
   if (!/^[A-Za-z0-9_-]+$/.test(name)) return "letters, digits, - and _ only: robots receive the name";
   if (name.length > SITE_NAME_MAX) return `${name.length} characters: robots carry ${SITE_NAME_MAX} at most`;
+  if (name === "default") return "default is what a controller with no site uses; pick a name for this room";
   if (taken.includes(name)) return "a site of that name exists; pick it under Switch instead";
   return "";
 }

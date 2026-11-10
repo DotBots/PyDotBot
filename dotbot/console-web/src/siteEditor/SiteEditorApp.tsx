@@ -33,11 +33,12 @@ import { FrameSheet } from "./FrameSheet";
 import { moves, NO_MOVE, toOld, type FrameMove } from "./frameMove";
 import { ServeSheet } from "./ServeSheet";
 import { heldCalibrationId } from "../botFacts";
-import type { Coverage } from "./coverage";
+import { splitFloor, type Coverage } from "./coverage";
 import { forget, newDraft, pending, persist, reapply, redo, restore, step, undo, type Change, type Draft, type KeyValue, type Snap } from "./draft";
 import "./editor.css";
 import { EditorFleet } from "./EditorFleet";
 import { SitesSheet, StartScreen } from "./SitesSheet";
+import { dismissSpin } from "../api";
 import { mountOverlay, NewRoomPanel, placeOverlay, type PlacePreview } from "./NewRoomPanel";
 import { KV } from "./fields";
 import { FileView } from "./FileView";
@@ -64,7 +65,9 @@ export function editorChip(context: EditorContext | null, shown: LibraryRow | nu
       ? servedChip(context.served)
       : configuredChip(context?.configured?.id8 ? { ...context.configured, spec: context.configured.spec } : null);
   if (shown && shown.id8 !== base.id8) return { ...base, side: { kind: "preview", id8: shown.id8 } };
-  if (context?.mode === "controller" && context.served?.source.endsWith("for this run")) return { ...base, side: { kind: "run-only", restart: restartOf(context) } };
+  // Serving now what a restart serves too is not a run-only state
+  if (context?.mode === "controller" && context.served?.source.endsWith("for this run") && !(base.id8 && restartOf(context).startsWith(base.id8)))
+    return { ...base, side: { kind: "run-only", restart: restartOf(context) } };
   return base;
 }
 
@@ -182,6 +185,9 @@ function frameGhost(m: FrameMove, extent: [number, number]) {
 }
 
 /** The site editor page. */
+// Links from the console open in this tab rather than a new one
+if (typeof window !== "undefined" && !window.name) window.name = "dotbot-site-editor";
+
 export const SiteEditorApp: React.FC = () => {
   const [theme, setTheme] = useState<"dark" | "light">(() => {
     const asked = new URLSearchParams(window.location.search).get("theme");
@@ -257,6 +263,8 @@ export const SiteEditorApp: React.FC = () => {
   const [placeId, setPlaceId] = useState<string | null>(placeParam);
   const [newRoom, setNewRoom] = useState(!!placeParam);
   const [placePreview, setPlacePreview] = useState<PlacePreview | null>(null);
+  // A snap hint belongs to the drag that made it
+  useEffect(() => setSnapTo(""), [draft?.past.length, draft?.future.length]);
   // A spin running for this site, or just saved, opens the new room steps
   useEffect(() => {
     if (spin && (spin.phase === "spinning" || spin.phase === "solving" || spin.phase === "saved")) setNewRoom(true);
@@ -318,6 +326,8 @@ export const SiteEditorApp: React.FC = () => {
   draftRef.current = draft;
   const onStale = useCallback(async () => {
     const p = await fetchSite();
+    fetchContext().then(setContext, () => {});
+    loadLibrary();
     const d = draftRef.current;
     const fresh = docFromPayload(p);
     setPayload(p);
@@ -337,7 +347,7 @@ export const SiteEditorApp: React.FC = () => {
         c.length ? `; ${c.map((x) => x.label).join(", ")} kept the file's version` : ""
       }${d.text !== null ? "; your edits to the old text were dropped" : ""}.`,
     });
-  }, []);
+  }, [loadLibrary]);
 
   const revisionRef = useRef<string | null>(null);
   revisionRef.current = draft?.revision ?? null;
@@ -405,6 +415,7 @@ export const SiteEditorApp: React.FC = () => {
         problems,
         checks,
         frameChangeOpen: frameOpen,
+        servedHere: (context?.served?.source ?? "").startsWith("the site editor"),
       })
     : [];
   const verdict = verdictOf(goalList);
@@ -437,6 +448,11 @@ export const SiteEditorApp: React.FC = () => {
   });
   const goalAction = (a: GoalAction) => {
     const go = a.go;
+    if (go.href) {
+      window.open(go.href, "dotbot-console");
+      return;
+    }
+    if (go.mode) setCoverageMode(go.mode);
     if (go.tab) {
       setLeftTab(go.tab);
       return;
@@ -458,7 +474,11 @@ export const SiteEditorApp: React.FC = () => {
       setTool((go.tool as Tool) ?? "select");
     }
     if (go.select) setSelected([go.select]);
-    if (go.sheet === "split") setCoverageMode("fix");
+    if (go.sheet === "split" && editable && boxes.length === 2) {
+      setCoverageMode("fix");
+      editBoxes(splitFloor(draft?.doc.extent_mm ?? [1000, 1000], servedCoverage?.geometry ?? shown?.geometry ?? null, [boxes[0].index, boxes[1].index]));
+      setToast({ text: "The floor split between the stations, as a draft: drag the boxes if needed, then Save writes it as a new calibration file." });
+    }
     setRightTab("inspect");
   };
   const blocking = problems.filter((p) => p.blocking);
@@ -534,7 +554,7 @@ export const SiteEditorApp: React.FC = () => {
   const libraryAction = (action: LibraryAction, row: LibraryRow) => {
     if (action === "preview") setPreviewId(row.id === servedId ? null : row.id);
     else if (action === "serve") setServing(row);
-    else if (action === "push") window.open(`/console?push=${row.id8}`, "_blank", "noopener");
+    else if (action === "push") window.open(`/console?push=${row.id8}`, "dotbot-console");
     else if (action === "place") {
       setPlaceId(row.id);
       setNewRoom(true);
@@ -587,6 +607,7 @@ export const SiteEditorApp: React.FC = () => {
     if (!bot) return;
     try {
       await putRgbLed(id, bot.application, { red: 255, green: 255, blue: 255 });
+      setToast({ text: `…${id.slice(-4).toUpperCase()} blinks white for 2 s: look for it on the floor.` });
       window.setTimeout(() => putRgbLed(id, bot.application, { red: 0, green: 0, blue: 0 }).catch(() => {}), 2000);
     } catch (e) {
       setNotice({ tone: "err", text: `Blink failed: ${(e as Error).message}` });
@@ -835,14 +856,14 @@ export const SiteEditorApp: React.FC = () => {
             onPlaceId={setPlaceId}
             onPreview={setPlacePreview}
             onClose={() => (setNewRoom(false), setPlacePreview(null))}
+            onCheck={() => (setNewRoom(false), setChecking(true))}
             onWritten={(p, placed, served) => {
               if (p) onSaved(p);
               else fetchSite().then(onSaved, () => {});
               fetchContext().then(setContext, () => {});
               loadLibrary();
-              setNewRoom(false);
-              setPlaceId(null);
               setPlacePreview(null);
+              dismissSpin().catch(() => {});
               setToast({
                 text: `Placed in ${payload?.name}: ${placed?.slice(0, 8)} written${served ? " and served" : ""}. Robots get it when you push it.`,
                 push: placed ? placed.slice(0, 8) : undefined,
@@ -1002,7 +1023,7 @@ export const SiteEditorApp: React.FC = () => {
           />
         )}
         {consoleHref && (
-          <a className="btn ghost" href={consoleHref} target="_blank" rel="noreferrer" title="The console, in its own tab">
+          <a className="btn ghost" href={consoleHref} target="dotbot-console" rel="noreferrer" title="The console, in its own tab">
             <Icon name="ext" />
             {width >= 1200 && "Console"}
           </a>
@@ -1027,6 +1048,9 @@ export const SiteEditorApp: React.FC = () => {
                 </button>
                 <button type="button" className="mi" role="menuitem" onClick={() => (setSitesSheet("switch"), setMenu(false))}>
                   <Icon name="pin" /> Switch site…
+                </button>
+                <button type="button" className="mi" role="menuitem" onClick={() => (setNewRoom(true), setRightTab("inspect"), rightAsRail && setDrawer("right"), setMenu(false))}>
+                  <Icon name="mount" /> Mount, spin and place, step by step
                 </button>
               </>
             )}
@@ -1160,7 +1184,7 @@ export const SiteEditorApp: React.FC = () => {
                       <b>Frame change, push needed:</b> robots report in the old frame {frameChange!.from_frame} until they hold {frameChange!.to_id.slice(0, 8)} ({frameHeld} of{" "}
                       {bots.length} do). Data already logged stays in the old frame.
                     </span>
-                    <a className="btn sm primary" href={`/console?push=${frameChange!.to_id.slice(0, 8)}`} target="_blank" rel="noreferrer">
+                    <a className="btn sm primary" href={`/console?push=${frameChange!.to_id.slice(0, 8)}`} target="dotbot-console" rel="noreferrer">
                       Push in the console ↗
                     </a>
                   </div>
@@ -1253,7 +1277,7 @@ export const SiteEditorApp: React.FC = () => {
               <span className="dot" style={{ width: 12, height: 12, background: verdict.state === "ready" ? "var(--ok)" : "var(--warn)" }} />
               <b>{verdict.title}</b>
               <span className="muted" style={{ fontSize: 15 }}>
-                {live ? `${bots.filter((b) => b.position).length} of ${bots.length} robots with a fix · ` : ""}serving {chip.id8 || "nothing"}
+                {live ? `${goalList.find((g) => g.id === "robots")?.detail ?? ""} · ` : ""}serving {chip.id8 || "nothing"}
               </span>
               <span className="sp" style={{ flex: 1 }} />
               <button type="button" className="btn" onClick={stopPresent}>
@@ -1485,7 +1509,7 @@ export const SiteEditorApp: React.FC = () => {
           <Icon name={toast.push ? "served" : "check"} size={15} />
           <span>{toast.text}</span>
           {toast.push && (
-            <a className="btn sm primary" href={`/console?push=${toast.push}`} target="_blank" rel="noreferrer">
+            <a className="btn sm primary" href={`/console?push=${toast.push}`} target="dotbot-console" rel="noreferrer">
               Push in the console ↗
             </a>
           )}
