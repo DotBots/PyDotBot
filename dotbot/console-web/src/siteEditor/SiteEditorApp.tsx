@@ -498,6 +498,13 @@ export const SiteEditorApp: React.FC = () => {
       setFrameMove((m) => ({ ...m, pivot: [Math.round(w / 2), Math.round(h / 2)] }));
     }
   }, [tool]);
+  // The frame tools draw in the inspector, so a sheet open there gives way
+  useEffect(() => {
+    if (kind !== "frame" || (tool !== "turn" && tool !== "capture")) return;
+    setNewRoom(false);
+    setPlacePreview(null);
+    setChecking(null);
+  }, [kind, tool]);
 
   const pickKind = (k: EditKind) => {
     setKind(k);

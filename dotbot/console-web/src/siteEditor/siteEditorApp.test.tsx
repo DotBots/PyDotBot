@@ -1,5 +1,5 @@
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../useFleet", () => {
@@ -268,6 +268,18 @@ describe("capturing zero", () => {
     fireEvent.click(screen.getByTestId("frame-serve-step"));
     expect(screen.getByRole("tab", { name: /Calibrations/ }).getAttribute("aria-selected")).toBe("true");
     expect(screen.getByTestId("library-serve-hint").textContent).toContain("Serve this…");
+  });
+
+  it("shows the capture panel even when the new room sheet was open", async () => {
+    stubFetch();
+    render(<SiteEditorApp />);
+    await waitFor(() => expect(screen.getByTestId("plan")).toBeTruthy());
+    fireEvent.click(screen.getByLabelText("More"));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Mount, spin and place/ }));
+    expect(screen.getByTestId("new-room")).toBeTruthy();
+    fireEvent.click(within(screen.getByTestId("goal-zero")).getByRole("button"));
+    await waitFor(() => expect(screen.getByTestId("frame-capture")).toBeTruthy());
+    expect(screen.queryByTestId("new-room")).toBeNull();
   });
 });
 
