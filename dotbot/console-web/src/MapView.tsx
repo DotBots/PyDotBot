@@ -1327,6 +1327,39 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                 ))}
               </g>
             )}
+            {/* Where robots spun to measure the stations, ringed in each
+                station's colour, as the editor draws them. */}
+            {calibration && (calibration.circles ?? []).length > 0 && (
+              <g data-testid="spin-circles">
+                {(calibration.circles ?? []).map((c, i) => {
+                  const box = rectPx({
+                    x: c.x - c.radius_mm,
+                    y: c.y - c.radius_mm,
+                    w: 2 * c.radius_mm,
+                    h: 2 * c.radius_mm,
+                  });
+                  const hue = `var(--st-${c.station % 2})`;
+                  return (
+                    <g key={`spin-${i}`} data-testid={`spin-circle-${i}`}>
+                      <ellipse
+                        cx={box.x + box.width / 2}
+                        cy={box.y + box.height / 2}
+                        rx={box.width / 2}
+                        ry={box.height / 2}
+                        fill="none"
+                        stroke={hue}
+                        strokeOpacity={0.8}
+                        strokeWidth={chrome}
+                        strokeDasharray={c.station >= 2 ? `${4 * chrome} ${3 * chrome}` : undefined}
+                      >
+                        <title>{`S${c.station} saw …${c.name.slice(-4)} spin here`}</title>
+                      </ellipse>
+                      <circle cx={box.x + box.width / 2} cy={box.y + box.height / 2} r={1.5 * chrome} fill={hue} />
+                    </g>
+                  );
+                })}
+              </g>
+            )}
           </svg>
           {props.session && (
             <CalibrationLayer
