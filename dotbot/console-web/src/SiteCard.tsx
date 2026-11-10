@@ -28,7 +28,7 @@ export const SiteCard: React.FC<{ site: Site | null }> = ({ site }) => (
       <a
         data-testid="edit-site"
         href={SITE_EDITOR_PATH}
-        target="_blank"
+        target="dotbot-site-editor"
         rel="noopener"
         title="Open the site editor in a new tab; the console and its Stop stay here"
         style={{ fontSize: 12, fontWeight: 600 }}

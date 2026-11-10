@@ -8,6 +8,9 @@ import type { SpinRun, UnifiedBot } from "./types";
 // the floor. The controller runs it; this card starts it and follows it.
 
 const SPIN_APP = "calibrate-spin";
+/** Fewest circles a station's solve takes, and how many hold the frame well */
+export const SPIN_MIN = 3;
+export const SPIN_ADVISED = 8;
 const muted = { fontSize: 11.5, color: "var(--muted)", lineHeight: 1.5 } as const;
 const mono = { fontFamily: "var(--font-mono)" } as const;
 const tail = (id: string) => id.slice(-4).toUpperCase();
@@ -122,7 +125,7 @@ export const SpinCard: React.FC<{
           <pre style={{ ...mono, fontSize: 10, whiteSpace: "pre-wrap", margin: "6px 0 0", color: "var(--muted)" }}>{r.report.join("\n")}</pre>
         </details>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
-          <a href={`/controller/site-editor/?place=${r.id}`} target="_blank" rel="noreferrer" style={button(true, false)} data-testid="spin-place">
+          <a href={`/controller/site-editor/?place=${r.id}`} target="dotbot-site-editor" rel="noreferrer" style={button(true, false)} data-testid="spin-place">
             Place it in the site editor ↗
           </a>
           <span role="button" tabIndex={0} style={button(false, busy)} onClick={() => !busy && start(r.id!)} title="Spin the robots again where they now stand, adding a round to this calibration">
@@ -148,8 +151,8 @@ export const SpinCard: React.FC<{
         </div>
       )}
       <div style={muted}>
-        Robots turn twice in place where they stand; the circles their sensors trace measure the stations. No marks on the floor: spread the robots over the area and keep each one's
-        footprint clear.
+        Robots turn twice in place where they stand; the circles their sensors trace measure the stations. No marks on the floor: spread at least {SPIN_MIN} robots over the
+        area ({SPIN_ADVISED} or more hold the frame best) and keep each one's footprint clear.
       </div>
       <div style={{ fontSize: 12, marginTop: 8 }}>
         {targets.unknown.length === targets.pool.length
@@ -177,14 +180,20 @@ export const SpinCard: React.FC<{
           role="button"
           tabIndex={0}
           data-testid="spin-start"
-          aria-disabled={busy || count === 0}
-          style={button(true, busy || count === 0)}
-          onClick={() => !busy && count > 0 && start(null)}
-          onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && !busy && count > 0 && start(null)}
+          aria-disabled={busy || count < SPIN_MIN}
+          title={count < SPIN_MIN ? `A station's solve needs at least ${SPIN_MIN} circles: select ${SPIN_MIN} robots or more` : undefined}
+          style={button(true, busy || count < SPIN_MIN)}
+          onClick={() => !busy && count >= SPIN_MIN && start(null)}
+          onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && !busy && count >= SPIN_MIN && start(null)}
         >
           Spin {count} robot{count === 1 ? "" : "s"}
         </span>
       </div>
+      {count > 0 && count < SPIN_MIN && (
+        <div style={{ ...muted, marginTop: 6 }}>
+          {count} robot{count === 1 ? "" : "s"}: a station's solve needs at least {SPIN_MIN} circles. Select more, or clear the selection to spin every robot.
+        </div>
+      )}
       {error && <div style={{ ...muted, color: "var(--s-Stopping)", marginTop: 6, whiteSpace: "pre-wrap" }}>{error}</div>}
     </div>
   );

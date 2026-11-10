@@ -261,6 +261,9 @@ export function useFleet(): {
         rebuildNextFrame();
       } else if (event.event === "calibration_session") {
         setSession((event.data as CalibrationSession | null) ?? null);
+      } else if (event.event === "site" && event.data) {
+        // The site editor saved or served: the map and the chip follow at once
+        setSite(event.data as Site);
       } else if (event.event === "calibration_spin") {
         setSpin((event.data as SpinRun | null) ?? null);
       } else if (event.event === "camera_detection" && event.data) {

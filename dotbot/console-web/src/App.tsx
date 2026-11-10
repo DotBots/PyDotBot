@@ -136,6 +136,9 @@ function robotsNotice(ids: string[], what: string): string {
   return `${ids.length} robot${ids.length === 1 ? "" : "s"} ${what}: ${names.join(", ")}${more}`;
 }
 
+// Links from the site editor open in this tab rather than a new one
+if (typeof window !== "undefined" && !window.name) window.name = "dotbot-console";
+
 export const App: React.FC = () => {
   const { bots, site, cameras, cameraDetections, session, setSession, spin, viewport, wsUp } =
     useFleet();

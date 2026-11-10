@@ -15,13 +15,13 @@ const SITE: Site = {
 };
 
 describe("the Site card in Layers", () => {
-  it("names the site and the served calibration, and opens the editor in a new tab", () => {
+  it("names the site and the served calibration, and opens the editor in its own tab", () => {
     render(<SiteCard site={SITE} />);
     expect(screen.getByTestId("site-card").textContent).toContain("inria-2lh");
     expect(screen.getByTestId("calibration-chip").textContent).toContain("SERVING4640cfde");
     const link = screen.getByTestId("edit-site");
     expect(link.getAttribute("href")).toBe("/controller/site-editor/");
-    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("target")).toBe("dotbot-site-editor");
   });
 
   it("says when nothing is served", () => {

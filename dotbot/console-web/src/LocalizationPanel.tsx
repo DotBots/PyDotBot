@@ -212,7 +212,7 @@ export const LocalizationPanel: React.FC<LocalizationPanelProps> = ({
           </div>
           <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 3 }}>
             {coverage.unknown
-              ? "the controller serves none; save one in a session to compare the fleet against it"
+              ? "the controller serves none; serve one in the site editor, or calibrate below, to compare the fleet against it"
               : coverageLabel(coverage)}
           </div>
           {coverage.stale.length > 0 && (

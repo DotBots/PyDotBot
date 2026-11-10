@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { pushCalibrationFile } from "../api";
 import type { UnifiedBot } from "../types";
 import { Badge } from "./Badge";
-import { confirmLabel, pushRows, pushTitle, pushTwin } from "./pushRows";
+import { confirmLabel, pushRows, pushTitle, pushTwin, type PushRow } from "./pushRows";
 
 // The console's push sheet: one saved calibration, the robots it could go
 // to, nothing ticked until the operator ticks them. A push resets each robot
@@ -59,7 +59,10 @@ export const PushSheet: React.FC<{
     });
   const label = confirmLabel(rows, ticked);
   const tickedIds = rows.filter((r) => ticked.has(r.id)).map((r) => r.id);
-  const notCurrent = rows.filter((r) => !r.current && r.holds !== "old firmware");
+  // A robot with no device info cannot be checked, and a push to it is refused
+  const pushable = (r: PushRow) => r.holds !== "not reported" && r.holds !== "old firmware";
+  const notCurrent = rows.filter((r) => !r.current && pushable(r));
+  const unreported = rows.filter((r) => r.holds === "not reported").length;
 
   const push = async () => {
     setBusy(true);
@@ -116,9 +119,10 @@ export const PushSheet: React.FC<{
           <label
             key={r.id}
             data-testid={`push-row-${r.tail}`}
-            style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 4px", borderTop: "1px solid var(--hairline)", fontSize: 12, cursor: "pointer" }}
+            style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 4px", borderTop: "1px solid var(--hairline)", fontSize: 12, cursor: pushable(r) ? "pointer" : "default", opacity: pushable(r) ? 1 : 0.6 }}
+            title={pushable(r) ? undefined : r.holds === "not reported" ? "No device info from this robot: a push could not check it, so it would be refused" : "Firmware too old for this host's calibration format"}
           >
-            <input type="checkbox" checked={ticked.has(r.id)} onChange={() => toggle(r.id)} aria-label={`Push to …${r.tail}`} />
+            <input type="checkbox" checked={ticked.has(r.id)} disabled={!pushable(r)} onChange={() => toggle(r.id)} aria-label={`Push to …${r.tail}`} />
             <span style={{ ...mono, width: 72 }}>…{r.tail}</span>
             <span style={{ width: 110, display: "flex", alignItems: "center", gap: 5 }}>
               <span style={{ width: 7, height: 7, borderRadius: "50%", background: `var(--s-${r.state}, var(--s-Inactive))` }} />
@@ -131,11 +135,19 @@ export const PushSheet: React.FC<{
             {ticked.has(r.id) && r.appStops && <span style={{ color: "var(--s-Programming)", fontSize: 11 }}>app stops</span>}
           </label>
         ))}
+        {unreported > 0 && (
+          <div style={{ fontSize: 11.5, color: "var(--s-Programming)", lineHeight: 1.45, marginTop: 8 }}>
+            {unreported === rows.length ? "No robot" : `${unreported} of ${rows.length} robots`} sent device info, which a push needs to check each robot first, so{" "}
+            {unreported === rows.length ? "none" : "those"} can be ticked. Device info comes from the swarm server; check it in the Testbed tab.
+          </div>
+        )}
         {rows.length > 0 && (
           <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-            <button type="button" style={btn("plain")} onClick={() => setTicked(new Set(notCurrent.map((r) => r.id)))} disabled={!notCurrent.length}>
-              Tick the {notCurrent.length} not holding {id8}
-            </button>
+            {notCurrent.length > 0 && (
+              <button type="button" style={btn("plain")} onClick={() => setTicked(new Set(notCurrent.map((r) => r.id)))}>
+                Tick the {notCurrent.length} not holding {id8}
+              </button>
+            )}
             <button type="button" style={btn("plain")} onClick={() => setTicked(new Set())} disabled={!ticked.size}>
               Untick all
             </button>
