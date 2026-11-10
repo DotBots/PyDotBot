@@ -312,7 +312,8 @@ class SiteSection(_Strict):
                 h = min(f.y + f.h, s.y + s.h) - max(f.y, s.y)
                 if w > 0 and h > 0:
                     raise ValueError(
-                        f"field {fname} and staging {sname} overlap by {w} x {h} "
+                        f'the field area "{fname}" and the staging area "{sname}" '
+                        f"overlap by {w} x {h} "
                         "mm; a point is in one or the other, so shrink one until "
                         "they only touch (a corner may overlap anything)"
                     )
