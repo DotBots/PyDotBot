@@ -9,8 +9,12 @@ spin they were measured from, then the files not placed in the site yet.
 from __future__ import annotations
 
 import hashlib
+import os
+import tempfile
 from collections.abc import Iterable
 from pathlib import Path
+
+import tomlkit
 
 from dotbot.calibration import lighthouse2, station_geometry, station_rule
 from dotbot.calibration.station_boxes import frame_refusal
@@ -83,7 +87,15 @@ def _row(path: Path) -> dict | None:
 
 def library(folders: Iterable[Path], site: Site, served_id: str | None) -> dict:
     """The library of `site`'s calibration `folders`, `served_id` pinned first."""
+    folders = list(folders)
     rows = [r for r in (_row(p) for p in site_files(folders)) if r is not None]
+    archived = [
+        r
+        for r in (
+            _row(p) for p in site_files(Path(f) / lighthouse2.ARCHIVED for f in folders)
+        )
+        if r is not None
+    ]
     serving = None
     groups: dict[str, list[dict]] = {}
     not_placed: list[dict] = []
@@ -117,4 +129,62 @@ def library(folders: Iterable[Path], site: Site, served_id: str | None) -> dict:
             )
         ],
         "not_placed": sorted(not_placed, key=lambda x: x["created_at"], reverse=True),
+        "archived": sorted(
+            ({k: v for k, v in r.items() if k != "anchor"} for r in archived),
+            key=lambda x: x["created_at"],
+            reverse=True,
+        ),
     }
+
+
+class LibraryRefused(ValueError):
+    """A library change the file's place does not allow."""
+
+
+def _own(path: Path, home: Path) -> None:
+    try:
+        Path(path).resolve().relative_to(Path(home).resolve())
+    except ValueError as exc:
+        raise LibraryRefused(
+            f"{path} is not under {home}: a site pack's calibrations are "
+            "tracked with the pack, so change them there"
+        ) from exc
+
+
+def rename_tag(path: Path, tag: str, home: Path) -> Path:
+    """Write `tag` as the file's [metadata] tag and nothing else; the id, the
+    name and every robot holding it stay as they are."""
+    _own(path, home)
+    tag = tag.strip()
+    if any(c in tag for c in "\n\r\t"):
+        raise LibraryRefused("a tag is one line")
+    document = tomlkit.parse(Path(path).read_text(encoding="utf-8"))
+    document.setdefault("metadata", tomlkit.table())["tag"] = tag
+    text = tomlkit.dumps(document)
+    fd, tmp = tempfile.mkstemp(prefix=f".{Path(path).name}-", dir=Path(path).parent)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write(text)
+    os.replace(tmp, path)
+    return Path(path)
+
+
+def archive(path: Path, home: Path) -> Path:
+    """Move the file into `archived/` beside it: out of every list, still
+    found by its full id or path, never deleted."""
+    _own(path, home)
+    path = Path(path)
+    target = path.parent / lighthouse2.ARCHIVED / path.name
+    target.parent.mkdir(exist_ok=True)
+    os.replace(path, target)
+    return target
+
+
+def restore(path: Path, home: Path) -> Path:
+    """Move an archived file back beside the others."""
+    _own(path, home)
+    path = Path(path)
+    if path.parent.name != lighthouse2.ARCHIVED:
+        raise LibraryRefused(f"{path} is not archived")
+    target = path.parent.parent / path.name
+    os.replace(path, target)
+    return target

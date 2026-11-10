@@ -5,6 +5,7 @@
 calibration, never writing the file it was loaded from."""
 
 import dataclasses
+from pathlib import Path
 
 import pytest
 
@@ -311,3 +312,37 @@ def test_coverage_prints_the_show_headline_and_follows_new_boxes(client, two_sta
         params={"boxes": json.dumps({"0": [10, 0, 5, 5]})},
     )
     assert refused.status_code == 422
+
+
+def test_a_tag_rename_keeps_the_id_and_the_file(client, home, spun):
+    path = spun.path
+    before = path.read_text()
+    body = client.patch(f"/api/calibrations/{spun.id8}", json={"tag": "monday class"}).json()
+    assert body["id"] == spun.id and body["tag"] == "monday class"
+    assert body["path"] == str(path)
+    after = path.read_text()
+    assert 'tag = "monday class"' in after
+    assert before.replace('tag = "spin"', 'tag = "monday class"') == after
+
+
+def test_archive_hides_a_file_and_its_full_id_still_finds_it(client, home, spun):
+    body = client.patch(f"/api/calibrations/{spun.id8}", json={"archived": True}).json()
+    assert "archived" in Path(body["path"]).parts
+    assert not spun.path.exists()
+    assert client.get(f"/api/calibrations/{spun.id8}").status_code == 404
+    assert client.get(f"/api/calibrations/{spun.id}").status_code == 200
+    back = client.patch(f"/api/calibrations/{spun.id}", json={"archived": False}).json()
+    assert back["path"] == str(spun.path) and spun.path.exists()
+
+
+def test_a_pack_s_calibration_is_not_renamed(client, tmp_path, spun):
+    import shutil
+
+    pack_folder = tmp_path / "arena" / "calibrations"
+    pack_folder.mkdir()
+    copy = pack_folder / spun.path.name
+    shutil.copy(spun.path, copy)
+    spun.path.unlink()
+    refused = client.patch(f"/api/calibrations/{spun.id8}", json={"tag": "x"})
+    assert refused.status_code == 422
+    assert "tracked with the pack" in refused.json()["detail"]

@@ -65,6 +65,13 @@ class TurnRequest(BaseModel):
     marks_confirmed: bool = False
 
 
+class LibraryRequest(BaseModel):
+    # A new tag for the file, outside its id
+    tag: str | None = None
+    # True moves it into archived/, False moves it back
+    archived: bool | None = None
+
+
 class BoxesRequest(BaseModel):
     # Station index to its new `[x_min, y_min, x_max, y_max]`, frame mm
     stations: dict[int, tuple[int, int, int, int]]
@@ -169,6 +176,24 @@ def create_router(
         except HTTPException as exc:
             refusal = exc.detail
         return {**overlay(cal), "path": str(cal.path), "frame_refusal": refusal}
+
+    @router.patch("/api/calibrations/{spec}")
+    def change(spec: str, request: LibraryRequest):
+        """Rename a file's tag or archive it; only files under
+        ~/.dotbot/calibrations, never a pack's tracked ones."""
+        path = Path(resolve(spec).path)
+        home = lighthouse2.calibration_root()
+        try:
+            if request.tag is not None:
+                path = site_library.rename_tag(path, request.tag, home)
+            if request.archived is True:
+                path = site_library.archive(path, home)
+            elif request.archived is False:
+                path = site_library.restore(path, home)
+        except site_library.LibraryRefused as exc:
+            raise HTTPException(422, str(exc)) from exc
+        cal = lighthouse2.read_calibration_file(path)
+        return {"id": cal.id, "id8": cal.id8, "tag": cal.tag, "path": str(path)}
 
     @router.get("/api/calibrations/{spec}/coverage")
     def coverage(spec: str, boxes: str | None = None, robots: int = 4):

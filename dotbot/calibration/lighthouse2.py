@@ -953,6 +953,10 @@ def calibration_folders(
     return folders
 
 
+# The folder beside a site's calibrations that archived ones move into
+ARCHIVED = "archived"
+
+
 def resolve_calibration_spec(
     spec: str,
     folders: Sequence[tuple[Path, str]],
@@ -1005,6 +1009,12 @@ def resolve_calibration_spec(
         found = unique("tag", tags, files) or unique("id prefix", ids, files)
         if found is not None:
             return found
+    # An archived file is found by its full id only, never by a prefix or tag
+    if re.fullmatch(r"[0-9a-fA-F]{16}", spec):
+        for folder, prefix in folders:
+            for path in sorted(folder.glob(prefix + ARCHIVED + "/" + glob)):
+                if str(metadata(path).get("id", "")).lower() == spec_lower:
+                    return path
     searched = " or ".join(
         str(folder / prefix.rstrip("/")) for folder, prefix in folders
     )
