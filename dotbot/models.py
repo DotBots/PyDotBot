@@ -10,6 +10,7 @@
 # pylint: disable=too-few-public-methods,no-name-in-module
 
 from enum import IntEnum
+import math
 from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, BeforeValidator, Field, field_validator, model_validator
@@ -230,10 +231,56 @@ class DotBotPlacementSpanModel(BaseModel):
     points_from: Optional[DotBotPointsFromModel] = None
 
 
+class DotBotServedStationModel(BaseModel):
+    """One station of the loaded calibration: its fit and its box, frame mm."""
+
+    index: int
+    # None when the file records no finite residual
+    residual_mm: Optional[float] = None
+    box: List[int]
+
+
+class DotBotSpinCircleModel(BaseModel):
+    """Where one robot spun, as one station saw it, frame mm."""
+
+    station: int
+    name: str
+    x: float
+    y: float
+    radius_mm: float
+
+
+# Spin circles by calibration id: fitting them reads every track
+_SPIN_CIRCLES: Dict[str, List[DotBotSpinCircleModel]] = {}
+
+
+def _spin_circles(calibration: Any) -> List[DotBotSpinCircleModel]:
+    if not getattr(calibration, "tracks", None):
+        return []
+    cached = _SPIN_CIRCLES.get(calibration.id)
+    if cached is None:
+        from dotbot.calibration.placement import spin_centres
+
+        cached = [
+            DotBotSpinCircleModel(
+                station=station,
+                name=c["name"],
+                x=round(float(c["x"]), 1),
+                y=round(float(c["y"]), 1),
+                radius_mm=round(float(c["radius_mm"]), 1),
+            )
+            for station, circles in sorted(spin_centres(calibration).items())
+            for c in circles
+        ]
+        _SPIN_CIRCLES[calibration.id] = cached
+    return cached
+
+
 class DotBotCalibrationSpanModel(BaseModel):
-    """The loaded LH2 calibration's placements, which span the part of the
-    site it was fitted over; positions outside them are extrapolated.
-    `site` and `anchor` are the frame it records."""
+    """The loaded LH2 calibration: its placements, which span the part of the
+    site a corner calibration was fitted over, its stations and boxes, and
+    the circles robots spun for a spin calibration. `site` and `anchor` are
+    the frame it records."""
 
     id: str
     tag: str = ""
@@ -241,6 +288,8 @@ class DotBotCalibrationSpanModel(BaseModel):
     site: str = ""
     anchor: str = ""
     placements: List[DotBotPlacementSpanModel] = []
+    stations: List[DotBotServedStationModel] = []
+    circles: List[DotBotSpinCircleModel] = []
 
     @classmethod
     def from_calibration(cls, calibration: Any) -> "DotBotCalibrationSpanModel":
@@ -250,6 +299,19 @@ class DotBotCalibrationSpanModel(BaseModel):
             created_at=calibration.created_at,
             site=calibration.site.name,
             anchor=calibration.site.anchor,
+            stations=[
+                DotBotServedStationModel(
+                    index=st.index,
+                    residual_mm=(
+                        round(float(st.residual_mm), 2)
+                        if math.isfinite(st.residual_mm)
+                        else None
+                    ),
+                    box=[int(v) for v in st.valid_mm],
+                )
+                for st in sorted(calibration.stations, key=lambda s: s.index)
+            ],
+            circles=_spin_circles(calibration),
             placements=[
                 DotBotPlacementSpanModel(
                     points_mm=[list(point) for point in placement.points_mm],
