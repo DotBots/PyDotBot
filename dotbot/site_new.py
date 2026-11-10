@@ -135,8 +135,8 @@ def write_new_site(
             raise NewSiteRefused("the floor's width and height must be over 0 mm")
         site = Site(name=name, anchor=note, extent_mm=size_mm if start == "size" else None)
         header = (
-            f"Site {name}: the floor and its areas come once the stations are\n"
-            "measured. The frame's zero is the anchor, x right, y down, mm."
+            f"Site {name}, written by the site editor.\n"
+            "The frame's zero is the anchor, x right, y down, mm."
         )
     text = render_pack(site, header)
     pack.mkdir(parents=True, exist_ok=True)
