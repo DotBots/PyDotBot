@@ -110,6 +110,9 @@ class ServeRequest(BaseModel):
     spec: str
     # Also at the next start: written to the controller's config
     persist: bool = False
+    # The id the page saw served, "" or "none" for nothing: the switch is
+    # refused when the controller serves something else by now
+    expected: str | None = None
 
 
 class CheckRequest(BaseModel):
@@ -622,6 +625,27 @@ def create_app(
             )
         from dotbot.cli._config_write import WriteError
 
+        if request.expected is not None:
+            found = opened_by()
+            current = (found.get("served") or {}).get("id")
+            expected = request.expected.strip().lower()
+            if expected in ("", "none"):
+                matches = current is None
+            else:
+                matches = current is not None and current.lower().startswith(expected)
+            if not matches:
+                raise HTTPException(
+                    409,
+                    {
+                        "message": (
+                            f"the controller now uses "
+                            f"{current[:8] if current else 'nothing'}, not "
+                            f"{expected[:8] if expected not in ('', 'none') else 'nothing'}"
+                            ": look again before switching"
+                        ),
+                        "served": found.get("served"),
+                    },
+                )
         try:
             served = serve(request.spec, request.persist)
         except (ValueError, OSError, WriteError) as exc:

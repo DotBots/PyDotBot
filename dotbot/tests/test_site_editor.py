@@ -502,3 +502,75 @@ def test_a_restore_point_puts_site_toml_back(client, pack, tmp_path, monkeypatch
     assert (pack / "site.toml").read_text() == ARENA
     assert back["steps"][0]["status"] == "written"
     assert [p["name"] for p in client.get("/api/points").json()] == ["Monday class"]
+
+
+SERVED = {"id": "4640cfde014c7232", "id8": "4640cfde", "tag": "r3"}
+
+
+@pytest.fixture
+def serving(pack, page):
+    """An editor opened by a controller serving SERVED; `calls` records
+    every switch it is asked for."""
+    calls = []
+
+    def serve(spec, persist):
+        calls.append((spec, persist))
+        return {"served": {"id": "a1b41f12deadbeef", "id8": "a1b41f12"}}
+
+    app = create_app(
+        EditorState("arena", pack),
+        page,
+        context=lambda: {"mode": "controller", "served": SERVED},
+        serve=serve,
+    )
+    return local_client(app), calls
+
+
+def test_a_switch_from_the_served_calibration_the_page_saw_is_taken(serving):
+    client, calls = serving
+    response = client.put(
+        "/api/served", json={"spec": "a1b41f12", "expected": "4640CFDE"}
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["served"]["id8"] == "a1b41f12"
+    assert calls == [("a1b41f12", False)]
+
+
+def test_a_switch_from_a_calibration_no_longer_served_is_refused(serving):
+    client, calls = serving
+    response = client.put(
+        "/api/served", json={"spec": "a1b41f12", "expected": "ffffffff"}
+    )
+    assert response.status_code == 409
+    detail = response.json()["detail"]
+    assert detail["message"] == (
+        "the controller now uses 4640cfde, not ffffffff: look again before switching"
+    )
+    assert detail["served"] == SERVED
+    assert calls == []
+    nothing = client.put("/api/served", json={"spec": "a1b41f12", "expected": ""})
+    assert nothing.status_code == 409
+    assert "now uses 4640cfde, not nothing" in nothing.json()["detail"]["message"]
+
+
+def test_a_switch_without_an_expectation_is_taken_as_before(serving):
+    client, calls = serving
+    assert client.put("/api/served", json={"spec": "a1b41f12"}).status_code == 200
+    assert calls == [("a1b41f12", False)]
+
+
+def test_expecting_nothing_served_matches_a_controller_serving_nothing(pack, page):
+    app = create_app(
+        EditorState("arena", pack),
+        page,
+        context=lambda: {"mode": "controller", "served": None},
+        serve=lambda spec, persist: {"served": {"id": spec}},
+    )
+    client = local_client(app)
+    assert (
+        client.put("/api/served", json={"spec": "a1", "expected": "none"}).status_code
+        == 200
+    )
+    refused = client.put("/api/served", json={"spec": "a1", "expected": "4640cfde"})
+    assert refused.status_code == 409
+    assert refused.json()["detail"]["served"] is None
