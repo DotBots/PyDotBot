@@ -11,7 +11,6 @@ zip; `new` and `edit` open the site editor on a pack; `turn` turns one on
 the floor. The same folders can be shared with git, cp or unzip.
 """
 
-import json
 import os
 import re
 import shutil
@@ -661,33 +660,6 @@ def _parse_size(_ctx, _param, value):
     return (width, height)
 
 
-def _render_site_pack(site, source_id8: str) -> str:
-    def area(name: str, note: str) -> str:
-        a = site.registry().resolve(name)
-        key = json.dumps(name) if "+" in name else name
-        return f"[areas.{key}]   # {note}\nx = {a.x}\ny = {a.y}\nw = {a.w}\nh = {a.h}\n"
-
-    width, height = site.extent_mm
-    return (
-        f"# Site {site.name}: written by `dotbot site init` from spin calibration\n"
-        f"# {source_id8}. The frame's zero is the anchor, x right, y down, mm.\n"
-        "\n"
-        f"anchor = {json.dumps(site.anchor)}\n"
-        f"extent_mm = [{width}, {height}]\n"
-        + (
-            f"spin_radius_mm = {float(site.spin_radius_mm)}   # as the robots spun\n"
-            if site.spin_radius_mm is not None
-            else ""
-        )
-        + "\n"
-        + area("field", "where the robots spun, grown by a robot's footprint")
-        + "\n"
-        + area("staging", "where robots park, along the field's bottom edge")
-        + "\n"
-        + area("field+staging", "the field and staging together")
-    )
-
-
 def _editor_socket(port: int):
     """A socket listening on 127.0.0.1:`port` for the editor, once its page
     is known to be built."""
@@ -826,25 +798,17 @@ def init(ctx, name, calibration, size, force):
     and the calibration, re-expressed in the site, under
     ~/.dotbot/calibrations/NAME/, its tag suffixed with -NAME.
     """
-    from dotbot.calibration.conics import self_defined_site
     from dotbot.calibration.lighthouse2 import (
         read_calibration_file,
         resolve_calibration_path,
-        site_name_as_bytes,
-    )
-    from dotbot.calibration.placement import (
-        Rigid2D,
-        place_calibration,
-        save_placed,
-        site_tags,
     )
     from dotbot.cli._swarm_inject import swarm_connection
+    from dotbot.site_new import NewSiteRefused, check_new_name, write_new_site
 
     obj = ctx.obj or {}
     config = obj.get("config")
     try:
-        check_site_name(name)
-        site_name_as_bytes(name)  # the push carries the name to the robots
+        check_new_name(name)
         existing = resolve_site_entry(config, name)
     except (ValueError, ConfigError) as exc:
         raise click.ClickException(str(exc)) from exc
@@ -866,18 +830,16 @@ def init(ctx, name, calibration, size, force):
         except ValueError:
             path = resolve_calibration_path(calibration)
         source = read_calibration_file(path)
-        site, _ = self_defined_site(source, name, size)
-        field = site.areas["field"]
-        placed = place_calibration(
-            source, site, Rigid2D(field.x, field.y, 0.0), taken_tags=site_tags(name)
+        written = write_new_site(
+            target.parent, name, "spin", size_mm=size, source=source, force=True
         )
-        placed, saved = save_placed(source, placed)
-    except ValueError as exc:
+    except (ValueError, NewSiteRefused) as exc:
         raise click.ClickException(str(exc)) from exc
-    target.mkdir(parents=True, exist_ok=True)
-    (target / PACK_FILE).write_text(
-        _render_site_pack(site, source.id8), encoding="utf-8"
-    )
+    from dotbot.site import site_from_table
+    from dotbot.site_packs import read_pack
+
+    site = site_from_table(name, read_pack(written.pack), written.pack)
+    placed, saved = written.calibration, written.calibration_path
     field, staging = site.areas["field"], site.areas["staging"]
     click.echo(f"Wrote site {name} to {target / PACK_FILE}")
     click.echo(
