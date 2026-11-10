@@ -33,6 +33,14 @@
   --area-4: #6fb2ad;
   --area-5: #7f9ccb;
 
+  /* LH2 stations S0 and S1, and every station after them in turn. */
+  --st-0: #3987e5;
+  --st-1: #d55181;
+  /* Verdicts reuse the state colours, so a colour still means one thing. */
+  --ok: var(--s-Running);
+  --warn: var(--s-Programming);
+  --err: var(--s-Stopping);
+
   --font-ui: "IBM Plex Sans", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 }
