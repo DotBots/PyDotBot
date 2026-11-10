@@ -73,6 +73,10 @@ export interface InspectorProps {
   onEdit: (doc: Doc) => void;
   onSelect: (keys: string[]) => void;
   onBlink?: (id: string) => void;
+  /** The site's frame id, recorded or derived. */
+  frameId?: string;
+  /** Opens a frame tool. */
+  onFrameTool?: (tool: "turn" | "capture") => void;
 }
 
 const ProblemCard: React.FC<{ p: Problem; editable: boolean; onEdit: (doc: Doc) => void }> = ({ p, editable, onEdit }) => (
@@ -443,11 +447,31 @@ export const Inspector: React.FC<InspectorProps> = (props) => {
             <ProblemCard key={p.title} p={p} editable={editable} onEdit={onEdit} />
           ))}
         <div style={{ marginTop: 10 }}>
-          <TextArea label="Where zero is in the room" value={doc.anchor ?? ""} disabled placeholder="a note on how to find zero on the floor" onApply={() => {}} />
+          <TextArea
+            label="Where zero is in the room"
+            value={doc.anchor ?? ""}
+            disabled={!editable}
+            placeholder="a note on how to find zero on the floor: the mark, the wall, the corner"
+            onApply={(t) => onEdit({ ...doc, anchor: t.trim() || null })}
+          />
         </div>
+        <KV rows={[["Frame id", props.frameId ? `${props.frameId}${doc.frame ? "" : " (from the name and note)"}` : "unknown"]]} />
         <div className="note" style={{ marginTop: 6 }}>
-          Read only for now: calibrations still match this note word for word, so editing it would orphan every one of them.
+          A free note: calibrations match the frame id, not these words, so fixing a typo orphans nothing. The first save that edits it writes the id into site.toml first.
         </div>
+        {editable && props.onFrameTool && (
+          <Sec title="Move zero">
+            <div className="note">Turn the frame, shift zero, or put zero on a robot parked on a taped mark: one change, reviewed before anything is written.</div>
+            <div className="acts">
+              <button type="button" className="btn sm" onClick={() => props.onFrameTool?.("turn")}>
+                <Icon name="turn" size={13} /> Turn or shift zero (T)
+              </button>
+              <button type="button" className="btn sm" onClick={() => props.onFrameTool?.("capture")}>
+                <Icon name="capture" size={13} /> Capture zero with a robot (C)
+              </button>
+            </div>
+          </Sec>
+        )}
       </div>
     );
   }

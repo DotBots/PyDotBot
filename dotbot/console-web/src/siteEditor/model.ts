@@ -43,6 +43,8 @@ export interface DocObject {
 
 export interface Doc {
   anchor: string | null;
+  /** The frame id site.toml records; null when derived. Never edited here. */
+  frame: string | null;
   extent_mm: [number, number] | null;
   areas: DocArea[];
   walls: DocBarrier[];
@@ -56,6 +58,7 @@ export type Kind = "area" | "wall" | "obstacle" | "object";
 export function docFromSite(site: EditorSite): Doc {
   return {
     anchor: site.anchor ?? null,
+    frame: site.frame ?? null,
     extent_mm: site.extent_mm ? [site.extent_mm[0], site.extent_mm[1]] : null,
     areas: site.areas.map((a) => ({
       key: `area:${a.name}`,

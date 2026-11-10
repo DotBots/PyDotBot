@@ -261,9 +261,12 @@ def create_app(
             site = site_toml.site_model(site_toml.parse(text))
         except site_toml.SiteTomlError as exc:
             raise HTTPException(422, f"{state.path}: {exc}") from exc
+        from dotbot.site import derived_frame_id
+
         return {
             "name": state.name,
             "path": str(state.path),
+            "frame_id": site.get("frame") or derived_frame_id(state.name, site.get("anchor") or ""),
             "revision": site_toml.revision(data),
             "shown_path": _shown_path(state.path),
             "text": text,

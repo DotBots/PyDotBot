@@ -232,6 +232,7 @@ export function reapply(oldBase: Doc, mine: Doc, theirs: Doc): { doc: Doc; confl
   };
   const doc: Doc = {
     anchor: field("anchor", "the note on where zero is"),
+    frame: theirs.frame,
     extent_mm: field("extent_mm", "the floor's size"),
     areas: mergeList(oldBase.areas, mine.areas, theirs.areas, conflicts, lab),
     walls: mergeList(oldBase.walls, mine.walls, theirs.walls, conflicts, lab),

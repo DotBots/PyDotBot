@@ -21,6 +21,8 @@ export interface EditorContext {
   next_start: { spec: string; source: string } | null;
   /** What this run started serving, and from where. */
   started_with?: { spec: string; source: string } | null;
+  /** A frame change this controller served, until robots hold it. */
+  frame_change?: { from_id: string; to_id: string; from_frame: string; to_frame: string } | null;
   /** The file "also at the next start" writes to. */
   persist_path?: string | null;
   /** Standalone: what the config names for this site. */
@@ -80,6 +82,8 @@ export interface EditorArea {
 
 export interface EditorSite {
   anchor: string | null;
+  /** The frame id site.toml records, null when it is derived. */
+  frame?: string | null;
   extent_mm: [number, number] | null;
   areas: EditorArea[];
   walls?: { name?: string | null; points: [number, number][] }[];
@@ -91,6 +95,8 @@ export interface SitePayload {
   name: string;
   path: string;
   revision: string;
+  /** The site's frame id, recorded or derived from its name and note. */
+  frame_id?: string;
   /** The path with the home folder as ~. */
   shown_path?: string;
   /** site.toml as it is on disk. */
