@@ -227,3 +227,16 @@ def test_site_turn_needs_a_turn_or_a_shift(tmp_path, home, placed):
     result = _site_cmd(lab)
     assert result.exit_code != 0
     assert "nothing moves" in result.output
+
+
+def test_site_turn_keeps_the_areas_where_they_are_on_the_floor(tmp_path, home, placed):
+    lab = _lab(tmp_path)
+    write_calibration(placed)
+    result = _site_cmd(lab, "arena", "--shift=-500,-500", "--yes")
+    assert result.exit_code == 0, result.output
+    from dotbot.site_toml import parse, site_model
+
+    site = site_model(parse((lab / "sites" / "arena" / "site.toml").read_text()))
+    field = next(a for a in site["areas"] if a["name"] == "field")
+    assert (field["x"], field["y"]) == (500, 500)
+    assert site["extent_mm"][0] >= 3500 and site["extent_mm"][1] >= 4500

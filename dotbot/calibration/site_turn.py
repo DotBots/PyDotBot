@@ -224,15 +224,31 @@ def save_turn(
     site_text: str,
     anchor: str,
     write_site: Callable[[str], None],
+    move: Rigid2D,
 ) -> list[tuple[Calibration, Path]]:
     """Write every planned calibration, then `site_text` with its anchor and
-    frame id changed through `write_site`: a failure part way leaves the
-    site's frame as it was."""
-    from dotbot import site_toml
+    frame id changed and its areas, walls, obstacles and objects renumbered
+    by the floor's `move` (the extent grown to hold them), through
+    `write_site`: a failure part way leaves the site's frame as it was."""
+    from dotbot import site_draft, site_toml
     from dotbot.calibration.placement import save_new
 
-    frame = planned[0].site.frame if planned else None
-    text = site_toml.framed_text(site_text, anchor, frame)
+    model = site_toml.site_model(site_toml.parse(site_text))
+    for key in ("areas", "objects"):
+        for entry in model.get(key) or []:
+            entry["was"] = entry["name"]
+    for key in ("walls", "obstacles"):
+        for i, entry in enumerate(model.get(key) or []):
+            entry["was"] = i
+    model = site_draft.moved_site(
+        model,
+        move,
+        [r for cal in planned for r in site_draft.kept_rects(cal)],
+        [p for cal in planned for p in site_draft.kept_points(cal)],
+    )
+    model["anchor"] = anchor or None
+    model["frame"] = planned[0].site.frame if planned else model.get("frame")
+    text = site_toml.patched_text(site_text, model)
     saved = [save_new(cal) for cal in planned]
     write_site(text)
     return saved

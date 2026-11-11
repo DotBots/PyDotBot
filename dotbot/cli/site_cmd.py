@@ -1020,7 +1020,7 @@ def turn(ctx, site, rotate, about, shift, anchor, calibrations, yes):
     from dotbot.calibration.station_boxes import coverage_warnings, push_line
     from dotbot.site import site_from_table
     from dotbot.site_editor import _write_atomic
-    from dotbot.site_placement import _files
+    from dotbot.site_placement import files as pack_files
 
     shift = shift or (0.0, 0.0)
     name, pack = _pack_of(ctx, site)
@@ -1032,7 +1032,7 @@ def turn(ctx, site, rotate, about, shift, anchor, calibrations, yes):
         raise click.ClickException(str(exc)) from exc
     pivot = about or site_turn.default_pivot(current)
     note = current.anchor if anchor is None else anchor
-    files = _files(pack)
+    files = pack_files(pack)
     found = site_turn.in_frame(current, files)
     if calibrations:
         sources = []
@@ -1079,7 +1079,11 @@ def turn(ctx, site, rotate, about, shift, anchor, calibrations, yes):
         raise click.Abort()
     try:
         saved = site_turn.save_turn(
-            planned, text, note, lambda new: _write_atomic(path, new)
+            planned,
+            text,
+            note,
+            lambda new: _write_atomic(path, new),
+            site_turn.floor_move(rotate, pivot, shift),
         )
     except site_toml.SiteTomlError as exc:
         raise click.ClickException(str(exc)) from exc
