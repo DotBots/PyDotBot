@@ -312,6 +312,32 @@ describe("rows look, buttons act", () => {
     await waitFor(() => expect(screen.getByTestId("anchor-panel").textContent).toContain("Needs a real robot and a tape measure"));
   });
 
+  it("opens Walls and Objects on their drawing tool while there are none, else on Select", async () => {
+    stubFetch();
+    render(<SiteEditorApp />);
+    fireEvent.click(await screen.findByTestId("goal-walls"));
+    await waitFor(() => expect(screen.getByTestId("plan")).toBeTruthy());
+    expect(screen.getByRole("tab", { name: /^Walls/ }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("button", { name: "Wall" }).getAttribute("aria-pressed")).toBe("true");
+    keyDown("Escape");
+    expect(screen.getByRole("button", { name: "Select" }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(screen.getByTestId("goal-objects"));
+    expect(screen.getByRole("tab", { name: /^Objects/ }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("button", { name: "Charger" }).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("opens Walls on Select when there are walls to pick", async () => {
+    stubFetch({
+      "api/site": () =>
+        new Response(JSON.stringify({ ...SITE, site: { ...SITE.site, walls: [{ name: "north", points: [[0, 0], [1060, 0]] }] }, text: TEXT }), { status: 200 }),
+    });
+    render(<SiteEditorApp />);
+    await waitFor(() => expect(screen.getByTestId("goal-walls").textContent).toContain("1 wall"));
+    fireEvent.click(screen.getByTestId("goal-walls"));
+    await waitFor(() => expect(screen.getByTestId("plan")).toBeTruthy());
+    expect(screen.getByRole("button", { name: "Select" }).getAttribute("aria-pressed")).toBe("true");
+  });
+
   it("closes a flow when another row is picked, and reopening it keeps what was typed", async () => {
     fleet.bots = [holding("DE00000000002222", served.id)];
     stubFetch();

@@ -644,6 +644,13 @@ export const SiteEditorApp: React.FC = () => {
     setSelected(g.subject);
     setEdge(null);
     setRightTab("inspect");
+    // Walls and Objects open top-down on their drawing tool while there are none, else on Select
+    if (editable && draft && (g.id === "walls" || g.id === "objects")) {
+      const none = g.id === "walls" ? !draft.doc.walls.length && !draft.doc.obstacles.length : !draft.doc.objects.length;
+      setView("plan");
+      setKind(g.id);
+      setTool(none ? (g.id === "walls" ? "wall" : "charger") : "select");
+    }
   };
   const blocking = problems.filter((p) => p.blocking);
 
