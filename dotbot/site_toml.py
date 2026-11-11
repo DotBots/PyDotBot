@@ -29,6 +29,8 @@ NAMED = {"areas": ("role", *AREA_KEYS), "objects": ("kind", "x", "y")}
 HEADING = "heading_deg"
 # The arrays of tables of barriers, and the fewest points each entry takes
 BARRIERS = {"walls": 2, "obstacles": 3}
+# The array of tables of the spots the frame is anchored on
+SPOTS = "anchor_spots"
 
 
 class SiteTomlError(ValueError):
@@ -85,6 +87,7 @@ def site_model(doc: TOMLDocument) -> dict[str, Any]:
         "areas": areas,
         "connection": dict(connection) if connection is not None else None,
         **{key: _barriers_model(doc, key) for key in BARRIERS},
+        SPOTS: _spots_model(doc),
         "objects": [
             {
                 "name": name,
@@ -123,6 +126,58 @@ def _barriers_model(doc: TOMLDocument, key: str) -> list[dict[str, Any]]:
             "comment": _comment(item),
         }
         for item in items
+    ]
+
+
+def _spots_model(doc: TOMLDocument) -> list[dict[str, Any]]:
+    items = _barriers_table(doc, SPOTS)
+    return [
+        {
+            "at_mm": [float(v) for v in item["at_mm"]],
+            "error_mm": float(item["error_mm"]),
+        }
+        for item in items or []
+    ]
+
+
+def _spot_value(v: float) -> int | float:
+    return int(v) if float(v).is_integer() else round(float(v), 1)
+
+
+def _patch_spots(doc: TOMLDocument, spots: list[dict[str, Any]]) -> None:
+    """Write the anchor spots, the whole array at once when it differs."""
+    want = [
+        {
+            "at_mm": [_spot_value(v) for v in spot["at_mm"]],
+            "error_mm": round(float(spot["error_mm"]), 1),
+        }
+        for spot in spots
+    ]
+    if _normal_spots(_spots_model(doc)) == _normal_spots(want):
+        return
+    if SPOTS in doc:
+        del doc[SPOTS]
+    if not want:
+        return
+    table = tomlkit.aot()
+    for spot in want:
+        entry = tomlkit.table()
+        entry["at_mm"] = spot["at_mm"]
+        entry["error_mm"] = spot["error_mm"]
+        table.append(entry)
+    if not tomlkit.dumps(doc).endswith("\n\n"):
+        doc.add(tomlkit.nl())
+    doc[SPOTS] = table
+
+
+def _normal_spots(spots: list[dict[str, Any]]) -> list[tuple[float, float, float]]:
+    return [
+        (
+            round(float(s["at_mm"][0]), 1),
+            round(float(s["at_mm"][1]), 1),
+            round(float(s["error_mm"]), 1),
+        )
+        for s in spots
     ]
 
 
@@ -363,6 +418,11 @@ def _normal(model: dict[str, Any]) -> dict[str, Any]:
             if "objects" in model
             else {}
         ),
+        **(
+            {SPOTS: _normal_spots(model.get(SPOTS) or [])}
+            if model.get(SPOTS) is not None
+            else {}
+        ),
     }
 
 
@@ -445,6 +505,8 @@ def patch(doc: TOMLDocument, model: dict[str, Any]) -> TOMLDocument:
     for key in BARRIERS:
         if key in model:
             _patch_barriers(doc, key, model[key] or [])
+    if model.get(SPOTS) is not None:
+        _patch_spots(doc, model[SPOTS])
     return doc
 
 

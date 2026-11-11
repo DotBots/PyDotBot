@@ -185,6 +185,15 @@ class ObstacleSection(_Strict):
     points: list[tuple[int, int]] = Field(min_length=3)
 
 
+class AnchorSpotSection(_Strict):
+    """One `[[anchor_spots]]` entry: a tape-measured spot the frame was
+    anchored on, in frame mm, and how far the robot read there stayed from
+    it once anchored."""
+
+    at_mm: tuple[float, float]
+    error_mm: float = Field(ge=0.0)
+
+
 ObjectKind = Literal["charger", "dock", "landmark", "camera"]
 
 
@@ -261,6 +270,7 @@ class SiteSection(_Strict):
     walls: list[WallSection] = Field(default_factory=list)
     obstacles: list[ObstacleSection] = Field(default_factory=list)
     objects: dict[str, ObjectSection] = Field(default_factory=dict)
+    anchor_spots: list[AnchorSpotSection] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _stations(self) -> SiteSection:

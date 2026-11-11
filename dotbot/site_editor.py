@@ -73,6 +73,11 @@ class ObjectModel(BaseModel):
     was: str | None = None
 
 
+class AnchorSpotModel(BaseModel):
+    at_mm: tuple[float, float]
+    error_mm: float = Field(ge=0.0)
+
+
 class SiteModel(BaseModel):
     anchor: str | None = None
     # None leaves the file's frame id as it is
@@ -83,6 +88,7 @@ class SiteModel(BaseModel):
     walls: list[BarrierModel] | None = None
     obstacles: list[BarrierModel] | None = None
     objects: list[ObjectModel] | None = None
+    anchor_spots: list[AnchorSpotModel] | None = None
 
 
 class SaveRequest(BaseModel):
@@ -123,6 +129,17 @@ class FrameRequest(BaseModel):
     move: site_draft.Move
     # The drafted station rectangles, in the frame `start` leaves
     stations: dict[int, tuple[int, int, int, int]] | None = None
+
+
+class SpotPair(BaseModel):
+    # Where the spot is, tape-measured, in the frame to anchor
+    at_mm: tuple[float, float]
+    # Where a robot standing on it read itself, in the saved frame
+    read_mm: tuple[float, float]
+
+
+class AnchorRequest(BaseModel):
+    spots: list[SpotPair] = Field(min_length=1)
 
 
 class ServeRequest(BaseModel):
@@ -678,6 +695,26 @@ def create_app(
             "stations": stations,
             "coverage": {st.index: list(st.coverage_mm) for st in moved.stations},
             "warnings": warnings,
+        }
+
+    @app.post("/api/anchor")
+    def anchor(request: AnchorRequest):
+        """The move of the origin that best lays the tape-measured spots on
+        the robots' reads, and each spot's residual under it; nothing is
+        written. One spot shifts the origin; two or more also turn it."""
+        fit = site_frame.fit_spots(
+            [spot.at_mm for spot in request.spots],
+            [spot.read_mm for spot in request.spots],
+        )
+        return {
+            "move": {
+                "theta_deg": fit.theta_deg,
+                "pivot": list(fit.pivot),
+                "dx_mm": fit.shift[0],
+                "dy_mm": fit.shift[1],
+            },
+            "residuals_mm": fit.residuals_mm,
+            "worst_mm": max(fit.residuals_mm),
         }
 
     @app.get("/api/history")
