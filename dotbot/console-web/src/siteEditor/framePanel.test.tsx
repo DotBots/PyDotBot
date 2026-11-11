@@ -15,13 +15,14 @@ describe("the frame panel with nothing served", () => {
           onMove={() => {}}
           site="inria-2lh"
           calibrationId={null}
-          revision="r"
           frameId="f0237ffd"
           extent={[1060, 1220]}
           note=""
           bots={[]}
           live
-          onReview={() => {}}
+          applied={null}
+          onCheck={async () => ({ ok: false, status: 422, message: "", offer: null })}
+          onApply={() => {}}
           onMode={() => {}}
           nextStep={{ label: "Pick one…", go: { tab: "library" } }}
           onAction={onAction}
@@ -37,6 +38,8 @@ describe("the frame panel with nothing served", () => {
 describe("the origin from robots on spots", () => {
   const bot = (id: string, x: number, y: number) => ({ id, state: "Running", position: { x, y }, swarmit: null }) as unknown as import("../types").UnifiedBot;
 
+  const check = async () => ({ ok: true as const, result: { frame: "f2", from_frame: "f1", site: { anchor: null, extent_mm: null, areas: [] }, base: { anchor: null, extent_mm: null, areas: [] }, stations: null, coverage: {}, warnings: [] } });
+
   const Harness: React.FC<{ onMove?: (m: import("./frameMove").FrameMove) => void }> = ({ onMove }) => {
     const [move, setMove] = React.useState({ theta_deg: 0, pivot: [0, 0] as [number, number], dx: 0, dy: 0, note: null as string | null });
     const [anchors, setAnchors] = React.useState<import("./frameMove").Anchor[]>([]);
@@ -47,13 +50,14 @@ describe("the origin from robots on spots", () => {
         onMove={(m) => (setMove(m), onMove?.(m))}
         site="inria-2lh"
         calibrationId="4640cfde014c7232"
-        revision="r"
         frameId="f0237ffd"
         extent={[1060, 1220]}
         note=""
         bots={[bot("DE00000000000001", 430, 458), bot("DE00000000000003", 630, 658)]}
         live
-        onReview={() => {}}
+        applied={null}
+        onCheck={check}
+        onApply={() => {}}
         onMode={() => {}}
         anchors={anchors}
         onAnchors={setAnchors}
@@ -66,7 +70,6 @@ describe("the origin from robots on spots", () => {
   };
 
   it("fits the move to the spots typed, says how far the dots are, and nudges by arrows", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ frame: "f2", from_frame: "f1", calibration: { id: "x", id8: "x", tag: "" }, source: "", warnings: [], push: "", steps: [] }), { status: 200 })));
     const moves: import("./frameMove").FrameMove[] = [];
     render(<Harness onMove={(m) => moves.push(m)} />);
     expect(screen.getByTestId("capture-untrusted").textContent).toContain("cannot say which calibration they have");
@@ -90,6 +93,5 @@ describe("the origin from robots on spots", () => {
     expect(after.dx - before.dx).toBeCloseTo(10, 5);
     fireEvent.click(screen.getByRole("button", { name: "Clear the spots" }));
     expect(screen.queryByTestId("anchors-fit")).toBeNull();
-    vi.unstubAllGlobals();
   });
 });

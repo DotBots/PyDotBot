@@ -152,32 +152,19 @@ body {
   min-width: 0;
   flex: 0 1 auto;
 }
+/* The name is cut by its middle before it is drawn, never at its end: what
+   does not fit is the details after it */
 .se .sline .st b {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 60px;
-  flex: 0 1 auto;
+  flex: none;
 }
 .se .sline .st .m {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .se .sline .btn {
   flex: none;
-}
-/* Details that do not fit wrap onto a second, hidden line: they leave whole,
-   from the end, and the name shrinks only once it is alone */
-.se .sline .st.fit {
-  flex-wrap: wrap;
-  height: 16px;
-  line-height: 16px;
-  align-content: flex-start;
-}
-.se .sline .st.fit .lead {
-  display: flex;
-  min-width: 0;
-  flex: 0 1 auto;
-  overflow: hidden;
-  white-space: nowrap;
 }
 .se .sline .st b {
   font-weight: 600;
@@ -2398,4 +2385,16 @@ body {
   .se .shortbtn {
     display: none;
   }
+}
+/* Under a moved origin, robots are drawn where they report themselves */
+.se .rnote {
+  left: 50%;
+  top: 56px;
+  transform: translateX(-50%);
+  padding: 5px 10px;
+  font-size: 11.5px;
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 50%, transparent);
+  white-space: nowrap;
+  pointer-events: none;
 }

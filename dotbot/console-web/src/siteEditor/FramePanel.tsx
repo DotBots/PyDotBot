@@ -2,19 +2,19 @@ import React, { useEffect, useRef, useState } from "react";
 
 import { Badge } from "../shared/Badge";
 import type { UnifiedBot } from "../types";
-import { postFrame, type FrameAnswer } from "./api";
+import type { FrameAnswer, FrameMoved } from "./api";
 import type { GoalAction } from "./checks";
 import { KV, NumField, Sec, TextField } from "./fields";
-import { anchorErrors, fitAnchors, forbidden, frameTwin, moves, plainWarning, toOld as toOldPoint, withOrigin, type Anchor, type FrameMove } from "./frameMove";
+import { anchorErrors, fitAnchors, forbidden, frameTwin, moves, plainWarning, sameMove, toOld as toOldPoint, withOrigin, type Anchor, type FrameMove } from "./frameMove";
 import { Icon } from "./icons";
 import type { Point } from "./model";
 import type { PlanPaint } from "./PlanCanvas";
 import { heldBy, tail } from "./robots";
 
 // The Floor kind's two tools: turn or shift the origin, previewed on the plan
-// and checked by the server before anything is written; and set the origin
-// from robots standing on measured spots, which fits the same move and lets
-// the operator nudge it over the live dots.
+// and checked by the server; and set the origin from robots standing on
+// measured spots, which fits the same move and lets the operator nudge it
+// over the live dots. Either puts the move in the draft; Save writes it.
 
 export const STILL_MM = 3;
 export const STILL_MS = 2000;
@@ -37,13 +37,17 @@ export interface FramePanelProps {
   site: string;
   /** The calibration re-expressed: the one in use. */
   calibrationId: string | null;
-  revision: string;
   frameId: string;
   extent: [number, number];
   note: string;
   bots: UnifiedBot[];
   live: boolean;
-  onReview: (answer: Extract<FrameAnswer, { ok: true }>["result"]) => void;
+  /** The move the draft holds, from the saved frame; null with none. */
+  applied: FrameMove | null;
+  /** The draft as `m` would leave it, checked by the server. */
+  onCheck: (m: FrameMove) => Promise<FrameAnswer>;
+  /** Puts the checked move in the draft. */
+  onApply: (m: FrameMove, result: FrameMoved) => void;
   onMode: (m: "turn" | "capture") => void;
   /** With nothing in use: the step that gets a calibration in use. */
   nextStep?: GoalAction;
@@ -98,23 +102,15 @@ export const FramePanel: React.FC<FramePanelProps> = (props) => {
   const [check, setCheck] = useState<FrameAnswer | null>(null);
   const [checking, setChecking] = useState(false);
   const key = JSON.stringify(move);
+  const inDraft = sameMove(move, props.applied);
+  const { onCheck } = props;
   useEffect(() => {
     setCheck(null);
-    if (!moves(move) || !props.calibrationId) return;
+    if (inDraft || !props.calibrationId) return;
     setChecking(true);
     let live = true;
     const t = window.setTimeout(() => {
-      postFrame({
-        calibration: props.calibrationId!,
-        theta_deg: move.theta_deg,
-        pivot: move.pivot,
-        dx_mm: move.dx,
-        dy_mm: move.dy,
-        note: move.note,
-        revision: props.revision,
-        serve: props.live,
-        dry_run: true,
-      }).then((a) => {
+      onCheck(move).then((a) => {
         if (!live) return;
         setCheck(a);
         setChecking(false);
@@ -124,7 +120,7 @@ export const FramePanel: React.FC<FramePanelProps> = (props) => {
       live = false;
       window.clearTimeout(t);
     };
-  }, [key, props.calibrationId, props.revision]);
+  }, [key, inDraft, props.calibrationId, onCheck]);
 
   // Each robot's recent fixes, sampled twice a second, for the stillness gate;
   // a robot's position is only re-sent when it changes, so sampling on a
@@ -202,11 +198,26 @@ export const FramePanel: React.FC<FramePanelProps> = (props) => {
     onMove(withOrigin(move, unrot([Math.min(ro[0], rc[0] - 0.2), Math.min(ro[1], rc[1] - 0.2)])));
   };
 
-  const status = !moves(move) ? (
-    <div className="note" style={{ marginTop: 10 }}>
-      Nothing moves yet. {props.mode === "turn" ? "Type a turn or a shift, or click the plan to set the point it turns about." : "Say where a robot stands."}
-    </div>
-  ) : forb && !forb.originOk ? (
+  const reset = () => (setAnchors([]), onMove({ ...move, theta_deg: 0, dx: 0, dy: 0, note: null }));
+  const status = inDraft ? (
+    props.applied && moves(props.applied) ? (
+      <div className="callout ok" style={{ marginTop: 10 }} data-testid="frame-in-draft">
+        <div className="h">
+          <Icon name="check" size={14} /> In the draft
+        </div>
+        The plan shows the room with this origin. Save writes it with your other changes; Undo takes it back.
+        <div className="acts">
+          <button type="button" className="btn sm" onClick={reset}>
+            Back to the saved origin
+          </button>
+        </div>
+      </div>
+    ) : (
+      <div className="note" style={{ marginTop: 10 }}>
+        Nothing moves yet. {props.mode === "turn" ? "Type a turn or a shift, or click the plan to set the point it turns about." : "Say where a robot stands."}
+      </div>
+    )
+  ) : moves(move) && forb && !forb.originOk ? (
     <div className="callout err" role="alert" style={{ marginTop: 10 }} data-testid="frame-refusal">
       <div className="h">
         <Icon name="err" size={14} /> The origin cannot go there
@@ -238,17 +249,19 @@ export const FramePanel: React.FC<FramePanelProps> = (props) => {
   ) : check && check.ok ? (
     <div className="callout ok" style={{ marginTop: 10 }} data-testid="frame-ok">
       <div className="h">
-        <Icon name="check" size={14} /> The origin can move there
+        <Icon name="check" size={14} /> {moves(move) ? "The origin can move there" : "Back to the saved origin"}
       </div>
-      Applying moves the origin and makes a new calibration from the one in use
-      {check.result.warnings.length ? `; ${check.result.warnings.map(plainWarning).join("; ")}` : ""}.
+      Areas, walls, objects and the coverage keep their place on the floor; only their numbers change, and the floor grows to hold them
+      {check.result.warnings.length ? `. ${check.result.warnings.map(plainWarning).join("; ")}` : ""}. Nothing is written until Save.
       <div className="acts">
-        <button type="button" className="btn sm primary" onClick={() => props.onReview(check.result)} data-testid="frame-review">
-          Apply the move…
+        <button type="button" className="btn sm primary" onClick={() => props.onApply(move, check.result)} data-testid="frame-apply">
+          Put in the draft
         </button>
-        <button type="button" className="btn sm" onClick={() => (setAnchors([]), onMove({ ...move, theta_deg: 0, dx: 0, dy: 0, note: null }))}>
-          Reset
-        </button>
+        {moves(move) && (
+          <button type="button" className="btn sm" onClick={() => (props.applied ? onMove({ ...props.applied }) : reset())}>
+            {props.applied ? "Back to the draft's" : "Reset"}
+          </button>
+        )}
       </div>
     </div>
   ) : null;
@@ -285,7 +298,7 @@ export const FramePanel: React.FC<FramePanelProps> = (props) => {
         {tabs}
         <div className="ins-sub" style={{ marginTop: 8 }}>
           Put robots on spots you measured from where the origin should be, and type where each one stands. One spot sets the origin, two set the turn as well, more check each
-          other. Then nudge until the dots sit on their spots, and apply. Nothing is sent to the robots: this only reads their positions.
+          other. Then nudge until the dots sit on their spots, and put it in the draft. Nothing is sent to the robots: this only reads their positions.
         </div>
         {!props.live && <div className="callout" style={{ marginTop: 10 }}>Open the editor from a controller to see its robots; or type the move in Turn or shift.</div>}
         {props.live && robots.length === 0 && <div className="note" style={{ marginTop: 10 }}>No robot has a position right now.</div>}
@@ -387,8 +400,8 @@ export const FramePanel: React.FC<FramePanelProps> = (props) => {
       </div>
       {tabs}
       <div className="ins-sub" style={{ marginTop: 8 }}>
-        One change: a new calibration is made from the one in use, the room file records the new origin, and the controller uses the new file. The plan shows the new
-        floor dashed. Robots keep the old origin until you send it to them.
+        Held in the draft with your other edits: areas, walls, objects and the coverage keep their place on the floor, with new numbers. The plan shows the new origin
+        dashed until it is in the draft. Save writes one new calibration and the room file; robots report in the old origin until you push.
       </div>
       <span className="lbl" style={{ marginTop: 8 }}>Turn</span>
       <div className="grid2">
@@ -397,7 +410,7 @@ export const FramePanel: React.FC<FramePanelProps> = (props) => {
         <NumField label="about x" prefix="about x" value={move.pivot[0]} onApply={(v) => onMove({ ...move, pivot: [v, move.pivot[1]] })} />
         <NumField label="about y" prefix="about y" value={move.pivot[1]} onApply={(v) => onMove({ ...move, pivot: [move.pivot[0], v] })} />
       </div>
-      <span className="lbl" style={{ marginTop: 8 }}>Move the origin by, mm</span>
+      <span className="lbl" style={{ marginTop: 8 }}>Move the origin from where it is saved, mm</span>
       <div className="grid2">
         <NumField label="shift x" prefix="x" value={move.dx} onApply={(v) => onMove({ ...move, dx: v })} />
         <NumField label="shift y" prefix="y" value={move.dy} onApply={(v) => onMove({ ...move, dy: v })} />
@@ -409,7 +422,7 @@ export const FramePanel: React.FC<FramePanelProps> = (props) => {
       <Sec title="Same from a terminal">
         <div className="cli">{frameTwin(props.site, props.calibrationId.slice(0, 8), move)}</div>
       </Sec>
-      <KV rows={[["Frame now", props.frameId]]} />
+      <KV rows={[["Frame saved", props.frameId]]} />
     </div>
   );
 };

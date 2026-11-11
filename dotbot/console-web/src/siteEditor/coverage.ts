@@ -253,17 +253,3 @@ export function moved(shown: LibraryRow | null, rows: LibraryRow[]): Moved {
   }
   return { spins: all.length, verdict: off ? "moved?" : "no sign", ranges };
 }
-
-/** The name offered for a coverage edit of a file tagged `base`: the base
- * without an earlier coverage suffix, then what the layout is. "" for an
- * untagged file. */
-export function coverageTag(base: string, boxes: Record<number, Rect>): string {
-  if (!base) return "";
-  const stem = base.replace(/-(handover-[xy]\d+|no-handover|coverage|boxes)(-\d+)?$/, "");
-  const rects = Object.values(boxes);
-  if (rects.length !== 2) return `${stem}-coverage`;
-  if (rects[0].join() === rects[1].join()) return `${stem}-no-handover`;
-  const line = handover(rects[0], rects[1]);
-  const m = line && /handover ([xy]) (\d+)/.exec(line.label);
-  return m ? `${stem}-handover-${m[1]}${m[2]}` : `${stem}-coverage`;
-}

@@ -10,7 +10,8 @@ import { coverageText, nameOf } from "./library";
 import type { EditorContext, LibraryRow } from "./types";
 
 // Use one calibration: the controller switches to it now, it is sent to the
-// robots ticked, and a verification is offered after. One sheet, in order.
+// robots ticked, and a verification is offered after. One sheet, in order;
+// for the calibration already in use, the push alone.
 
 type Phase = { kind: "ask" } | { kind: "busy"; what: string } | { kind: "done"; used: boolean; sent: string[]; stale: string[]; error: string };
 
@@ -49,6 +50,7 @@ export const ServeSheet: React.FC<{
   }, [busy, onClose]);
 
   const name = nameOf(row);
+  const inUse = context.served?.id === row.id;
   const nowName = context.served ? nameOf(context.served) : "none";
   const sameSpin = served && served.spin === row.spin;
   const started = context.started_with;
@@ -62,6 +64,16 @@ export const ServeSheet: React.FC<{
 
   const go = async (send: boolean) => {
     setConflict("");
+    if (inUse) {
+      setPhase({ kind: "busy", what: `Sending to ${n} robot${n === 1 ? "" : "s"}…` });
+      try {
+        const done = await pushCalibrationFile(row.id, [...ticked]);
+        setPhase({ kind: "done", used: true, sent: [...ticked], stale: done.stale, error: "" });
+      } catch (e) {
+        setPhase({ kind: "done", used: true, sent: [], stale: [], error: `Not sent: ${(e as Error).message}` });
+      }
+      return;
+    }
     setPhase({ kind: "busy", what: "Switching…" });
     let ctx: EditorContext;
     try {
@@ -96,12 +108,12 @@ export const ServeSheet: React.FC<{
           <Icon name="x" size={14} />
         </button>
         <h2>
-          <Icon name="served" size={16} /> {phase.kind === "done" && phase.used ? `Using ${name}` : `Use ${name}?`}
+          <Icon name="served" size={16} /> {inUse ? `Push ${name} to robots` : phase.kind === "done" && phase.used ? `Using ${name}` : `Use ${name}?`}
         </h2>
         <div className="sub">
-          {sameSpin ? `The same measurement as ${nowName}: the stations are where they were, only the coverage differs.` : row.in_frame ? "Another measurement of this room." : "Not in this room yet."}{" "}
+          {inUse ? "" : sameSpin ? `The same measurement as ${nowName}: the stations are where they were, only the coverage differs.` : row.in_frame ? "Another measurement of this room." : "Not in this room yet."}{" "}
           Coverage: {coverageText(row.reading)}
-          {served ? ` (now: ${coverageText(served.reading)})` : ""}.
+          {served && !inUse ? ` (now: ${coverageText(served.reading)})` : ""}.
         </div>
         {conflict && (
           <div className="callout warn" role="alert" data-testid="serve-conflict">
@@ -111,6 +123,18 @@ export const ServeSheet: React.FC<{
             {conflict} Look it over, then switch again if you still want to.
           </div>
         )}
+        {inUse ? (
+          <div className="part" data-testid="serve-in-use">
+            <div className="ph">
+              <span className="stepn">
+                <Icon name="check" size={13} />
+              </span>
+              <span>This controller uses it</span>
+              <span className="sp" />
+              <Badge>{host}</Badge>
+            </div>
+          </div>
+        ) : (
         <div className="part">
           <div className="ph">
             <span className="stepn">{phase.kind === "done" && phase.used ? <Icon name="check" size={13} /> : "1"}</span>
@@ -134,6 +158,7 @@ export const ServeSheet: React.FC<{
             </label>
           </div>
         </div>
+        )}
         <div className="part">
           <div className="ph">
             <span className="stepn">{phase.kind === "done" && phase.sent.length ? <Icon name="check" size={13} /> : "2"}</span>
@@ -179,7 +204,7 @@ export const ServeSheet: React.FC<{
         </div>
         {phase.kind === "done" && (
           <div className={`callout ${phase.error ? "err" : phase.stale.length ? "warn" : "ok"}`} role="status" data-testid="serve-result" style={{ marginTop: 10 }}>
-            {phase.used ? `Now using ${name}${persist ? ", kept for the next start" : ", until the controller restarts"}. ` : ""}
+            {phase.used && !inUse ? `Now using ${name}${persist ? ", kept for the next start" : ", until the controller restarts"}. ` : ""}
             {phase.sent.length ? (phase.stale.length ? `Sent to ${phase.sent.length}; ${phase.stale.length} did not report it back yet: ${phase.stale.map((s) => `…${s.slice(-4)}`).join(", ")}.` : `Sent: all ${phase.sent.length} report it now.`) : phase.used && !phase.error ? "Robots keep what they had until it is sent." : ""}
             {phase.error ? ` ${phase.error}` : ""}
           </div>
@@ -205,7 +230,12 @@ export const ServeSheet: React.FC<{
               Verify…
             </button>
           )}
-          {phase.kind !== "done" && (
+          {phase.kind !== "done" && inUse && (
+            <button type="button" className="btn primary" onClick={() => go(true)} disabled={busy || n === 0} data-testid="serve-send">
+              {busy ? (phase as { what: string }).what : n === 0 ? "Nothing to send" : stops ? `Stop ${stops} app${stops === 1 ? "" : "s"} and send to ${n}` : `Send to ${n} robot${n === 1 ? "" : "s"}`}
+            </button>
+          )}
+          {phase.kind !== "done" && !inUse && (
             <>
               <button type="button" className={`btn${n ? "" : " primary"}`} onClick={() => go(false)} disabled={busy} data-testid="serve-confirm">
                 {busy ? (phase as { what: string }).what : "Use only"}

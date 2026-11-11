@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { changes, edit, newDraft, persist, reapply, redo, restore, undo, type KeyValue } from "./draft";
-import { docFromSite, type Doc } from "./model";
+import { changes, edit, FRAME_LOST, newDraft, pending, persist, reapply, redo, restore, step, undo, type KeyValue } from "./draft";
+import { docFromSite, movedDoc, type Doc } from "./model";
+import { calibrationEdit, pendingLines } from "./save";
 
 const SITE = {
   anchor: "the door",
@@ -131,5 +132,52 @@ describe("text edits across a changed file", () => {
     expect(back.lostText).toBe("# by hand\n");
     expect(back.draft.text).toBeNull();
     expect(restore(memory(), "inria-2lh", "r2", base)).toBeNull();
+  });
+});
+
+describe("a move of the origin in the draft", () => {
+  // The server's answer for the origin moved 500 mm left and up
+  const shifted = (doc: Doc) =>
+    movedDoc(doc, {
+      anchor: doc.anchor,
+      extent_mm: [1560, 1720],
+      areas: doc.areas.map((a) => ({ ...a, x: a.x + 500, y: a.y + 500 })),
+      walls: doc.walls.map((w) => ({ points: w.points.map(([x, y]) => [x + 500, y + 500] as [number, number]) })),
+      objects: doc.objects.map((o) => ({ ...o, x: o.x + 500, y: o.y + 500 })),
+    });
+  const move = { theta_deg: 0, pivot: [0, 0] as [number, number], dx: -500, dy: -500, note: null };
+
+  it("is one step of the history: undo takes it back with every number, redo puts it again", () => {
+    const base = docFromSite(SITE);
+    let d = newDraft("inria-2lh", "r1", null, base);
+    d = edit(d, withStaging(d.doc));
+    const before = d.doc;
+    d = step(d, { doc: shifted(d.doc), frame: { from: "4640cfde014c7232", move, frame: "0badf00d", base: shifted(base), coverage: { 0: [500, 500, 1560, 1720] } } });
+    expect(d.doc.areas[0]).toMatchObject({ key: "area:field", x: 500, y: 500, was: "field" });
+    expect(d.doc.extent_mm).toEqual([1560, 1720]);
+    // The move counts once, the staging area once: the renumbering is not an edit
+    expect(pending(d)).toBe(2);
+    expect(pendingLines(d, []).map((l) => l.key)).toEqual(["frame", "area:new-1"]);
+    expect(calibrationEdit(d)).toEqual({ source: "4640cfde014c7232", frame: { theta_deg: 0, pivot: [0, 0], dx_mm: -500, dy_mm: -500 }, stations: null, tag: null });
+    d = undo(d);
+    expect(d.frame).toBeNull();
+    expect(d.doc).toBe(before);
+    expect(pending(d)).toBe(1);
+    d = redo(d);
+    expect(d.frame?.move.dx).toBe(-500);
+    expect(d.doc.areas[0].x).toBe(500);
+  });
+
+  it("is dropped, with the edits after it, when the file changed under a kept draft", () => {
+    const base = docFromSite(SITE);
+    const store = memory();
+    let d = newDraft("inria-2lh", "r1", null, base);
+    d = step(d, { doc: shifted(d.doc), frame: { from: "4640cfde014c7232", move, frame: "0badf00d", base: shifted(base), coverage: {} } });
+    persist(store, d);
+    const kept = restore(store, "inria-2lh", "r1", base)!;
+    expect(kept.draft.frame?.move.dx).toBe(-500);
+    const moved = restore(store, "inria-2lh", "r2", base)!;
+    expect(moved.draft.frame).toBeNull();
+    expect(moved.conflicts).toEqual([FRAME_LOST]);
   });
 });

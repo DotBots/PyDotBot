@@ -1,17 +1,38 @@
+import type { FrameMove } from "./frameMove";
 import type { Doc } from "./model";
+import type { Rigid } from "./place";
 import type { Rect } from "./types";
 
 // One draft for the whole page: the doc as loaded, the doc as edited, and one
-// history of edits. It is kept in this browser per site, site.toml revision
-// and shown calibration, so a reload brings it back.
+// history of edits, the origin move and the coverage included. It is kept in
+// this browser per site and site.toml revision, so a reload brings it back.
+// Nothing is written until Save, which makes at most one calibration.
 
-/** New station boxes for a calibration, saved as a new file on Save. */
+/** New station boxes for a calibration, in the draft's frame. */
 export interface BoxDraft {
   /** The full id of the calibration the boxes start from. */
   from: string;
   boxes: Record<number, Rect>;
-  /** The new file's tag. */
-  tag: string;
+}
+
+/** The room's origin moved: the doc is in the moved frame's numbers. */
+export interface FrameDraft {
+  /** The full id of the calibration the move re-expresses. */
+  from: string;
+  /** The move from the saved frame. */
+  move: FrameMove;
+  /** The moved frame's id. */
+  frame: string;
+  /** The file as loaded, renumbered by the move: what edits are counted against. */
+  base: Doc;
+  /** The calibration's own coverage in the moved frame. */
+  coverage: Record<number, Rect>;
+}
+
+/** A spin put into the room, saved as a new calibration. */
+export interface PlaceDraft {
+  from: string;
+  move: Rigid;
 }
 
 /** One step of the history: everything a Save would write. */
@@ -20,6 +41,8 @@ export interface Snap {
   /** site.toml as edited by hand on the page, patched instead of the file. */
   text: string | null;
   boxes: BoxDraft | null;
+  frame: FrameDraft | null;
+  place: PlaceDraft | null;
 }
 
 export interface Draft extends Snap {
@@ -27,6 +50,8 @@ export interface Draft extends Snap {
   revision: string;
   calibration: string | null;
   base: Doc;
+  /** The new calibration's name as typed; "" lets Save derive it. */
+  name: string;
   past: Snap[];
   future: Snap[];
 }
@@ -34,15 +59,15 @@ export interface Draft extends Snap {
 export const HISTORY_MAX = 200;
 
 export function newDraft(site: string, revision: string, calibration: string | null, base: Doc): Draft {
-  return { site, revision, calibration, base, doc: base, text: null, boxes: null, past: [], future: [] };
+  return { site, revision, calibration, base, doc: base, text: null, boxes: null, frame: null, place: null, name: "", past: [], future: [] };
 }
 
-const snapOf = (d: Snap): Snap => ({ doc: d.doc, text: d.text, boxes: d.boxes });
+const snapOf = (d: Snap): Snap => ({ doc: d.doc, text: d.text, boxes: d.boxes, frame: d.frame, place: d.place });
 
 /** `draft` with `next` as the next step of its history. */
 export function step(draft: Draft, next: Partial<Snap>): Draft {
   const merged = { ...snapOf(draft), ...next };
-  if (merged.doc === draft.doc && merged.text === draft.text && merged.boxes === draft.boxes) return draft;
+  if (merged.doc === draft.doc && merged.text === draft.text && merged.boxes === draft.boxes && merged.frame === draft.frame && merged.place === draft.place) return draft;
   return { ...draft, ...merged, past: [...draft.past, snapOf(draft)].slice(-HISTORY_MAX), future: [] };
 }
 
@@ -63,9 +88,13 @@ export function redo(draft: Draft): Draft {
   return { ...draft, ...next, past: [...draft.past, snapOf(draft)], future: rest };
 }
 
+/** The doc edits are counted against: the file as loaded, in the draft's frame. */
+export const baseOf = (draft: Draft): Doc => draft.frame?.base ?? draft.base;
+
 /** How many separate things a Save would write or change. */
 export function pending(draft: Draft): number {
-  return changes(draft.base, draft.doc).length + (draft.boxes ? 1 : 0) + (draft.text !== null && changes(draft.base, draft.doc).length === 0 ? 1 : 0);
+  const own = changes(baseOf(draft), draft.doc).length;
+  return own + (draft.boxes ? 1 : 0) + (draft.frame ? 1 : 0) + (draft.place ? 1 : 0) + (draft.text !== null && own === 0 ? 1 : 0);
 }
 
 // --- What changed --------------------------------------------------------
@@ -124,7 +153,17 @@ export const storageKey = (site: string) => `${PREFIX}${site}`;
 
 /** The draft as storage keeps it. */
 export const serialize = (draft: Draft) =>
-  JSON.stringify({ revision: draft.revision, calibration: draft.calibration, base: draft.base, doc: draft.doc, text: draft.text, boxes: draft.boxes });
+  JSON.stringify({
+    revision: draft.revision,
+    calibration: draft.calibration,
+    base: draft.base,
+    doc: draft.doc,
+    text: draft.text,
+    boxes: draft.boxes,
+    frame: draft.frame,
+    place: draft.place,
+    name: draft.name,
+  });
 
 /** Keep the draft in `storage`; a draft with nothing changed is dropped. */
 export function persist(storage: KeyValue | null, draft: Draft): void {
@@ -144,6 +183,9 @@ export function forget(storage: KeyValue | null, site: string): void {
     // nothing kept, nothing to forget
   }
 }
+
+/** The conflict a draft with a moved origin leaves when the file changed under it. */
+export const FRAME_LOST: Change = { key: "frame", what: "changed", label: "the origin move and the edits made after it" };
 
 export interface Restored {
   draft: Draft;
@@ -171,20 +213,23 @@ export function peek(storage: KeyValue | null, site: string): string | null {
 export function restore(storage: KeyValue | null, site: string, revision: string, loaded: Doc): Restored | null {
   const raw = peek(storage, site);
   if (!raw) return null;
-  let kept: { revision: string; calibration: string | null; base: Doc; doc: Doc; text?: string | null; boxes?: BoxDraft | null };
+  let kept: { revision: string; calibration: string | null; base: Doc; doc: Doc; text?: string | null; boxes?: BoxDraft | null; frame?: FrameDraft | null; place?: PlaceDraft | null; name?: string };
   try {
     kept = JSON.parse(raw);
   } catch {
     return null;
   }
-  const first: Snap = { doc: loaded, text: null, boxes: null };
+  const first: Snap = { doc: loaded, text: null, boxes: null, frame: null, place: null };
+  const fresh = newDraft(site, revision, kept.calibration, loaded);
   if (kept.revision === revision) {
-    const draft = { ...newDraft(site, revision, kept.calibration, loaded), doc: kept.doc, text: kept.text ?? null, boxes: kept.boxes ?? null, past: [first] };
+    const draft = { ...fresh, doc: kept.doc, text: kept.text ?? null, boxes: kept.boxes ?? null, frame: kept.frame ?? null, place: kept.place ?? null, name: kept.name ?? "", past: [first] };
     return { draft, conflicts: [], reapplied: false };
   }
+  // A move of the origin renumbered every edit, so none can follow onto a new file
+  if (kept.frame) return { draft: fresh, conflicts: [FRAME_LOST], reapplied: true, lostText: kept.text ?? null };
   // A hand edit was made on the old file's text, so it cannot follow onto a new one
   const { doc, conflicts } = reapply(kept.base, kept.doc, loaded);
-  const draft = { ...newDraft(site, revision, kept.calibration, loaded), doc, boxes: kept.boxes ?? null, past: [first] };
+  const draft = { ...fresh, doc, boxes: kept.boxes ?? null, place: kept.place ?? null, name: kept.name ?? "", past: [first] };
   return { draft, conflicts, reapplied: true, lostText: kept.text ?? null };
 }
 

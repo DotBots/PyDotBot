@@ -17,7 +17,7 @@ export type GoalState = "ok" | "warn" | "fail" | "unknown";
 export interface GoalAction {
   label: string;
   /** Where the fix lives in the editor. */
-  go: { kind?: EditKind; tool?: string; tab?: "library" | "outline"; select?: string; sheet?: "check" | "split" | "newroom"; mode?: "fix" | "error"; href?: string; push?: string };
+  go: { kind?: EditKind; tool?: string; tab?: "library" | "outline"; select?: string; sheet?: "check" | "split" | "newroom"; mode?: "fix" | "error"; href?: string };
 }
 
 export interface Goal {
@@ -201,7 +201,7 @@ export function goals(i: GoalInputs): Goal[] {
         : !i.servedId
           ? `${n} on the floor · positions from whatever calibration they have`
           : other || unsent
-            ? `${n} on the floor · ${other ? `${other} have another calibration` : "none has it yet"}: positions are in the old frame until you send ${name}`
+            ? `${n} on the floor · ${other ? `${other} have another calibration` : "none has it yet"}: positions are in the old frame until you push ${name} (Push to robots, in the title bar)`
             : unknown === n
               ? `${n} on the floor · cannot tell which calibration they have (no device info)`
               : `${inField.length} of ${n} in the field · ${have === n ? "all" : `${have} of ${n}`} have ${name}${unknown ? ` · ${unknown} cannot tell` : ""}`;
@@ -211,7 +211,7 @@ export function goals(i: GoalInputs): Goal[] {
       title: "Robots",
       state,
       detail,
-      action: (other || unsent) && i.servedId ? { label: "Send…", go: { push: i.servedId } } : { label: "Show…", go: { tab: "outline" } },
+      action: { label: "Show…", go: { tab: "outline" } },
     });
   } else {
     out.push({ id: "robots", group: "run", title: "Robots", state: "unknown", detail: "no controller opened this page, so no robot is known", action: { label: "Outline…", go: { tab: "outline" } } });

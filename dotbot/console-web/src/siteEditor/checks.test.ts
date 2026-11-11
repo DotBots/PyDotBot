@@ -54,10 +54,11 @@ describe("the rows", () => {
     expect(verdict(goals(inputs([bot("A1"), bot("B2"), bot("C3")]))).unknown).toBeGreaterThan(0);
   });
 
-  it("asks for a send when a robot has another calibration, and says all have it otherwise", () => {
+  it("points at Push when a robot has another calibration, and says all have it otherwise", () => {
     const other = goal(inputs([bot("A1", "a1b41f12aaaa0000"), bot("B2", SERVED.id)]), "robots");
     expect(other.state).toBe("warn");
-    expect(other.action).toEqual({ label: "Send…", go: { push: SERVED.id } });
+    expect(other.detail).toContain("Push to robots, in the title bar");
+    expect(other.action).toEqual({ label: "Show…", go: { tab: "outline" } });
     expect(goal(inputs([bot("A1", SERVED.id), bot("B2", SERVED.id)]), "robots")).toMatchObject({ state: "ok", detail: "2 of 2 in the field · all have r3" });
   });
 

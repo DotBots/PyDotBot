@@ -3,8 +3,9 @@ import type { UnifiedBot } from "../types";
 import { nameOf, shortWhen } from "./library";
 import type { EditorContext, LibraryRow } from "./types";
 
-// The one line that says what the controller uses and what the robots have,
-// plus at most one second part for what the page shows or edits besides it.
+// The one line that says what the controller uses, what is not saved yet and
+// what the robots have; the Push button reads the same facts. What the page
+// looks at besides the calibration in use is a second part, under it.
 
 export interface Fleet {
   total: number;
@@ -14,11 +15,7 @@ export interface Fleet {
   unknown: number;
 }
 
-export type StatusSide =
-  | { kind: "none" }
-  | { kind: "looking"; id: string; id8: string; name: string; canUse: boolean }
-  | { kind: "edited"; from: string; name: string }
-  | { kind: "exists"; id: string; id8: string; name: string };
+export type StatusSide = { kind: "none" } | { kind: "looking"; id: string; id8: string; name: string; canUse: boolean };
 
 export interface Status {
   /** "using" a calibration, "none" in use, or "files" when no controller opened the page. */
@@ -34,8 +31,8 @@ export interface Status {
   untilRestart: boolean;
   /** What a restart starts with, in a word, when `untilRestart`. */
   restart: string;
-  /** The origin moved and robots still hold the old frame. */
-  originMoved: boolean;
+  /** Changes in the draft that Save has not written. */
+  unsaved: number;
   side: StatusSide;
   /** Where the calibration in use came from, in one short sentence. */
   reason: string;
@@ -82,9 +79,7 @@ export interface StatusInputs {
   bots: UnifiedBot[];
   /** The file being looked at instead of the one in use, if any. */
   looking: LibraryRow | null;
-  /** The coverage draft's source and, when it equals an existing file, that file. */
-  edited: { from: LibraryRow | null; fromId: string; existing: { id: string; id8: string; tag: string; created_at?: string } | null } | null;
-  originMoved: boolean;
+  unsaved: number;
   /** The site's calibrations, to name a spec like "4640cfde" by its tag. */
   rows?: LibraryRow[];
 }
@@ -107,10 +102,7 @@ export function statusOf(i: StatusInputs): Status {
   const restart = c && live ? restartOf(c) : "none";
   const untilRestart = !!served && served.source.endsWith("for this run") && !(served.id8 && restart.startsWith(served.id8));
   let side: StatusSide = { kind: "none" };
-  if (i.edited) {
-    const ex = i.edited.existing;
-    side = ex ? { kind: "exists", id: ex.id, id8: ex.id8, name: nameOf(ex) } : { kind: "edited", from: i.edited.fromId.slice(0, 8), name: nameOf(i.edited.from ?? { id8: i.edited.fromId.slice(0, 8) }) };
-  } else if (i.looking && i.looking.id !== id) {
+  if (i.looking && i.looking.id !== id) {
     side = { kind: "looking", id: i.looking.id, id8: i.looking.id8, name: nameOf(i.looking), canUse: live && i.looking.in_frame };
   }
   return {
@@ -122,7 +114,7 @@ export function statusOf(i: StatusInputs): Status {
     fleet: live ? fleetOf(i.bots, id) : null,
     untilRestart,
     restart: specLabel(i.rows ?? [], restart),
-    originMoved: i.originMoved,
+    unsaved: i.unsaved,
     side,
     reason: c ? reasonOf(c, (spec) => specLabel(i.rows ?? [], spec)) : "",
   };
@@ -138,32 +130,48 @@ export function fleetText(f: Fleet | null): string {
   return `on ${f.have} of ${f.total} robots${tail}`;
 }
 
+/** Whether a push is the next step: a robot that could say so does not have it. */
+export const needsSend = (s: Status) => s.kind === "using" && !!s.fleet && s.fleet.have < s.fleet.total - s.fleet.unknown;
+
+/** The robots' part of the line: "on 3 of 4", "cannot tell", "need a push". */
+export function robotsText(s: Status): string {
+  const f = s.fleet;
+  if (!f) return "";
+  if (f.total === 0) return "none reporting";
+  if (needsSend(s)) return "need a push";
+  if (f.unknown === f.total) return "cannot tell";
+  return `on ${f.have} of ${f.total}`;
+}
+
+/** "3 unsaved changes", "" with none. */
+export const unsavedText = (n: number) => (n ? `${n} unsaved change${n === 1 ? "" : "s"}` : "");
+
 /** The whole line as text, for the Present bar and for tests. */
 export function statusText(s: Status): string {
-  if (s.kind === "files") return s.id ? `Files only · the config names ${s.name}` : "Files only · no calibration named";
-  if (s.kind === "none") return "No calibration in use";
-  const parts = [`Using ${s.name}`];
-  if (s.originMoved) parts[0] += " (origin moved)";
-  if (s.when) parts.push(s.when);
-  const f = fleetText(s.fleet);
-  if (f) parts.push(f);
-  if (s.untilRestart) parts.push("until restart");
-  return parts.join(" · ");
+  const tail = [unsavedText(s.unsaved), s.kind === "using" && s.fleet ? `robots: ${robotsText(s)}` : ""].filter(Boolean);
+  const head = s.kind === "files" ? (s.id ? `Files only · the config names ${s.name}` : "Files only · no calibration named") : s.kind === "none" ? "No calibration in use" : `Using ${s.name}`;
+  return [head, ...tail].join(" · ");
+}
+
+/** `text` cut to `max` characters by its middle, so its start and its end both stay. */
+export function middle(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const keep = max - 1;
+  const head = Math.ceil(keep / 2);
+  return `${text.slice(0, head)}…${text.slice(text.length - (keep - head))}`;
+}
+
+/** The title bar's Push button: on when what the controller uses differs from what the robots report. */
+export function pushOf(s: Status): { on: boolean; label: string; title: string } {
+  if (s.kind !== "using") return { on: false, label: "Push to robots", title: s.kind === "files" ? "No controller opened this page" : "No calibration in use to push" };
+  const f = s.fleet;
+  if (!f || f.total === 0) return { on: false, label: "Push to robots", title: "No robot reports to this controller" };
+  if (needsSend(s)) return { on: true, label: "Push to robots", title: `${f.total - f.unknown - f.have} robot${f.total - f.unknown - f.have === 1 ? "" : "s"} report another calibration than ${s.name}` };
+  if (f.unknown === f.total) return { on: false, label: "Push · cannot tell", title: "The robots send no device info, so whether they hold it cannot be told" };
+  return { on: false, label: "Push to robots", title: `Every robot that can say holds ${s.name}` };
 }
 
 /** The second part's words. */
 export function sideText(side: StatusSide): string {
-  switch (side.kind) {
-    case "looking":
-      return `looking at ${side.name}`;
-    case "edited":
-      return "coverage edited, not saved";
-    case "exists":
-      return `this coverage already exists: ${side.name}`;
-    default:
-      return "";
-  }
+  return side.kind === "looking" ? `looking at ${side.name}` : "";
 }
-
-/** Whether a Send is the next step: a robot that could say so does not have it. */
-export const needsSend = (s: Status) => s.kind === "using" && !!s.fleet && s.fleet.have < s.fleet.total - s.fleet.unknown;

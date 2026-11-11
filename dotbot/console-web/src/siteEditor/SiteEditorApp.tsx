@@ -10,7 +10,6 @@ import { TitleBar } from "../shared/TitleBar";
 import { holds, typingIn } from "../shortcuts";
 import type { Site, SpinRun, UnifiedBot } from "../types";
 import {
-  dryRunBoxes,
   fetchChecks,
   fetchContext,
   fetchCoverage,
@@ -20,11 +19,13 @@ import {
   fetchSite,
   HttpError,
   patchCalibration,
+  planSave,
+  postFrame,
   restorePoint,
   restoreVersion,
-  type DryRun,
-  type FrameResult,
+  type FrameMoved,
   type RestorePoint,
+  type SavePlan,
   type Version,
 } from "./api";
 import { CheckMarkPanel } from "./CheckMarkPanel";
@@ -32,12 +33,11 @@ import { goals as goalsOf, serveStep, verdict as verdictOf, type CheckRecord, ty
 import { ChecksPane } from "./ChecksPane";
 import { CompareSheet } from "./CompareSheet";
 import { anchorsOverlay, FramePanel } from "./FramePanel";
-import { FrameSheet } from "./FrameSheet";
-import { moves, NO_MOVE, toOld, turnedAbout, withOrigin, type Anchor, type FrameMove } from "./frameMove";
+import { moveBody, moves, NO_MOVE, onPlan, sameMove, toNew, toOld, turnedAbout, withOrigin, type Anchor, type FrameMove } from "./frameMove";
 import { ServeSheet } from "./ServeSheet";
 import { heldCalibrationId } from "../botFacts";
-import { coverageTag, splitFloor, type Coverage } from "./coverage";
-import { forget, newDraft, pending, persist, reapply, redo, restore, serialize, step, storageKey, undo, type Change, type Draft, type KeyValue, type Snap } from "./draft";
+import { splitFloor, type Coverage } from "./coverage";
+import { FRAME_LOST, forget, newDraft, pending, persist, reapply, redo, restore, serialize, step, storageKey, undo, type Change, type Draft, type KeyValue, type PlaceDraft, type Snap } from "./draft";
 import "./editor.css";
 import { EditorFleet } from "./EditorFleet";
 import { SitesSheet, StartScreen } from "./SitesSheet";
@@ -51,8 +51,9 @@ import { Inspector } from "./Inspector";
 import { EDITOR_SHORTCUTS, KIND_KEY, KIND_LABEL, keyAction, SHARED_KEY, TOOL_ICON, TOOL_LABEL, TOOLS, type EditKind, type Tool } from "./keys";
 import { LibraryPane, type LibraryAction } from "./LibraryPane";
 import { coverageText, nameOf, residuals, when } from "./library";
-import { docFromPayload, docFromSite, type Doc, type Point } from "./model";
-import { statusOf, statusText } from "./status";
+import { docFromPayload, docFromSite, movedDoc, siteModel, type Doc, type Point } from "./model";
+import { saveBody } from "./save";
+import { pushOf, statusOf, statusText } from "./status";
 import { StatusLine, StatusSide } from "./StatusLine";
 import { OutlinePane } from "./OutlinePane";
 import { DEFAULT_LAYERS, kindOfKey, PlanCanvas, type PlanLayers, type PlanPaint } from "./PlanCanvas";
@@ -134,14 +135,19 @@ function refusal(e: unknown): { message: string; dependents: string[] } | null {
   }
 }
 
-/** The new floor and zero of a frame move, dashed over the plan. */
-function frameGhost(m: FrameMove, extent: [number, number]) {
+/** The new zero of a frame move and the floor it leaves (from the new zero to
+ * the saved floor's far edges, `saved` in the saved frame's mm), dashed over a
+ * plan drawn in the frame `drawn` makes; everything else stays where it is. */
+function frameGhost(m: FrameMove, saved: [number, number], drawn: FrameMove | null) {
+  const at = (q: Point) => onPlan(m, drawn, q);
+  const far = ([[0, 0], [saved[0], 0], [saved[0], saved[1]], [0, saved[1]]] as Point[]).map((c) => toNew(m, c));
+  const extent: Point = [Math.max(1, ...far.map((c) => c[0])), Math.max(1, ...far.map((c) => c[1]))];
   return (p: PlanPaint) => {
-    const corners = ([[0, 0], [extent[0], 0], [extent[0], extent[1]], [0, extent[1]]] as Point[]).map((c) => p.px(toOld(m, c)));
-    const zero = p.px(toOld(m, [0, 0]));
-    const xEnd = p.px(toOld(m, [Math.min(250, extent[0] / 3), 0]));
-    const yEnd = p.px(toOld(m, [0, Math.min(250, extent[1] / 3)]));
-    const pivot = p.px(m.pivot);
+    const corners = ([[0, 0], [extent[0], 0], [extent[0], extent[1]], [0, extent[1]]] as Point[]).map((c) => p.px(at(c)));
+    const zero = p.px(at([0, 0]));
+    const xEnd = p.px(at([Math.min(250, extent[0] / 3), 0]));
+    const yEnd = p.px(at([0, Math.min(250, extent[1] / 3)]));
+    const pivot = p.px(drawn ? toNew(drawn, m.pivot) : m.pivot);
     return (
       <g data-testid="frame-ghost" style={{ pointerEvents: "none" }}>
         <polygon points={corners.map((c) => c.join(",")).join(" ")} fill="color-mix(in srgb, var(--accent) 5%, transparent)" stroke="var(--accent)" strokeWidth={1.5 * p.chrome} strokeDasharray={`${6 * p.chrome} ${4 * p.chrome}`} />
@@ -224,16 +230,16 @@ export const SiteEditorApp: React.FC = () => {
   const [coverageStale, setCoverageStale] = useState(false);
   const [showNext, setShowNext] = useState(true);
   const [probe, setProbe] = useState<{ at: Point; px: Point } | null>(null);
-  const [dry, setDry] = useState<DryRun | null>(null);
+  const [plan, setPlan] = useState<SavePlan | null>(null);
+  const [planError, setPlanError] = useState("");
   const [picked, setPicked] = useState<string[]>([]);
   const [serving, setServing] = useState<LibraryRow | null>(null);
   const [pushing, setPushing] = useState<string | null>(null);
   const [comparing, setComparing] = useState<[LibraryRow, LibraryRow] | null>(null);
-  const [toast, setToast] = useState<{ text: string; push?: string; undo?: () => void } | null>(null);
+  const [toast, setToast] = useState<{ text: string; undo?: () => void } | null>(null);
   const [frameMove, setFrameMove] = useState<FrameMove>(NO_MOVE);
   const [anchors, setAnchors] = useState<Anchor[]>([]);
   const [measured, setMeasured] = useState<Point[]>([]);
-  const [frameReview, setFrameReview] = useState<FrameResult | null>(null);
   const [servedCoverage, setServedCoverage] = useState<Coverage | null>(null);
   const [checks, setChecks] = useState<CheckRecord[]>([]);
   const [checking, setChecking] = useState<string | true | null>(null);
@@ -294,8 +300,7 @@ export const SiteEditorApp: React.FC = () => {
     if (draft) persist(storage(), draft);
   }, [draft]);
 
-  // A coverage draft that equals a file already saved writes nothing
-  const unsaved = draft ? pending(draft) - (draft.boxes && dry?.existing ? 1 : 0) : 0;
+  const unsaved = draft ? pending(draft) : 0;
   useEffect(() => {
     if (unsaved === 0) return;
     const guard = (e: BeforeUnloadEvent) => {
@@ -320,9 +325,12 @@ export const SiteEditorApp: React.FC = () => {
       setDraft(newDraft(p.name, p.revision, null, fresh));
       return;
     }
-    const { doc, conflicts: c } = reapply(d.base, d.doc, fresh);
-    const first: Snap = { doc: fresh, text: null, boxes: null };
-    const next: Draft = { ...newDraft(p.name, p.revision, d.calibration, fresh), doc, boxes: d.boxes, past: [first] };
+    // A move of the origin renumbered every edit, so none can follow onto the new file
+    const { doc, conflicts: c } = d.frame ? { doc: fresh, conflicts: [FRAME_LOST] } : reapply(d.base, d.doc, fresh);
+    const first: Snap = { doc: fresh, text: null, boxes: null, frame: null, place: null };
+    const next: Draft = d.frame
+      ? { ...newDraft(p.name, p.revision, d.calibration, fresh), past: [first] }
+      : { ...newDraft(p.name, p.revision, d.calibration, fresh), doc, boxes: d.boxes, place: d.place, name: d.name, past: [first] };
     setConflicts(c);
     setDraft(next);
     const n = pending(next);
@@ -404,7 +412,14 @@ export const SiteEditorApp: React.FC = () => {
   const shownId = previewId ?? servedId;
   const shown = rows.find((r) => r.id === shownId) ?? null;
   const boxDraft = draft?.boxes && shown && draft.boxes.from === shown.id ? draft.boxes : null;
-  const fileBoxes: { index: number; rect: Rect }[] = shown?.in_frame ? shown.stations.map((s) => ({ index: s.index, rect: s.box })) : [];
+  // A drafted origin move gives the calibration it re-expresses new numbers
+  const frameDraft = draft?.frame ?? null;
+  const shownMoved = !!frameDraft && !!shown && frameDraft.from === shown.id;
+  const fileBoxes: { index: number; rect: Rect }[] = !shown?.in_frame
+    ? []
+    : shownMoved
+      ? Object.entries(frameDraft!.coverage).map(([k, rect]) => ({ index: Number(k), rect }))
+      : shown.stations.map((s) => ({ index: s.index, rect: s.box }));
   const boxes: { index: number; rect: Rect }[] = boxDraft
     ? Object.entries(boxDraft.boxes)
         .map(([k, rect]) => ({ index: Number(k), rect }))
@@ -428,16 +443,20 @@ export const SiteEditorApp: React.FC = () => {
       live = false;
     };
   }, [servedRowNow?.id, servedRowNow?.in_frame]);
-  const status = statusOf({
-    context,
-    bots,
-    looking: previewId ? shown : null,
-    edited: boxDraft ? { from: rows.find((r) => r.id === boxDraft.from) ?? null, fromId: boxDraft.from, existing: dry?.existing ?? null } : null,
-    originMoved: frameOpen,
-    rows,
-  });
+  const status = statusOf({ context, bots, looking: previewId ? shown : null, unsaved, rows });
+  const push = pushOf(status);
   const boxesKey = JSON.stringify(boxDraft?.boxes ?? null);
-  const circles = !previewId && fleetSite?.calibration?.id === servedId ? (fleetSite?.calibration?.circles ?? []) : [];
+  const servedCircles = !previewId && fleetSite?.calibration?.id === servedId ? (fleetSite?.calibration?.circles ?? []) : [];
+  const circles =
+    frameDraft && frameDraft.from === servedId
+      ? servedCircles.map((c) => {
+          const [x, y] = toNew(frameDraft.move, [c.x, c.y]);
+          return { ...c, x, y };
+        })
+      : servedCircles;
+  // The calibration an origin move re-expresses: the one the coverage draft
+  // starts from, else the one the move already holds, else the one in use
+  const frameSource = draft?.place ? null : (draft?.boxes?.from ?? frameDraft?.from ?? servedId);
   const live = context?.mode === "controller";
   const problems = useMemo(() => (draft ? rulesOf(draft.doc) : []), [draft?.doc]);
   const goalList = draft
@@ -488,10 +507,6 @@ export const SiteEditorApp: React.FC = () => {
   });
   const goalAction = (a: GoalAction) => {
     const go = a.go;
-    if (go.push) {
-      setPushing(go.push);
-      return;
-    }
     if (go.href) {
       window.open(go.href, "dotbot-console");
       return;
@@ -536,9 +551,12 @@ export const SiteEditorApp: React.FC = () => {
       if (k !== "view") setKind(k);
     }
   }, []);
+  // A frame tool opens on the move the draft holds, else on none, turning
+  // about the middle of the floor
   useEffect(() => {
     const [w, h] = draft?.doc.extent_mm ?? [0, 0];
-    setFrameMove(tool === "turn" && w ? { ...NO_MOVE, pivot: [Math.round(w / 2), Math.round(h / 2)] } : NO_MOVE);
+    const held = draft?.frame?.move ?? null;
+    setFrameMove(held ? { ...held } : tool === "turn" && w ? { ...NO_MOVE, pivot: [Math.round(w / 2), Math.round(h / 2)] } : NO_MOVE);
     setAnchors([]);
   }, [tool, kind]);
   // Where the origin may go: every measured point of the calibration in use
@@ -599,7 +617,7 @@ export const SiteEditorApp: React.FC = () => {
     setCoverageStale(true);
     let live = true;
     const t = window.setTimeout(() => {
-      fetchCoverage(shown.id, boxDraft ? boxDraft.boxes : null).then(
+      fetchCoverage(shown.id, boxDraft ? boxDraft.boxes : null, shownMoved ? moveBody(frameDraft!.move) : null).then(
         (c) => {
           if (!live) return;
           setCoverage(c);
@@ -617,24 +635,27 @@ export const SiteEditorApp: React.FC = () => {
       live = false;
       window.clearTimeout(t);
     };
-  }, [needCoverage, shown?.id, boxesKey]);
+  }, [needCoverage, shown?.id, boxesKey, shownMoved ? JSON.stringify(frameDraft!.move) : ""]);
 
-  // What Save would write for the drafted boxes, without writing it
+  // What Save would write, checked by the server: for the review, and for the
+  // coverage reading while a calibration is edited
+  const planKey = draft && payload && (reviewing || draft.boxes || draft.frame || draft.place) ? JSON.stringify(saveBody(draft, payload.text ?? "")) : "";
   useEffect(() => {
-    setDry(null);
-    if (!boxDraft || !draft) return;
+    setPlan(null);
+    setPlanError("");
+    if (!planKey) return;
     let live = true;
     const t = window.setTimeout(() => {
-      dryRunBoxes(boxDraft.from, boxDraft.boxes, draft.revision, boxDraft.tag || null).then(
-        (d) => live && setDry(d),
-        () => {},
+      planSave(JSON.parse(planKey)).then(
+        (p) => live && setPlan(p),
+        (e: Error) => live && setPlanError(e.message.replace(/^\d+: /, "")),
       );
     }, 250);
     return () => {
       live = false;
       window.clearTimeout(t);
     };
-  }, [boxesKey, boxDraft?.tag, draft?.revision]);
+  }, [planKey]);
 
   const libraryAction = (action: LibraryAction, row: LibraryRow) => {
     if (action === "preview") setPreviewId(row.id === servedId ? null : row.id);
@@ -677,20 +698,61 @@ export const SiteEditorApp: React.FC = () => {
 
   const editBoxes = useCallback(
     (next: Record<number, Rect>) => {
-      if (!shown) return;
+      if (!shown || !draft) return;
+      // One Save makes one calibration: the coverage of the file an origin move or a placement holds
+      if (draft.place || (draft.frame && draft.frame.from !== shown.id) || (draft.boxes && draft.boxes.from !== shown.id)) {
+        setNotice({ tone: "warn", text: `The draft already changes another calibration: save it first, or discard it, before editing the coverage of ${nameOf(shown)}.` });
+        return;
+      }
       setDraft((d) => {
         if (!d) return d;
-        const before = d.boxes?.from === shown.id ? d.boxes.boxes : Object.fromEntries(shown.stations.map((st) => [st.index, st.box]));
+        const own: Record<number, Rect> = d.frame?.from === shown.id ? d.frame.coverage : Object.fromEntries(shown.stations.map((st) => [st.index, st.box]));
+        const before = d.boxes?.from === shown.id ? d.boxes.boxes : own;
         const merged = { ...before, ...next };
-        // The offered name follows the layout until the operator types one
-        const typed = d.boxes?.from === shown.id && d.boxes.tag !== coverageTag(shown.tag, before);
-        const tag = typed ? d.boxes!.tag : coverageTag(shown.tag, merged);
-        const unchanged = shown.stations.every((st) => (merged[st.index] ?? st.box).join() === st.box.join());
-        return step(d, { boxes: unchanged ? null : { from: shown.id, boxes: merged, tag } });
+        const unchanged = Object.entries(own).every(([k, r]) => (merged[Number(k)] ?? r).join() === r.join());
+        return step(d, { boxes: unchanged ? null : { from: shown.id, boxes: merged } });
       });
     },
-    [shown],
+    [shown, draft],
   );
+
+  /** The draft as a move of the origin `m` would leave it, checked by the server. */
+  const checkFrame = useCallback(
+    (m: FrameMove) =>
+      postFrame({
+        calibration: frameSource ?? "",
+        site: siteModel(draft!.doc),
+        base: siteModel(draft!.base),
+        start: draft?.frame ? moveBody(draft.frame.move) : null,
+        move: moveBody(m),
+        stations: draft?.boxes && draft.boxes.from === frameSource ? draft.boxes.boxes : null,
+      }),
+    [frameSource, draft?.doc, draft?.base, draft?.frame, draft?.boxes],
+  );
+
+  /** Puts a checked move of the origin in the draft, as one step: every
+   * number renumbered so it stays where it is on the floor. */
+  const applyFrame = useCallback(
+    (m: FrameMove, r: FrameMoved) => {
+      if (!frameSource) return;
+      setDraft((d) => {
+        if (!d) return d;
+        const doc = { ...movedDoc(d.doc, r.site), anchor: m.note ?? d.doc.anchor };
+        const frame = moves(m) ? { from: frameSource, move: { ...m }, frame: r.frame, base: movedDoc(d.base, r.base), coverage: r.coverage } : null;
+        return step(d, { doc, frame, boxes: d.boxes && r.stations ? { ...d.boxes, boxes: r.stations } : d.boxes });
+      });
+    },
+    [frameSource],
+  );
+
+  /** Puts a spin placed in the room in the draft, with the floor, field and note it brings. */
+  const draftPlace = useCallback((doc: Doc, place: PlaceDraft) => {
+    setDraft((d) => {
+      if (!d) return d;
+      if (d.frame || d.boxes) setNotice({ tone: "info", text: "The placement replaces the origin move and the coverage edits in the draft: Undo brings them back." });
+      return step(d, { doc, place, boxes: null, frame: null });
+    });
+  }, []);
 
   const onSaved = useCallback((p: SitePayload) => {
     forget(storage(), p.name);
@@ -847,11 +909,6 @@ export const SiteEditorApp: React.FC = () => {
         <button type="button" className="btn xs" onClick={() => pickKind("stations")}>
           Stations
         </button>
-        {status.kind === "using" && fleet && fleet.have < fleet.total - fleet.unknown && servedId && (
-          <button type="button" className="btn xs primary" onClick={() => setPushing(servedId)}>
-            Send to robots…
-          </button>
-        )}
       </div>
       <details style={{ marginTop: 8, fontSize: 11.5 }}>
         <summary className="muted">Details</summary>
@@ -1010,7 +1067,6 @@ export const SiteEditorApp: React.FC = () => {
         {rightTab === "inspect" && newRoom ? (
           <NewRoomPanel
             doc={draft.doc}
-            revision={draft.revision}
             siteName={payload?.name ?? ""}
             spin={spin}
             placeId={placeId}
@@ -1023,20 +1079,10 @@ export const SiteEditorApp: React.FC = () => {
             onPreview={setPlacePreview}
             onClose={() => (setNewRoom(false), setPlacePreview(null))}
             onCheck={() => (setNewRoom(false), setChecking(true))}
-            onSend={live ? (id) => setPushing(id) : undefined}
             servedId={servedId && servedRowNow?.in_frame !== false ? servedId : null}
-            onWritten={(p, placed, served) => {
-              if (p) onSaved(p);
-              else fetchSite().then(onSaved, () => {});
-              fetchContext().then(setContext, () => {});
-              loadLibrary();
-              setPlacePreview(null);
-              dismissSpin().catch(() => {});
-              setToast({
-                text: `Placed in ${payload?.name}: ${placed?.slice(0, 8)} written${served ? " and in use" : ""}. Robots get it when you send it.`,
-                push: placed ?? undefined,
-              });
-            }}
+            placed={draft.place}
+            onDraft={draftPlace}
+            onSave={editable ? () => setReviewing(true) : undefined}
           />
         ) : rightTab === "inspect" && checking && servedId ? (
           <CheckMarkPanel
@@ -1057,14 +1103,15 @@ export const SiteEditorApp: React.FC = () => {
             move={frameMove}
             onMove={setFrameMove}
             site={payload?.name ?? ""}
-            calibrationId={servedId}
-            revision={draft.revision}
+            calibrationId={frameSource}
             frameId={payload?.frame_id ?? ""}
             extent={draft.doc.extent_mm ?? [1000, 1000]}
             note={draft.doc.anchor ?? ""}
             bots={bots}
             live={live}
-            onReview={setFrameReview}
+            applied={draft.frame?.move ?? null}
+            onCheck={checkFrame}
+            onApply={applyFrame}
             onMode={(m) => setTool(m)}
             nextStep={serveStep(rows)}
             onAction={goalAction}
@@ -1090,7 +1137,7 @@ export const SiteEditorApp: React.FC = () => {
             onSelectBox={(i) => setSelected(i === null ? [] : [`box:${i}`])}
             showNext={showNext}
             onShowNext={setShowNext}
-            dry={dry}
+            reading={boxDraft && plan?.calibration ? plan.calibration.reading : null}
           />
         ) : rightTab === "inspect" ? (
           <Inspector
@@ -1164,7 +1211,6 @@ export const SiteEditorApp: React.FC = () => {
                 }
               : undefined
           }
-          onSend={live && servedId ? () => setPushing(servedId) : undefined}
         />
         {editable && (
         <>
@@ -1194,6 +1240,19 @@ export const SiteEditorApp: React.FC = () => {
         >
           Save{unsaved ? ` · ${unsaved}` : ""} {width >= 1200 && <span className="kbd">⌘S</span>}
         </button>
+        )}
+        {live && editable && (
+          <button
+            type="button"
+            data-testid="push"
+            className={`btn${push.on ? " primary" : ""}`}
+            title={push.title}
+            disabled={!push.on || !servedRowNow}
+            onClick={() => servedRowNow && setServing(servedRowNow)}
+          >
+            <Icon name="served" />
+            {width >= 1200 || !push.on ? push.label : "Push"}
+          </button>
         )}
         {live && <EditorFleet onBots={setBots} onSite={setFleetSite} onSpin={setSpin} compact={narrow} />}
         {consoleHref && (
@@ -1258,14 +1317,11 @@ export const SiteEditorApp: React.FC = () => {
               ? (id) => {
                   const r = rows.find((x) => x.id === id);
                   if (!r) return;
-                  if (boxDraft) setDraft((d) => (d ? step(d, { boxes: null }) : d));
                   setServing(r);
                 }
               : undefined
           }
           onBack={previewId ? () => setPreviewId(null) : undefined}
-          onSave={editable ? () => setReviewing(true) : undefined}
-          onDiscard={editable ? () => setDraft((d) => (d ? step(d, { boxes: null }) : d)) : undefined}
         />
       )}
       {((error && !noSite) || notice) && (
@@ -1368,15 +1424,15 @@ export const SiteEditorApp: React.FC = () => {
                       ? (p: PlanPaint) => (
                           <>
                             {anchorsOverlay(frameMove, anchors, measured)(p)}
-                            {moves(frameMove) ? frameGhost(frameMove, draft.doc.extent_mm ?? [1000, 1000])(p) : null}
+                            {!sameMove(frameMove, draft.frame?.move ?? null) ? frameGhost(frameMove, draft.base.extent_mm ?? [1000, 1000], draft.frame?.move ?? null)(p) : null}
                           </>
                         )
-                      : kind === "frame" && moves(frameMove) && tool === "turn"
-                        ? frameGhost(frameMove, draft.doc.extent_mm ?? [1000, 1000])
+                      : kind === "frame" && tool === "turn" && !sameMove(frameMove, draft.frame?.move ?? null)
+                        ? frameGhost(frameMove, draft.base.extent_mm ?? [1000, 1000], draft.frame?.move ?? null)
                         : undefined
                 }
                 onProbe={(at, px) => setProbe(at && px ? { at, px } : null)}
-                onPoint={(p) => setFrameMove((m) => ({ ...m, pivot: p }))}
+                onPoint={(p) => setFrameMove((m) => ({ ...m, pivot: draft.frame ? toOld(draft.frame.move, p) : p }))}
                 onFloorDrag={kind === "frame" && tool === "capture" && anchors.length > 0 ? onFloorDrag : undefined}
                 onSelect={select}
                 onEdge={setEdge}
@@ -1494,6 +1550,11 @@ export const SiteEditorApp: React.FC = () => {
               ))}
             </div>
           )}
+          {live && bots.length > 0 && (frameDraft || frameOpen) && view === "plan" && (
+            <div className="float rnote" role="note" data-testid="robots-old-origin">
+              robots report in the old origin until pushed
+            </div>
+          )}
           <div className="float views seg" role="tablist" aria-label="View as" style={{ border: "1px solid var(--hairline)" }}>
             {(["plan", "room", "table", "file"] as View[]).map((v) => (
               <button key={v} type="button" role="tab" aria-selected={view === v} className={view === v ? "on" : undefined} onClick={() => setView(v)} title={v === "room" ? "The room as a twin: stations above the floor, coverage, robots" : undefined}>
@@ -1558,26 +1619,25 @@ export const SiteEditorApp: React.FC = () => {
       )}
       {reviewing && draft && payload && (
         <ReviewSheet
-          base={draft.base}
-          doc={draft.doc}
-          revision={draft.revision}
+          draft={draft}
           baseText={payload.text ?? ""}
-          text={draft.text}
           path={payload.path}
           live={live}
+          rows={rows}
           conflicts={conflicts}
           problems={problems}
+          plan={plan}
+          planError={planError}
+          onName={(name) => setDraft((d) => (d ? { ...d, name } : d))}
           onClose={() => setReviewing(false)}
           onSaved={onSaved}
           onStale={onStale}
-          boxes={draft.boxes}
-          boxSource={rows.find((r) => r.id === draft.boxes?.from) ?? null}
-          dry={dry}
-          site={payload.name}
-          onTag={(tag) => setDraft((d) => (d && d.boxes ? { ...d, boxes: { ...d.boxes, tag } } : d))}
-          onCalibration={(id) => {
+          onApplied={(id) => {
             loadLibrary();
-            setPreviewId(id === servedId ? null : id);
+            fetchContext().then(setContext, () => {});
+            setPreviewId(null);
+            setPlacePreview(null);
+            if (id && draft.place) dismissSpin().catch(() => {});
           }}
           onShow={(key) => {
             setReviewing(false);
@@ -1630,26 +1690,6 @@ export const SiteEditorApp: React.FC = () => {
           </div>
         </>
       )}
-      {frameReview && servedId && draft && (
-        <FrameSheet
-          site={payload?.name ?? ""}
-          calibrationId={servedId}
-          sourceName={servedRowNow ? nameOf(servedRowNow) : undefined}
-          move={frameMove}
-          revision={draft.revision}
-          planned={frameReview}
-          live={live}
-          onClose={() => setFrameReview(null)}
-          onSend={live ? (id) => setPushing(id) : undefined}
-          onDone={() => {
-            setFrameMove(NO_MOVE);
-            setTool("select");
-            fetchContext().then(setContext, () => {});
-            fetchSite().then(load, () => {});
-            loadLibrary();
-          }}
-        />
-      )}
       {serving && context && (
         <ServeSheet
           row={serving}
@@ -1697,13 +1737,8 @@ export const SiteEditorApp: React.FC = () => {
       )}
       {toast && (
         <div className="toast" role="status" data-testid="toast">
-          <Icon name={toast.push ? "served" : "check"} size={15} />
+          <Icon name="check" size={15} />
           <span>{toast.text}</span>
-          {toast.push && live && (
-            <button type="button" className="btn sm primary" onClick={() => (setPushing(toast.push!), setToast(null))} data-testid="toast-send">
-              Send to robots…
-            </button>
-          )}
           {toast.undo && (
             <button type="button" className="btn sm" onClick={() => (toast.undo?.(), setToast(null))}>
               Undo

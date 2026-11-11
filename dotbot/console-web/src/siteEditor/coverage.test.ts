@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { contours, coverageTag, fixtureAgreement, handover, moved, share, splitFloor, type Coverage } from "./coverage";
-import type { LibraryRow, Rect } from "./types";
+import { contours, fixtureAgreement, handover, moved, share, splitFloor, type Coverage } from "./coverage";
+import type { LibraryRow } from "./types";
 
 const GEOMETRY = {
   stations: { "0": { x_mm: -542, y_mm: 1268, height_mm: 2423, off_square_deg: 5.4 }, "1": { x_mm: 1387, y_mm: -245, height_mm: 1606, off_square_deg: -3.1 } },
@@ -48,16 +48,5 @@ describe("the Stations kind's drawing", () => {
     expect(moved(row("a", 2423, 2620), []).verdict).toBe("one spin");
     // A spin in another frame is not one of this room's
     expect(moved(row("a", 2423, 2620), [{ ...row("b", 2400, 2600), in_frame: false }]).verdict).toBe("one spin");
-  });
-});
-
-describe("coverageTag", () => {
-  it("names a layout by its handover, replacing an earlier coverage suffix", () => {
-    const split = { 0: [0, 0, 560, 1000] as Rect, 1: [500, 0, 1060, 1000] as Rect };
-    expect(coverageTag("inria-hil-r3", split)).toBe("inria-hil-r3-handover-x530");
-    expect(coverageTag("inria-hil-r3-handover-x400", split)).toBe("inria-hil-r3-handover-x530");
-    expect(coverageTag("inria-hil-r3-boxes", split)).toBe("inria-hil-r3-handover-x530");
-    expect(coverageTag("inria-hil-r3", { 0: [0, 0, 10, 10], 1: [0, 0, 10, 10] })).toBe("inria-hil-r3-no-handover");
-    expect(coverageTag("", split)).toBe("");
   });
 });

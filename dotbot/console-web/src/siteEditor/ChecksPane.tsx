@@ -32,7 +32,7 @@ const GoalRow: React.FC<{ g: Goal; onAction: (a: GoalAction) => void; editable: 
       <span className="acts">
         <button
           type="button"
-          className={`btn xs${g.action.go.push ? " primary" : ""}`}
+          className="btn xs"
           onClick={(e) => {
             e.stopPropagation();
             onAction(g.action!);

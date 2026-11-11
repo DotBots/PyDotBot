@@ -1,7 +1,6 @@
 import React from "react";
 
 import { Badge } from "../shared/Badge";
-import type { DryRun } from "./api";
 import { fixtureAgreement, handover, moved, share, splitFloor, type Boxes, type Coverage } from "./coverage";
 import { KV, NumField, Sec } from "./fields";
 import { Icon } from "./icons";
@@ -36,7 +35,8 @@ export interface StationsPanelProps {
   onSelectBox: (index: number | null) => void;
   showNext: boolean;
   onShowNext: (on: boolean) => void;
-  dry: DryRun | null;
+  /** The drafted coverage in one line, as Save would write it; null until known. */
+  reading: string | null;
 }
 
 const boxText = (r: Rect, extent: [number, number]) =>
@@ -254,7 +254,7 @@ export const StationsPanel: React.FC<StationsPanelProps> = (props) => {
       </div>
       <div className={`callout ${shared ? "warn" : "ok"}`} style={{ marginTop: 12 }} data-testid="coverage-card">
         <div className="h">
-          <Icon name={shared ? "warn" : "check"} size={14} /> {shared ? "Both stations cover the whole floor, no handover" : coverageText(props.dry?.reading ?? shown.reading)}
+          <Icon name={shared ? "warn" : "check"} size={14} /> {shared ? "Both stations cover the whole floor, no handover" : coverageText(props.reading ?? shown.reading)}
         </div>
         {shared ? (
           <>
@@ -303,13 +303,6 @@ export const StationsPanel: React.FC<StationsPanelProps> = (props) => {
             Worked out from the calibration (about ±10 cm, {Object.values(geometry.stations).map((p) => `${Math.abs(p.off_square_deg).toFixed(0)}°`).join(" and ")} off square): not a tape measurement.
           </div>
         </Sec>
-      )}
-      {props.dry && props.drafted && (
-        <div className={`callout ${props.dry.existing ? "ok" : "info"}`} style={{ marginTop: 12 }} data-testid="dry-run">
-          {props.dry.existing
-            ? `This coverage is already ${nameOf(props.dry.existing)}: Save writes nothing new. Use that file instead.`
-            : `Save writes a new calibration with this coverage: ${coverageText(props.dry.reading)}.`}
-        </div>
       )}
       <Rule boxes={boxes} coverage={coverage} />
     </div>

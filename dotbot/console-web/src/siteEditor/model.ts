@@ -135,6 +135,26 @@ export function siteModel(doc: Doc) {
   };
 }
 
+/** `doc` with the numbers of `site`, the same entities in the same order
+ * renumbered by the server; keys, names and file positions are kept. */
+export function movedDoc(doc: Doc, site: EditorSite): Doc {
+  const points = (p: [number, number][]) => p.map((q) => [q[0], q[1]] as Point);
+  return {
+    ...doc,
+    extent_mm: site.extent_mm ? [site.extent_mm[0], site.extent_mm[1]] : doc.extent_mm,
+    areas: doc.areas.map((a, i) => {
+      const m = site.areas[i];
+      return m ? { ...a, x: m.x, y: m.y, w: m.w, h: m.h } : a;
+    }),
+    walls: doc.walls.map((w, i) => (site.walls?.[i] ? { ...w, points: points(site.walls[i].points) } : w)),
+    obstacles: doc.obstacles.map((o, i) => (site.obstacles?.[i] ? { ...o, points: points(site.obstacles[i].points) } : o)),
+    objects: doc.objects.map((o, i) => {
+      const m = site.objects?.[i];
+      return m ? { ...o, x: m.x, y: m.y, heading_deg: m.heading_deg } : o;
+    }),
+  };
+}
+
 /** A key no entity of `doc` has yet, for a new one of `kind`. */
 export function freshKey(doc: Doc, kind: Kind): string {
   const used = new Set(

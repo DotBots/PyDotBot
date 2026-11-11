@@ -44,25 +44,72 @@ export const fetchRevision = () => json<{ revision: string }>("api/revision");
 export const openInEditor = () => json<{ command: string; path: string }>("api/open", post({}));
 
 export interface ApplyStep {
-  step: "site.toml" | "calibration" | "serve";
-  status: "written" | "unchanged" | "refused";
+  step: "site.toml" | "calibration" | "use";
+  status: "written" | "reused" | "unchanged" | "refused";
   detail: string;
-  revision?: string;
   id?: string;
-  push?: string;
-  warnings?: string[];
 }
 
-export const applySave = (
-  revision: string,
-  site: unknown,
-  text: string | null = null,
-  boxes: { of: string; stations: Record<number, Rect>; tag: string | null } | null = null,
-) =>
-  json<SitePayload & { ok: boolean; steps: ApplyStep[] }>(
-    "api/apply",
-    post({ revision, site, text, ...(boxes ? { boxes_of: boxes.of, boxes: { stations: boxes.stations, tag: boxes.tag } } : {}) }),
-  );
+/** A move of the room's origin, in the saved frame's mm, as the server takes it. */
+export interface MoveBody {
+  theta_deg: number;
+  pivot: [number, number];
+  dx_mm: number;
+  dy_mm: number;
+}
+
+/** Every pending edit of one calibration. */
+export interface CalibrationEdit {
+  source: string;
+  frame?: MoveBody | null;
+  place?: { theta_deg: number; dx_mm: number; dy_mm: number } | null;
+  stations?: Record<number, Rect> | null;
+  /** The new file's name; null derives it from what changed. */
+  tag?: string | null;
+}
+
+/** One Save of the draft. */
+export interface SaveBody {
+  revision: string;
+  site: unknown | null;
+  text: string | null;
+  calibration: CalibrationEdit | null;
+}
+
+/** What a Save makes of a calibration edit. */
+export interface PlannedCalibration {
+  id: string;
+  id8: string;
+  tag: string;
+  source: string;
+  source_tag: string;
+  /** Nothing in the draft changes the file it starts from. */
+  unchanged: boolean;
+  /** A file already holding the result: nothing new is written. */
+  existing: { id: string; id8: string; tag: string; path: string } | null;
+  new: boolean;
+  warnings: string[];
+  reading: string;
+  push: string;
+}
+
+/** What a Save would write, worked out and checked by the server. */
+export interface SavePlan {
+  text: string;
+  site_changed: boolean;
+  frame: string | null;
+  from_frame: string;
+  calibration: PlannedCalibration | null;
+  /** This controller would switch to the result. */
+  use: boolean;
+}
+
+/** What Save would write, without writing it; a refusal is an HttpError. */
+export const planSave = (body: SaveBody) => json<SavePlan>("api/apply", post({ ...body, dry_run: true }));
+
+/** One Save: the calibration the draft makes, site.toml, then this controller uses it. */
+export const applySave = (body: SaveBody) =>
+  json<SitePayload & { ok: boolean; steps: ApplyStep[]; calibration: PlannedCalibration | null }>("api/apply", post(body));
 
 export interface Version {
   id: string;
@@ -75,21 +122,10 @@ export const restoreVersion = (version: string, revision: string) =>
   json<SitePayload>("api/restore", post({ version, revision }));
 
 /** Who gives the fix and the predicted error for `boxes`, the file's own when null. */
-export const fetchCoverage = (id: string, boxes: Record<number, Rect> | null) =>
-  json<Coverage>(`api/calibrations/${encodeURIComponent(id)}/coverage${boxes ? `?boxes=${encodeURIComponent(JSON.stringify(boxes))}` : ""}`);
-
-export interface DryRun {
-  id: string;
-  id8: string;
-  source: string;
-  written: false;
-  existing: { id: string; id8: string; tag: string; path: string } | null;
-  reading: string;
+export function fetchCoverage(id: string, boxes: Record<number, Rect> | null, frame: MoveBody | null = null) {
+  const query = [boxes ? `boxes=${encodeURIComponent(JSON.stringify(boxes))}` : "", frame ? `frame=${encodeURIComponent(JSON.stringify(frame))}` : ""].filter(Boolean).join("&");
+  return json<Coverage>(`api/calibrations/${encodeURIComponent(id)}/coverage${query ? `?${query}` : ""}`);
 }
-
-/** What saving `id` with `boxes` would write, without writing it. */
-export const dryRunBoxes = (id: string, boxes: Record<number, Rect>, revision: string, tag: string | null) =>
-  json<DryRun>(`api/calibrations/${encodeURIComponent(id)}/boxes?dry_run=1`, post({ stations: boxes, revision, tag }));
 
 /** Serve `spec` on the controller that opened the editor; `persist` also at
  * its next start. `expected` is what the page believes is served ("none" for
@@ -107,35 +143,34 @@ export const patchCalibration = (id: string, change: { tag?: string; archived?: 
 
 export interface FrameRequest {
   calibration: string;
-  theta_deg: number;
-  pivot: [number, number];
-  dx_mm: number;
-  dy_mm: number;
-  note: string | null;
-  revision: string;
-  serve: boolean;
-  dry_run: boolean;
+  /** The draft's site in the frame `start` leaves, and the file as loaded. */
+  site: unknown;
+  base: unknown;
+  start: MoveBody | null;
+  move: MoveBody;
+  stations: Record<number, Rect> | null;
 }
 
-export interface FrameResult {
+/** The draft after a move of the origin: everything renumbered so it stays where it is on the floor. */
+export interface FrameMoved {
   frame: string;
   from_frame: string;
-  calibration: { id: string; id8: string; tag: string };
-  source: string;
+  site: EditorSite;
+  base: EditorSite;
+  stations: Record<number, Rect> | null;
+  /** The calibration's own coverage, in the moved frame. */
+  coverage: Record<number, Rect>;
   warnings: string[];
-  push: string;
-  steps: ApplyStep[];
-  ok?: boolean;
 }
 
-export type FrameAnswer = { ok: true; result: FrameResult } | { ok: false; status: number; message: string; offer: { dx_mm: number; dy_mm: number } | null };
+export type FrameAnswer = { ok: true; result: FrameMoved } | { ok: false; status: number; message: string; offer: { dx_mm: number; dy_mm: number } | null };
 
-/** A frame change, or what it would do with `dry_run`; a refusal carries the
- * largest legal shift when there is one. */
+/** The draft as a move of the origin leaves it; nothing is written. A
+ * refusal carries the largest legal shift when there is one. */
 export async function postFrame(request: FrameRequest): Promise<FrameAnswer> {
   const response = await fetch("api/frame", post(request));
   const body = await response.json().catch(() => ({}));
-  if (response.ok) return { ok: true, result: body as FrameResult };
+  if (response.ok) return { ok: true, result: body as FrameMoved };
   const detail = body?.detail;
   if (detail && typeof detail === "object" && !Array.isArray(detail)) return { ok: false, status: response.status, message: String(detail.message), offer: detail.offer ?? null };
   return { ok: false, status: response.status, message: typeof detail === "string" ? detail : response.statusText, offer: null };
@@ -199,9 +234,3 @@ export interface CalibrationOverlay {
 }
 
 export const fetchOverlay = (id: string) => json<CalibrationOverlay>(`api/calibrations/${encodeURIComponent(id)}`);
-/** Move a spin into this site by a turn and a shift; writes a new file. */
-export const placeCalibration = (id: string, move: { theta_deg: number; dx: number; dy: number }) =>
-  json<{ id: string; id8: string; source: string; path: string; push: string; warnings: string[] }>(
-    `api/calibrations/${encodeURIComponent(id)}/place`,
-    post({ theta_deg: move.theta_deg, dx_mm: move.dx, dy_mm: move.dy }),
-  );

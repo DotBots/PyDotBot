@@ -36,6 +36,24 @@ export function toOld(m: FrameMove, p: Point): Point {
   return turn([p[0] + m.dx, p[1] + m.dy], m.pivot, m.theta_deg);
 }
 
+/** `m` as the server takes it. */
+export const moveBody = (m: FrameMove) => ({ theta_deg: m.theta_deg, pivot: [m.pivot[0], m.pivot[1]] as [number, number], dx_mm: m.dx, dy_mm: m.dy });
+
+/** Whether `a` and `b` put the origin in the same place; a missing move is none. */
+export function sameMove(a: FrameMove | null, b: FrameMove | null): boolean {
+  const x = a ?? NO_MOVE;
+  const y = b ?? NO_MOVE;
+  if (!moves(x) && !moves(y)) return true;
+  return x.theta_deg === y.theta_deg && x.dx === y.dx && x.dy === y.dy && (x.theta_deg === 0 || (x.pivot[0] === y.pivot[0] && x.pivot[1] === y.pivot[1]));
+}
+
+/** Where a point given in the frame `m` makes lands on a plan drawn in the
+ * frame `drawn` makes; both moves start from the saved frame. */
+export function onPlan(m: FrameMove, drawn: FrameMove | null, p: Point): Point {
+  const saved = toOld(m, p);
+  return drawn ? toNew(drawn, saved) : saved;
+}
+
 /** The move that puts zero at `p` and, with `q`, the x axis through it. */
 export function zeroAt(p: Point, q: Point | null, note: string | null): FrameMove {
   const theta = q ? (Math.atan2(q[1] - p[1], q[0] - p[0]) * 180) / Math.PI : 0;

@@ -1,63 +1,42 @@
 import React from "react";
 
 import { Icon } from "./icons";
-import { fleetText, needsSend, sideText, statusText, type Status } from "./status";
+import { middle, robotsText, sideText, statusText, unsavedText, type Status } from "./status";
 
-// The title bar's one line: what the controller uses and what the robots
-// have. What the page looks at or edits besides it is `StatusSide`, in the
-// banner row under the title bar.
+// The title bar's one line: what the controller uses, what is not saved yet,
+// and what the robots have. What the page looks at besides it is
+// `StatusSide`, in the banner row under the title bar.
+
+/** How many characters of a calibration's name the line keeps. */
+export const NAME_CHARS = 40;
+export const NAME_CHARS_COMPACT = 26;
 
 export const StatusLine: React.FC<{
   status: Status;
   compact?: boolean;
   /** Pick a calibration, with none in use. */
   onChoose?: () => void;
-  /** Send the calibration in use to the robots that lack it. */
-  onSend?: () => void;
-}> = ({ status: s, compact, onChoose, onSend }) => {
+}> = ({ status: s, compact, onChoose }) => {
   const f = s.fleet;
-  const tone = s.kind !== "using" ? "off" : f && f.total > 0 && f.have === f.total ? "ok" : f && f.have < f.total - f.unknown ? "warn" : s.untilRestart || s.originMoved ? "warn" : "unknown";
-  const title =
-    s.kind === "using"
-      ? [statusText(s), `${s.name} · ${s.id ?? ""}`, s.reason, f && f.unknown ? `${f.unknown} robot${f.unknown === 1 ? "" : "s"} cannot say which calibration they have (no device info).` : ""].filter(Boolean).join("\n")
-      : [statusText(s), s.reason].filter(Boolean).join("\n");
-  // Details after the name, least wanted last: the line wraps them out of
-  // sight whole, from the end, when it runs out of room (`.st.fit`).
-  const details: { key: string; node: React.ReactNode }[] = [];
-  if (s.kind === "using") {
-    if (f)
-      details.push({
-        key: "fleet",
-        node: (
-          <span className={`m${f.have < f.total - f.unknown ? " w" : ""}`} data-testid="status-fleet">
-            {" "}
-            · {fleetText(f)}
-          </span>
-        ),
-      });
-    if (s.untilRestart && !compact)
-      details.push({
-        key: "restart",
-        node: (
-          <span className="m" title={`The controller starts with ${s.restart} unless you keep this one.`}>
-            {" "}
-            · until restart
-          </span>
-        ),
-      });
-    if (!compact && s.when) details.push({ key: "when", node: <span className="m"> · {s.when}</span> });
-  }
+  const robots = robotsText(s);
+  const tone = s.kind !== "using" ? "off" : robots === "need a push" || s.unsaved ? "warn" : f && f.total > 0 && f.have === f.total ? "ok" : "unknown";
+  const title = [statusText(s), s.id ? `${s.name} · ${s.id}` : "", s.reason, s.untilRestart ? `Until restart: the controller then starts with ${s.restart}.` : "", f && f.unknown ? `${f.unknown} robot${f.unknown === 1 ? "" : "s"} cannot say which calibration they have (no device info).` : ""]
+    .filter(Boolean)
+    .join("\n");
+  const unsaved = unsavedText(s.unsaved);
   return (
     <div className={`sline ${tone}`} data-testid="status-line" title={title}>
       <span className="sdot" />
       {s.kind === "files" ? (
         <span className="st">
           <b>Files only</b>
-          {s.id && !compact && <span className="m"> · the config names {s.name}</span>}
+          {s.id && !compact && <span className="m"> · the config names {middle(s.name, NAME_CHARS_COMPACT)}</span>}
+          {unsaved && <span className="m w" data-testid="status-unsaved"> · {unsaved}</span>}
         </span>
       ) : s.kind === "none" ? (
         <span className="st">
           <b>No calibration in use</b>
+          {unsaved && <span className="m w" data-testid="status-unsaved"> · {unsaved}</span>}
           {onChoose && (
             <button type="button" className="btn xs" onClick={onChoose} data-testid="status-choose">
               Choose…
@@ -65,72 +44,52 @@ export const StatusLine: React.FC<{
           )}
         </span>
       ) : (
-        <>
-          <span className="st fit">
-            <span className="lead">
-              <span className="m u">Using</span> <b>{s.name}</b>
-              {s.originMoved && <span className="m"> (origin moved)</span>}
+        <span className="st">
+          <span className="m u">Using</span>{" "}
+          <b data-testid="status-name" title={s.name}>
+            {middle(s.name, compact ? NAME_CHARS_COMPACT : NAME_CHARS)}
+          </b>
+          {unsaved && (
+            <span className="m w" data-testid="status-unsaved">
+              {" "}
+              · {unsaved}
             </span>
-            {details.map((d) => (
-              <React.Fragment key={d.key}>{d.node}</React.Fragment>
-            ))}
-          </span>
-          {needsSend(s) && onSend && (
-            <button type="button" className="btn xs primary" onClick={onSend} data-testid="status-send">
-              Send
-            </button>
           )}
-        </>
+          {robots && (
+            <span className={`m${robots === "need a push" ? " w" : ""}`} data-testid="status-fleet">
+              {" "}
+              · robots: {robots}
+            </span>
+          )}
+        </span>
       )}
     </div>
   );
 };
 
-/** What the page looks at or edits besides the calibration in use, with its
- * actions: a row under the title bar, or nothing. */
+/** What the page looks at besides the calibration in use, with its actions:
+ * a row under the title bar, or nothing. */
 export const StatusSide: React.FC<{
   status: Status;
-  /** Use the file being looked at, or the existing file a draft equals. */
+  /** Use the file being looked at. */
   onUse?: (id: string) => void;
   onBack?: () => void;
-  onSave?: () => void;
-  onDiscard?: () => void;
-}> = ({ status: s, onUse, onBack, onSave, onDiscard }) => {
+}> = ({ status: s, onUse, onBack }) => {
   const side = sideText(s.side);
-  if (!side) return null;
-  const tone = s.side.kind === "edited" ? "var(--warn)" : s.side.kind === "exists" ? "var(--ok)" : "var(--st-0)";
+  if (!side || s.side.kind !== "looking") return null;
+  const looking = s.side;
   return (
-    <div
-      className={`sside-row ${s.side.kind}`}
-      data-testid="status-side"
-      role="status"
-      style={{ background: `color-mix(in srgb, ${tone} 9%, var(--surface))` }}
-    >
-      <Icon name={s.side.kind === "looking" ? "view" : s.side.kind === "exists" ? "check" : "pin"} size={14} />
+    <div className="sside-row looking" data-testid="status-side" role="status" style={{ background: "color-mix(in srgb, var(--st-0) 9%, var(--surface))" }}>
+      <Icon name="view" size={14} />
       <span style={{ flex: 1, minWidth: 0 }}>{side}</span>
-      {s.side.kind === "looking" && s.side.canUse && onUse && (
-        <button type="button" className="btn xs primary" onClick={() => onUse((s.side as { id: string }).id)} data-testid="status-use">
+      {looking.canUse && onUse && (
+        <button type="button" className="btn xs primary" onClick={() => onUse(looking.id)} data-testid="status-use">
           Use this…
         </button>
       )}
-      {s.side.kind === "looking" && onBack && (
+      {onBack && (
         <button type="button" className="btn xs" onClick={onBack} aria-label="Back to the calibration in use">
           Back
-        </button>
-      )}
-      {s.side.kind === "exists" && onUse && (
-        <button type="button" className="btn xs primary" onClick={() => onUse((s.side as { id: string }).id)} data-testid="status-use-existing">
-          Use it…
-        </button>
-      )}
-      {s.side.kind === "edited" && onSave && (
-        <button type="button" className="btn xs primary" onClick={onSave}>
-          Save…
-        </button>
-      )}
-      {(s.side.kind === "edited" || s.side.kind === "exists") && onDiscard && (
-        <button type="button" className="btn xs" onClick={onDiscard} data-testid="status-discard">
-          Discard
         </button>
       )}
     </div>

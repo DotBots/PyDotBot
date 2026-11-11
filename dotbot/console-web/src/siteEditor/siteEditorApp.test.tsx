@@ -2,10 +2,8 @@ import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../useFleet", () => {
-  const fleet = { bots: [], site: null };
-  return { useFleet: () => fleet };
-});
+const fleet = vi.hoisted(() => ({ bots: [] as unknown[], site: null }));
+vi.mock("../useFleet", () => ({ useFleet: () => fleet }));
 vi.mock("../useOrchestration", () => {
   const orch = { act: () => {}, busy: null, outcome: null };
   return { useOrchestration: () => orch };
@@ -85,6 +83,7 @@ const SITE = {
 };
 
 beforeEach(() => {
+  fleet.bots = [];
   window.localStorage.clear();
   Object.defineProperty(window, "innerWidth", { configurable: true, value: 1440 });
 });
@@ -92,12 +91,17 @@ afterEach(() => vi.unstubAllGlobals());
 
 const TEXT = 'anchor = "top-left"\nextent_mm = [1060, 1220]\n';
 
+const PLAN = { text: TEXT + "\n[areas.pen]\n", site_changed: true, frame: null, from_frame: "f0237ffd", calibration: null, use: false };
+
 function stubFetch(overrides: Record<string, (init?: RequestInit) => Response> = {}) {
   const calls: { url: string; init?: RequestInit }[] = [];
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string, init?: RequestInit) => {
       calls.push({ url, init });
+      // A dry run of the Save is answered apart, as "dry:api/apply"
+      const dry = url === "api/apply" && !!JSON.parse((init?.body as string) ?? "{}").dry_run;
+      if (dry) return (overrides["dry:api/apply"] ?? (() => new Response(JSON.stringify(PLAN), { status: 200 })))(init);
       for (const [prefix, answer] of Object.entries(overrides)) if (url.startsWith(prefix)) return answer(init);
       const body = url.startsWith("api/context")
         ? CONTEXT
@@ -218,7 +222,8 @@ describe("the editor shell", () => {
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "arena" } });
     fireEvent.keyDown(screen.getByLabelText("Name"), { key: "Enter" });
     keyDown("s", { metaKey: true });
-    await waitFor(() => expect(screen.getByTestId("review-save")).toBeTruthy());
+    // Save waits for the server's plan of what it writes
+    await waitFor(() => expect((screen.getByTestId("review-save") as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(screen.getByTestId("review-save"));
     await waitFor(() => expect(screen.getByTestId("review-error").textContent).toContain("re-applied your draft"));
     expect(siteCalls).toBe(2);
@@ -425,5 +430,85 @@ describe("the collapse order", () => {
     await waitFor(() => expect(screen.getByTestId("rail-right")).toBeTruthy());
     fireEvent.click(screen.getByLabelText("Inspect"));
     expect(screen.getByTestId("drawer-right")).toBeTruthy();
+  });
+});
+
+const holding = (id: string, held: string) => ({ id, address: id, application: "DotBot", state: "Running", status: 0, position: { x: 300, y: 400 }, swarmit: { info: { info_version: 4, lh2_station_mask: 3, lh2_calibration_id: held } } });
+
+describe("Push to robots", () => {
+  it("stays off while every robot holds what the controller uses, and opens the push sheet once one does not", async () => {
+    fleet.bots = [holding("DE00000000002B07", served.id), holding("DE00000000004A11", served.id)];
+    stubFetch();
+    const first = render(<SiteEditorApp />);
+    await waitFor(() => expect(screen.getByTestId("status-line").textContent).toContain("robots: on 2 of 2"));
+    expect((screen.getByTestId("push") as HTMLButtonElement).disabled).toBe(true);
+    first.unmount();
+    fleet.bots = [holding("DE00000000002B07", served.id), holding("DE00000000004A11", handover.id)];
+    render(<SiteEditorApp />);
+    await waitFor(() => expect(screen.getByTestId("status-line").textContent).toContain("robots: need a push"));
+    const push = screen.getByTestId("push") as HTMLButtonElement;
+    await waitFor(() => expect(push.disabled).toBe(false));
+    fireEvent.click(push);
+    await waitFor(() => expect(screen.getByTestId("serve-sheet")).toBeTruthy());
+    expect(screen.getByTestId("serve-in-use")).toBeTruthy();
+    expect(screen.getByTestId("serve-sheet").textContent).toContain(`Push ${served.tag} to robots`);
+  });
+
+  it("cannot tell when the robots send no device info", async () => {
+    fleet.bots = [{ ...holding("DE00000000002B07", ""), swarmit: null }];
+    stubFetch();
+    render(<SiteEditorApp />);
+    await waitFor(() => expect(screen.getByTestId("status-line").textContent).toContain("robots: cannot tell"));
+    expect(screen.getByTestId("push").textContent).toContain("cannot tell");
+    expect((screen.getByTestId("push") as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+describe("a move of the origin in the draft", () => {
+  const moved = {
+    frame: "0badf00d",
+    from_frame: "f0237ffd",
+    site: { ...SITE.site, extent_mm: [1560, 1720], areas: [{ ...SITE.site.areas[0], x: 500, y: 500 }] },
+    base: { ...SITE.site, extent_mm: [1560, 1720], areas: [{ ...SITE.site.areas[0], x: 500, y: 500 }] },
+    stations: null,
+    coverage: { 0: [500, 500, 1560, 1720], 1: [500, 500, 1560, 1720] },
+    warnings: [],
+  };
+
+  it("counts as one unsaved change, keeps the area on the floor with new numbers, and undoes as one", async () => {
+    fleet.bots = [holding("DE00000000002B07", served.id)];
+    const calls = stubFetch({ "api/frame": () => new Response(JSON.stringify(moved), { status: 200 }) });
+    render(<SiteEditorApp />);
+    await waitFor(() => expect(screen.getByTestId("plan")).toBeTruthy());
+    keyDown("1");
+    keyDown("t");
+    for (const [label, v] of [
+      ["shift x", "-500"],
+      ["shift y", "-500"],
+    ]) {
+      const f = screen.getByLabelText(label);
+      fireEvent.change(f, { target: { value: v } });
+      fireEvent.keyDown(f, { key: "Enter" });
+    }
+    await waitFor(() => expect(screen.getByTestId("frame-ghost")).toBeTruthy());
+    fireEvent.click(await screen.findByTestId("frame-apply"));
+    await waitFor(() => expect(screen.getByTestId("status-unsaved").textContent).toContain("1 unsaved change"));
+    expect(screen.getByTestId("frame-in-draft")).toBeTruthy();
+    expect(screen.queryByTestId("frame-ghost")).toBeNull();
+    expect(screen.getByTestId("robots-old-origin").textContent).toBe("robots report in the old origin until pushed");
+    const asked = JSON.parse(calls.find((c) => c.url === "api/frame")!.init!.body as string);
+    expect(asked.move).toEqual({ theta_deg: 0, pivot: [530, 610], dx_mm: -500, dy_mm: -500 });
+    // Nothing was written: only the server's dry runs were asked
+    expect(calls.filter((c) => c.url === "api/apply" && !JSON.parse(c.init!.body as string).dry_run)).toEqual([]);
+    fireEvent.click(screen.getByRole("tab", { name: "Outline" }));
+    fireEvent.click(screen.getByTestId("outline-area:field"));
+    expect((screen.getByLabelText("x") as HTMLInputElement).value).toBe("500");
+    keyDown("z", { ctrlKey: true });
+    await waitFor(() => expect(screen.queryByTestId("status-unsaved")).toBeNull());
+    expect((screen.getByLabelText("x") as HTMLInputElement).value).toBe("0");
+    expect(screen.queryByTestId("robots-old-origin")).toBeNull();
+    keyDown("z", { ctrlKey: true, shiftKey: true });
+    await waitFor(() => expect(screen.getByTestId("status-unsaved").textContent).toContain("1 unsaved change"));
+    expect((screen.getByLabelText("x") as HTMLInputElement).value).toBe("500");
   });
 });
