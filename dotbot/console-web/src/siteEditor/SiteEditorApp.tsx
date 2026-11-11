@@ -1856,10 +1856,12 @@ export const SiteEditorApp: React.FC = () => {
                 onSnap={setSnapTo}
                 onToolDone={() => setTool("select")}
                 onShortcuts={() => setShortcuts(true)}
+                legend={
+                  kind === "stations" && boxes.length > 0 ? (
+                    <StationsLegend mode={coverageMode} coverage={coverage && coverage.id === shown?.id ? coverage : null} boxes={boxes} showNext={showNext} stale={coverageStale} />
+                  ) : undefined
+                }
               >
-                {kind === "stations" && boxes.length > 0 && (
-                  <StationsLegend mode={coverageMode} coverage={coverage && coverage.id === shown?.id ? coverage : null} boxes={boxes} showNext={showNext} stale={coverageStale} />
-                )}
                 {kind === "stations" && tool === "probe" && probe && (
                   <Readout
                     at={probe.at}

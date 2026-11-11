@@ -152,8 +152,10 @@ interface PlanCanvasProps {
   underlay?: (paint: PlanPaint, boxes: { index: number; rect: Rect }[]) => React.ReactNode;
   /** Drawn over everything, e.g. suggested spins. */
   overlay?: (paint: PlanPaint, boxes: { index: number; rect: Rect }[]) => React.ReactNode;
-  /** A floating card the page shows over the plan, e.g. a legend. */
+  /** A floating card the page shows over the plan, e.g. a probe readout. */
   children?: React.ReactNode;
+  /** The legend, in the bottom row with the same-rectangle chip; the two stack when they do not fit side by side. */
+  legend?: React.ReactNode;
   onSelect: (keys: string[]) => void;
   onEdge: (edge: { key: string; handle: Handle } | null) => void;
   /** A station box dragged to a new rectangle; absent where boxes are read only. */
@@ -1124,12 +1126,15 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
       </div>
       {poseArrows}
       {props.children}
-      {props.chrome !== false && outlines.length > 0 && (
-        <div className="float chipc" data-testid="coincident-chip" title="These rectangles are the same, so they are drawn as one outline">
-          <Icon name="rect" size={13} />
-          {sameRectangle(outlines[0])}
-        </div>
-      )}
+      <div className="mapdock">
+        {props.chrome !== false && outlines.length > 0 && (
+          <div className="float chipc" data-testid="coincident-chip" title="These rectangles are the same, so they are drawn as one outline">
+            <Icon name="rect" size={13} />
+            {sameRectangle(outlines[0])}
+          </div>
+        )}
+        {props.legend}
+      </div>
       {props.chrome !== false && (
       <>
       <div className="float zoom" onPointerDown={(e) => e.stopPropagation()}>
