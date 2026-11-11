@@ -164,15 +164,20 @@ body {
 .se .sline .btn {
   flex: none;
 }
-/* With a second part, the in-use name keeps room and the details give way */
-.se .sline:has(.sside) .st {
-  flex: 0 3 auto;
-  min-width: 110px;
+/* Details that do not fit wrap onto a second, hidden line: they leave whole,
+   from the end, and the name shrinks only once it is alone */
+.se .sline .st.fit {
+  flex-wrap: wrap;
+  height: 16px;
+  line-height: 16px;
+  align-content: flex-start;
 }
-.se .sline .sside > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
+.se .sline .st.fit .lead {
+  display: flex;
   min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  white-space: nowrap;
 }
 .se .sline .st b {
   font-weight: 600;
@@ -185,29 +190,23 @@ body {
 .se .sline .m.w {
   color: var(--warn);
 }
-.se .sline .st .btn,
-.se .sline .sside .btn {
+.se .sline .st .btn {
   margin-left: 8px;
 }
-.se .sline .sside {
+/* The second part: what the page looks at or edits, under the title bar */
+.se .sside-row {
+  padding: 6px 16px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--hairline);
   display: flex;
+  gap: 8px;
   align-items: center;
-  gap: 6px;
-  height: 22px;
-  padding: 0 7px;
-  border-radius: 6px;
-  font-size: 11px;
-  white-space: nowrap;
-  flex: 0 1 auto;
-  min-width: 0;
+  flex: none;
+}
+.se .sside-row > span {
   overflow: hidden;
-  background: color-mix(in srgb, var(--warn) 16%, transparent);
-}
-.se .sline .sside.looking {
-  background: color-mix(in srgb, var(--st-0) 16%, transparent);
-}
-.se .sline .sside.exists {
-  background: color-mix(in srgb, var(--ok) 16%, transparent);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .se button.sitesw {
   cursor: pointer;

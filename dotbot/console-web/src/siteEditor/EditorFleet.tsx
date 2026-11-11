@@ -47,6 +47,7 @@ export const EditorFleet: React.FC<{
         armedCount={confirm.armed ? targetsOf(confirm.armed, bots).eligible.length : 0}
         onStop={() => request("stop")}
         onSelectIds={() => {}}
+        caption={false}
       />
     </div>
   );

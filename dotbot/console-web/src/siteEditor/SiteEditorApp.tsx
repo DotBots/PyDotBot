@@ -53,7 +53,7 @@ import { LibraryPane, type LibraryAction } from "./LibraryPane";
 import { coverageText, nameOf, residuals, when } from "./library";
 import { docFromPayload, docFromSite, type Doc, type Point } from "./model";
 import { statusOf, statusText } from "./status";
-import { StatusLine } from "./StatusLine";
+import { StatusLine, StatusSide } from "./StatusLine";
 import { OutlinePane } from "./OutlinePane";
 import { DEFAULT_LAYERS, kindOfKey, PlanCanvas, type PlanLayers, type PlanPaint } from "./PlanCanvas";
 import { edgeMoved, handleAt, movedAll, removed, resized, type Handle } from "./plan";
@@ -1146,7 +1146,6 @@ export const SiteEditorApp: React.FC = () => {
         <span className="sitesw" title={payload?.path}>
           {context?.site ?? payload?.name ?? ""}
         </span>
-        {width >= 1500 && live && <span className="hchip" title="The controller this page was opened from">{window.location.host}</span>}
         {width >= LEFT_FOLD_PX && (
           <span className="live" title={live ? "Robots and Stop come from the controller that opened this page" : "Opened with dotbot site edit: no controller, no robots"}>
             <span className="dot" style={{ background: live ? "var(--ok)" : "transparent", border: live ? undefined : "1.5px solid var(--muted)" }} />
@@ -1166,19 +1165,6 @@ export const SiteEditorApp: React.FC = () => {
               : undefined
           }
           onSend={live && servedId ? () => setPushing(servedId) : undefined}
-          onUse={
-            live
-              ? (id) => {
-                  const r = rows.find((x) => x.id === id);
-                  if (!r) return;
-                  if (boxDraft) setDraft((d) => (d ? step(d, { boxes: null }) : d));
-                  setServing(r);
-                }
-              : undefined
-          }
-          onBack={previewId ? () => setPreviewId(null) : undefined}
-          onSave={editable ? () => setReviewing(true) : undefined}
-          onDiscard={editable ? () => setDraft((d) => (d ? step(d, { boxes: null }) : d)) : undefined}
         />
         {editable && (
         <>
@@ -1210,17 +1196,6 @@ export const SiteEditorApp: React.FC = () => {
         </button>
         )}
         {live && <EditorFleet onBots={setBots} onSite={setFleetSite} onSpin={setSpin} compact={narrow} />}
-        {width >= 1360 && (
-          <Tabs<"dark" | "light">
-            label="Theme"
-            value={theme}
-            onChange={setTheme}
-            options={[
-              { value: "dark", text: "Dark" },
-              { value: "light", text: "Light" },
-            ]}
-          />
-        )}
         {consoleHref && (
           <a className="btn ghost" href={consoleHref} target="dotbot-console" rel="noreferrer" title="The console, in its own tab">
             <Icon name="ext" />
@@ -1235,11 +1210,9 @@ export const SiteEditorApp: React.FC = () => {
         <>
           <div style={{ position: "fixed", inset: 0, zIndex: 40 }} onClick={() => setMenu(false)} />
           <div className="pop menu" role="menu" style={{ right: 10, top: 48 }} data-testid="more-menu">
-            {width < 1360 && (
-              <button type="button" className="mi" role="menuitem" onClick={() => (setTheme(theme === "dark" ? "light" : "dark"), setMenu(false))}>
-                <Icon name="view" /> {theme === "dark" ? "Light theme" : "Dark theme"}
-              </button>
-            )}
+            <button type="button" className="mi" role="menuitem" onClick={() => (setTheme(theme === "dark" ? "light" : "dark"), setMenu(false))}>
+              <Icon name="view" /> {theme === "dark" ? "Light theme" : "Dark theme"}
+            </button>
             {live && editable && (
               <>
                 <button type="button" className="mi" role="menuitem" onClick={() => (setSitesSheet("new"), setMenu(false))}>
@@ -1270,9 +1243,30 @@ export const SiteEditorApp: React.FC = () => {
             <button type="button" className="mi" role="menuitem" onClick={() => (setShortcuts(true), setMenu(false))}>
               <Icon name="key" /> Keyboard shortcuts <span className="s">?</span>
             </button>
-            <div className="mtx">{payload?.shown_path ?? payload?.path}</div>
+            <div className="mtx">
+              {payload?.shown_path ?? payload?.path}
+              {live && <div>controller at {window.location.host}</div>}
+            </div>
           </div>
         </>
+      )}
+      {!noSite && (
+        <StatusSide
+          status={status}
+          onUse={
+            live
+              ? (id) => {
+                  const r = rows.find((x) => x.id === id);
+                  if (!r) return;
+                  if (boxDraft) setDraft((d) => (d ? step(d, { boxes: null }) : d));
+                  setServing(r);
+                }
+              : undefined
+          }
+          onBack={previewId ? () => setPreviewId(null) : undefined}
+          onSave={editable ? () => setReviewing(true) : undefined}
+          onDiscard={editable ? () => setDraft((d) => (d ? step(d, { boxes: null }) : d)) : undefined}
+        />
       )}
       {((error && !noSite) || notice) && (
         <div
