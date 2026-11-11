@@ -130,16 +130,14 @@ export const StationsPanel: React.FC<StationsPanelProps> = (props) => {
           <span className="name">S{sel.index}</span>
         </div>
         <div className="seg" style={{ display: "inline-flex", margin: "6px 0 4px" }} role="tablist" aria-label="Station">
-          <span style={{ display: "contents" }}>
-            {boxes.map((b) => (
-              <button key={b.index} type="button" className={b.index === sel.index ? "on" : undefined} onClick={() => props.onSelectBox(b.index)}>
-                S{b.index}
-              </button>
-            ))}
-            <button type="button" onClick={() => props.onSelectBox(null)}>
-              All stations
+          {boxes.map((b) => (
+            <button key={b.index} type="button" className={b.index === sel.index ? "on" : undefined} onClick={() => props.onSelectBox(b.index)}>
+              S{b.index}
             </button>
-          </span>
+          ))}
+          <button type="button" onClick={() => props.onSelectBox(null)}>
+            All stations
+          </button>
         </div>
         <div className="ins-sub">
           Where robots use S{sel.index} (channel {sel.index + 1} on the station). Drag a handle on the plan, or type it; arrows nudge a picked edge (Alt 1 mm, Shift 100 mm).
