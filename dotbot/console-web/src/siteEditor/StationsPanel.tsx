@@ -46,7 +46,7 @@ export interface StationsPanelProps {
 }
 
 const boxText = (r: Rect, extent: [number, number]) =>
-  r[0] <= 0 && r[1] <= 0 && r[2] >= extent[0] && r[3] >= extent[1] ? "whole extent" : `x ${r[0]}-${r[2]}`;
+  r[0] <= 0 && r[1] <= 0 && r[2] >= extent[0] && r[3] >= extent[1] ? "the whole extent" : `x ${r[0]}–${r[2]}`;
 
 /** How robots choose, kept for the reader who needs the mechanism. */
 const Rule: React.FC<{ boxes: Boxes; coverage: Coverage | null }> = ({ boxes, coverage }) => {
@@ -198,15 +198,17 @@ export const StationsPanel: React.FC<StationsPanelProps> = (props) => {
   const resizeWhy = shown.in_frame ? null : "Not placed in this site yet: its coverage is in its own frame";
   return (
     <div data-testid="stations-panel">
-      <div className="ins-h">
+      <div className="ins-h wrap">
         <span className="kind">Editing</span>
-        <span className="name" style={{ fontFamily: "var(--font-ui)" }}>
+        <span className="name whole" style={{ fontFamily: "var(--font-ui)" }}>
           Stations
         </span>
         <span className="sp" />
-        <Badge tone={shown.served ? "ok" : "plain"}>
-          <span title={shown.id}>{nameOf(shown)}</span> · {props.drafted ? "edited" : shown.served ? "in use" : "looking at"}
-        </Badge>
+        <span className="tag">
+          <Badge tone={shown.served ? "ok" : "plain"}>
+            <span title={shown.id}>{nameOf(shown)}</span> · {props.drafted ? "edited" : shown.served ? "in use" : "looking at"}
+          </Badge>
+        </span>
       </div>
       <div className="seg" style={{ display: "inline-flex", marginTop: 8 }} role="tablist" aria-label="Show">
         <button type="button" role="tab" aria-selected={props.mode === "fix"} className={props.mode === "fix" ? "on" : undefined} onClick={() => props.onMode("fix")}>
@@ -216,60 +218,54 @@ export const StationsPanel: React.FC<StationsPanelProps> = (props) => {
           Accuracy
         </button>
       </div>
-      <table className="strip" style={{ marginTop: 10 }} data-testid="station-strip">
-        <thead>
-          <tr>
-            <th />
-            <th>fit</th>
-            <th>covers</th>
-            <th>alone on</th>
-            <th>worst</th>
-            <th>moved?</th>
-          </tr>
-        </thead>
-        <tbody>
-          {boxes.map((b) => {
-            const st = shown.stations.find((s) => s.index === b.index);
-            const sh = share(boxes, extent, b.index);
-            const w = worstOf(b.index);
-            return (
-              <React.Fragment key={b.index}>
-              <tr className="click" onClick={() => props.onSelectBox(b.index)} title={`Edit where robots use S${b.index}`}>
-                <td className="l">
-                  <span className="stpin" style={{ background: `var(--st-${b.index % 2})` }}>
-                    S{b.index}
+      <div className="stcards" data-testid="station-strip">
+        {boxes.map((b) => {
+          const st = shown.stations.find((s) => s.index === b.index);
+          const sh = share(boxes, extent, b.index);
+          const w = worstOf(b.index);
+          return (
+            <div key={b.index} className="stcard" data-testid={`station-row-${b.index}`} onClick={() => props.onSelectBox(b.index)} title={`Edit where robots use S${b.index}`}>
+              <div className="l1">
+                <span className="stpin" style={{ background: `var(--st-${b.index % 2})` }}>
+                  S{b.index}
+                </span>
+                <span className="vals">
+                  <span className="vi">
+                    <span className="v">fit {st ? st.residual_mm.toFixed(2) : "unknown"}</span>
+                    {w !== null && <span className="v">worst {w.toFixed(2)} mm</span>}
                   </span>
-                </td>
-                <td>{st ? st.residual_mm.toFixed(2) : "-"}</td>
-                <td>{boxText(b.rect, extent)}</td>
-                <td className="l">{sh > 0 ? `${Math.round(sh * 100)}%` : "nothing"}</td>
-                <td>{w !== null ? w.toFixed(2) : "-"}</td>
-                <td className="l" style={{ color: m.verdict === "moved?" ? "var(--warn)" : m.verdict === "no sign" ? "var(--ok)" : "var(--muted)" }}>
-                  {m.verdict}
-                </td>
-              </tr>
-              <tr className="acts">
-                <td colSpan={6}>
-                  <button
-                    type="button"
-                    className="btn xs"
-                    data-testid={`resize-coverage-${b.index}`}
-                    aria-label={`Resize S${b.index} coverage`}
-                    disabled={!!resizeWhy}
-                    title={resizeWhy ?? `Shows S${b.index}'s coverage on the plan with its handles: drag one to resize it`}
-                    onClick={() => props.onResize(b.index)}
-                  >
-                    <Icon name="rect" size={12} /> Resize coverage
-                  </button>
-                </td>
-              </tr>
-              </React.Fragment>
-            );
-          })}
-        </tbody>
-      </table>
+                </span>
+                <span className="sp" />
+                <button
+                  type="button"
+                  className="btn icon xs ghost"
+                  data-testid={`resize-coverage-${b.index}`}
+                  aria-label={`Resize S${b.index} coverage`}
+                  disabled={!!resizeWhy}
+                  title={resizeWhy ?? `Resize coverage: shows S${b.index}'s coverage on the plan with its handles, to drag`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    props.onResize(b.index);
+                  }}
+                >
+                  <Icon name="rect" size={13} />
+                </button>
+              </div>
+              <div className="vals l2">
+                <span className="vi">
+                  <span className="v">covers {boxText(b.rect, extent)}</span>
+                  <span className="v">{sh > 0 ? `alone on ${Math.round(sh * 100)}%` : "alone nowhere"}</span>
+                  <span className="v" style={{ color: m.verdict === "moved?" ? "var(--warn)" : m.verdict === "no sign" ? "var(--ok)" : undefined }}>
+                    moved: {m.verdict}
+                  </span>
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
       <div className="note" style={{ marginTop: 8 }}>
-        Fit and worst error in mm. Worst: the predicted error where that station is the one used. Moved?:
+        Fit and worst error in mm. Worst: the predicted error where that station is the one used. Moved:
         {m.spins > 1 ? ` the ${m.spins} spins of this site compared (${m.ranges.join(", ")}); a moved tripod would show, a nudge would not.` : " one spin only, nothing to compare."}
       </div>
       <div className={`callout ${shared ? "warn" : "ok"}`} style={{ marginTop: 12 }} data-testid="coverage-card">
