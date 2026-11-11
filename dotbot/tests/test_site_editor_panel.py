@@ -159,12 +159,16 @@ async def test_the_panel_reboxes_a_calibration_of_its_site(scenario, monkeypatch
     monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", pack.parent / "home")
     spun, _, _ = conics.solve_calibration(track_samples(CENTRES), Site(name="lab"))
     placed, _ = save_new(place_calibration(spun, s.controller.site, Rigid2D(100, 200)))
+    revision = (await local.get("/controller/site-editor/api/site")).json()["revision"]
     response = await local.post(
-        f"/controller/site-editor/api/calibrations/{placed.id}/boxes",
-        json={"stations": {"0": [0, 0, 1000, 2000]}},
+        "/controller/site-editor/api/apply",
+        json={
+            "revision": revision,
+            "calibration": {"source": placed.id, "stations": {"0": [0, 0, 1000, 2000]}},
+        },
     )
     assert response.status_code == 200, response.text
-    boxed = read_calibration_file(response.json()["path"])
+    boxed = read_calibration_file(response.json()["steps"][0]["detail"])
     assert boxed.station(0).coverage_mm == (0, 0, 1000, 2000)
     assert boxed.edited_from == placed.id
 
@@ -324,20 +328,31 @@ async def test_a_live_controller_keeps_its_calibration_when_the_note_changes(ser
 async def test_a_frame_change_is_named_until_robots_hold_it(served):
     s, local, pack, cal = served
     await local.put("/controller/site-editor/api/served", json={"spec": cal.id8})
-    revision = (await local.get("/controller/site-editor/api/site")).json()["revision"]
-    body = (
+    loaded = (await local.get("/controller/site-editor/api/site")).json()
+    site = loaded["site"]
+    for area in site["areas"]:
+        area["was"] = area["name"]
+    site.pop("frame", None)
+    site.pop("connection", None)
+    move = {"dx_mm": -20, "dy_mm": -20}
+    moved = (
         await local.post(
             "/controller/site-editor/api/frame",
+            json={"calibration": cal.id8, "site": site, "base": site, "move": move},
+        )
+    ).json()
+    body = (
+        await local.post(
+            "/controller/site-editor/api/apply",
             json={
-                "calibration": cal.id8,
-                "theta_deg": 0,
-                "dx_mm": -20,
-                "dy_mm": -20,
-                "revision": revision,
+                "revision": loaded["revision"],
+                "site": moved["site"],
+                "calibration": {"source": cal.id8, "frame": move},
             },
         )
     ).json()
     assert body["ok"] is True, body
+    body = {"calibration": body["calibration"], "frame": moved["frame"]}
     await asyncio.sleep(0.05)
     context = (await local.get("/controller/site-editor/api/context")).json()
     assert context["served"]["id"] == body["calibration"]["id"]

@@ -111,19 +111,28 @@ def test_editing_the_note_writes_the_derived_frame_first(editor):
     assert 'anchor = "the door corner, by the window"' in text
 
 
-def test_a_turn_with_a_shift_below_zero_is_refused_with_the_largest_legal_shift(
+def _site(client):
+    body = client.get("/api/site").json()
+    site = body["site"]
+    for area in site["areas"]:
+        area["was"] = area["name"]
+    site.pop("frame", None)
+    site.pop("connection", None)
+    return body["revision"], site
+
+
+def test_a_shift_below_zero_is_refused_with_the_largest_legal_shift(
     editor, placed  # noqa: F811
 ):  # noqa: F811
     client, _, _ = editor
-    revision = client.get("/api/site").json()["revision"]
+    _, site = _site(client)
     refused = client.post(
         "/api/frame",
         json={
             "calibration": placed.id8,
-            "theta_deg": 0,
-            "pivot": [1500, 2000],
-            "dx_mm": 5000,
-            "revision": revision,
+            "site": site,
+            "base": site,
+            "move": {"pivot": [1500, 2000], "dx_mm": 5000},
         },
     )
     assert refused.status_code == 422
@@ -132,27 +141,32 @@ def test_a_turn_with_a_shift_below_zero_is_refused_with_the_largest_legal_shift(
     assert 0 < detail["offer"]["dx_mm"] < 5000
 
 
-def test_the_frame_change_writes_the_file_the_site_and_serves_in_order(
+def test_a_turn_saves_the_file_then_the_site_then_uses_it(
     editor, placed  # noqa: F811
 ):  # noqa: F811
-    client, pack, served = editor
-    revision = client.get("/api/site").json()["revision"]
-    body = client.post(
+    client, pack, used = editor
+    revision, site = _site(client)
+    move = {"theta_deg": 2, "pivot": [1500, 2000]}
+    moved = client.post(
         "/api/frame",
+        json={"calibration": placed.id8, "site": site, "base": site, "move": move},
+    ).json()
+    body = client.post(
+        "/api/apply",
         json={
-            "calibration": placed.id8,
-            "theta_deg": 2,
-            "pivot": [1500, 2000],
             "revision": revision,
+            "site": moved["site"],
+            "calibration": {"source": placed.id8, "frame": move},
         },
     ).json()
-    assert [s["step"] for s in body["steps"]] == ["calibration", "site.toml", "serve"]
+    assert [s["step"] for s in body["steps"]] == ["calibration", "site.toml", "use"]
     assert body["ok"] is True
     new = lighthouse2.read_calibration_file(body["steps"][0]["detail"])
-    assert new.site.frame == body["frame"] != body["from_frame"]
-    assert f'frame = "{body["frame"]}"' in (pack / "site.toml").read_text()
-    assert served == [new.id]
-    site = Site(name="arena", anchor="the door corner", frame=body["frame"])
+    assert new.site.frame == moved["frame"] != moved["from_frame"]
+    assert new.tag.endswith("-turned")
+    assert f'frame = "{moved["frame"]}"' in (pack / "site.toml").read_text()
+    assert used == [new.id]
+    site = Site(name="arena", anchor="the door corner", frame=moved["frame"])
     assert frame_refusal(placed.site, site) is not None
     assert frame_refusal(new.site, site) is None
 

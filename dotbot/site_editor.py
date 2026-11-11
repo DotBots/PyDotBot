@@ -18,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Literal
@@ -28,10 +29,13 @@ from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from dotbot import site_backdrops, site_history, site_placement, site_toml
-from dotbot.config import ObjectKind
+from dotbot import site_backdrops, site_draft, site_history, site_placement, site_toml
+from dotbot.calibration import site_frame, site_turn, station_rule
+from dotbot.calibration.placement import save_new, site_tags
+from dotbot.calibration.station_boxes import push_line
+from dotbot.config import ObjectKind, SiteSection
 from dotbot.same_origin import cross_site_refusal
-from dotbot.site import PACK_CALIBRATIONS
+from dotbot.site import PACK_CALIBRATIONS, Site, site_from_table
 from dotbot.site_packs import PACK_FILE
 
 EDITOR_DIR = Path(__file__).parent / "console-web" / "dist"
@@ -94,15 +98,31 @@ class PreviewRequest(BaseModel):
 
 
 class ApplyRequest(BaseModel):
-    """One Save: site.toml first, then a calibration's new boxes against the
-    revision that write leaves."""
+    """One Save of the editor's draft: site.toml and at most one calibration,
+    composed from every pending edit, written in one go."""
 
     revision: str
     site: SiteModel | None = None
     text: str | None = None
-    # The calibration to save with new boxes, and the boxes
-    boxes_of: str | None = None
-    boxes: site_placement.BoxesRequest | None = None
+    calibration: site_draft.CalibrationEdit | None = None
+    # Make this controller use the calibration the save leaves
+    use: bool = True
+    # Say what the save would write, and write nothing
+    dry_run: bool = False
+
+
+class FrameRequest(BaseModel):
+    """The draft as it would be after a move of the origin."""
+
+    # The calibration the move re-expresses
+    calibration: str
+    # The draft's site, in the frame `start` leaves, and the file as loaded
+    site: SiteModel
+    base: SiteModel
+    start: site_draft.Move | None = None
+    move: site_draft.Move
+    # The drafted station rectangles, in the frame `start` leaves
+    stations: dict[int, tuple[int, int, int, int]] | None = None
 
 
 class ServeRequest(BaseModel):
@@ -434,44 +454,230 @@ def create_app(
         data, text, written = write_model(request.revision, request.site, request.text)
         return {**body(data, text), "written": written}
 
+    def site_of(text: str) -> Site:
+        try:
+            table = SiteSection.model_validate(tomllib.loads(text))
+            return site_from_table(state.name, table, state.pack)
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(422, f"site.toml would not read: {exc}") from exc
+
+    def existing_file(calibration_id: str) -> dict | None:
+        for meta in map(site_placement.file_metadata, site_placement.files(state.pack)):
+            if meta and meta["id"] == calibration_id:
+                return {key: meta[key] for key in ("id", "id8", "tag", "path")}
+        return None
+
+    def refused(exc: site_draft.ComposeRefused) -> HTTPException:
+        offer = (
+            None
+            if exc.offer is None
+            else {"dx_mm": exc.offer[0], "dy_mm": exc.offer[1]}
+        )
+        return HTTPException(422, {"message": str(exc), "offer": offer})
+
+    def taken_tags() -> list[str]:
+        return site_tags(state.name, site_placement.files(state.pack))
+
+    def planned(request: ApplyRequest, data: bytes, text: str) -> dict:
+        """What `request` writes, worked out and checked; nothing written."""
+        if site_toml.revision(data) != request.revision:
+            raise HTTPException(
+                409, f"{state.path} changed on disk since the page loaded it"
+            )
+        base = base_of(text, request.text)
+        edit = request.calibration
+        frame = edit.frame if edit is not None and edit.frame is not None else None
+        frame = frame if frame is not None and frame.moves else None
+        model = request.site
+        site_now = placement.current_site()
+        frame_id = None
+        if frame is not None:
+            if model is None:
+                raise HTTPException(
+                    422, "a move of the origin is saved with the site as drafted"
+                )
+            frame_id = site_frame.new_frame_id(
+                site_now.frame_id, frame.theta_deg, frame.pivot, frame.shift
+            )
+            model = model.model_copy(update={"frame": frame_id})
+        new_text = patched(base, stamped(base, model)) if model is not None else base
+        out: dict = {
+            "text": new_text,
+            "site_changed": new_text != text,
+            "frame": frame_id,
+            "from_frame": site_now.frame_id,
+            "calibration": None,
+            "result": None,
+        }
+        if edit is None:
+            return out
+        source = placement.resolve(edit.source)
+        try:
+            result, warnings = site_draft.composed(
+                source, site_now, site_of(new_text), edit, taken_tags()
+            )
+        except site_draft.ComposeRefused as exc:
+            raise refused(exc) from exc
+        unchanged = result is source
+        existing = None if unchanged else existing_file(result.id)
+        out["result"] = result
+        out["calibration"] = {
+            "id": result.id,
+            "id8": result.id8,
+            "tag": existing["tag"] if existing else result.tag,
+            "source": source.id8,
+            "source_tag": source.tag,
+            "unchanged": unchanged,
+            "existing": existing,
+            "new": not unchanged and existing is None,
+            "warnings": warnings,
+            "reading": station_rule.reading(
+                {st.index: st.coverage_mm for st in result.stations}
+            ),
+            "push": push_line(result),
+        }
+        return out
+
     @app.post("/api/apply")
     def apply(request: ApplyRequest):
+        """One Save: the calibration the draft makes, if new, then site.toml,
+        then this controller uses that calibration. With `dry_run`, what it
+        would write."""
         steps = []
-        revision = request.revision
-        if request.site is not None:
-            data, text, written = write_model(revision, request.site, request.text)
-            revision = site_toml.revision(data)
+        with saving:
+            data, text = read()
+            plan = planned(request, data, text)
+            cal = plan.pop("calibration")
+            result = plan.pop("result")
+            use = (
+                cal is not None
+                and not cal["unchanged"]
+                and request.use
+                and serve is not None
+                and served_id() != cal["id"]
+            )
+            if request.dry_run:
+                return {**plan, "calibration": cal, "use": use}
+            if cal is not None:
+                if cal["unchanged"]:
+                    steps.append(
+                        {
+                            "step": "calibration",
+                            "status": "unchanged",
+                            "detail": f"{cal['id8']} as it was",
+                            "id": cal["id"],
+                        }
+                    )
+                elif cal["existing"] is not None:
+                    steps.append(
+                        {
+                            "step": "calibration",
+                            "status": "reused",
+                            "detail": cal["existing"]["path"],
+                            "id": cal["id"],
+                        }
+                    )
+                else:
+                    saved, path = save_new(result)
+                    steps.append(
+                        {
+                            "step": "calibration",
+                            "status": "written",
+                            "detail": str(path),
+                            "id": saved.id,
+                        }
+                    )
+            if plan["site_changed"]:
+                keep_and_write(data, plan["text"])
             steps.append(
                 {
                     "step": "site.toml",
-                    "status": "written" if written else "unchanged",
+                    "status": "written" if plan["site_changed"] else "unchanged",
                     "detail": str(state.path),
-                    "revision": revision,
                 }
             )
-        if request.boxes is not None and request.boxes_of:
-            boxes = request.boxes.model_copy(update={"revision": revision})
+        if use:
             try:
-                saved = placement.save_boxes(request.boxes_of, boxes)
+                serve(cal["id"], False)
                 steps.append(
                     {
-                        "step": "calibration",
+                        "step": "use",
                         "status": "written",
-                        "detail": saved["path"],
-                        "id": saved["id"],
-                        "push": saved["push"],
-                        "warnings": saved["warnings"],
+                        "detail": f"in use here until the controller restarts: {cal['tag'] or cal['id8']}",
+                        "id": cal["id"],
                     }
                 )
-            except HTTPException as exc:
-                steps.append(
-                    {"step": "calibration", "status": "refused", "detail": exc.detail}
-                )
+            except (ValueError, OSError) as exc:
+                steps.append({"step": "use", "status": "refused", "detail": str(exc)})
         data, text = read()
         return {
             **body(data, text),
             "ok": all(s["status"] != "refused" for s in steps),
             "steps": steps,
+            "calibration": cal,
+        }
+
+    @app.post("/api/frame")
+    def frame_move(request: FrameRequest):
+        """The draft after a move of the origin: its site and the file as
+        loaded, renumbered so everything stays where it is on the floor, the
+        drafted rectangles likewise, and the calibration's own coverage in
+        the moved frame. Nothing is written; a move a robot could not take
+        is refused with the largest legal shift."""
+        source = placement.resolve(request.calibration)
+        site_now = placement.current_site()
+        move = request.move
+        if move.moves:
+            frame = site_frame.new_frame_id(
+                site_now.frame_id, move.theta_deg, move.pivot, move.shift
+            )
+            try:
+                moved = site_frame.moved(
+                    source,
+                    site_now,
+                    move.theta_deg,
+                    move.pivot,
+                    move.shift,
+                    site_now.anchor,
+                    frame,
+                )
+            except site_turn.TurnRefused as exc:
+                raise refused(
+                    site_draft.ComposeRefused(
+                        str(exc),
+                        site_frame.largest_shift(
+                            source, site_now, move.theta_deg, move.pivot, move.shift
+                        ),
+                    )
+                ) from exc
+            warnings = site_turn.outside_warnings(
+                moved, site_now
+            ) + site_turn.widened_note(move.theta_deg)
+        else:
+            frame, moved, warnings = site_now.frame_id, source, []
+        floor = site_draft.between(request.start, move)
+        stations = (
+            None
+            if request.stations is None
+            else {
+                index: [max(0, v) for v in floor.box(rect)]
+                for index, rect in request.stations.items()
+            }
+        )
+        keep = site_draft.kept_rects(moved) + list((stations or {}).values())
+        points = site_draft.kept_points(moved)
+        return {
+            "frame": frame,
+            "from_frame": site_now.frame_id,
+            "site": site_draft.moved_site(
+                _model_dict(request.site), floor, keep, points
+            ),
+            "base": site_draft.moved_site(
+                _model_dict(request.base), move.floor(), keep, points
+            ),
+            "stations": stations,
+            "coverage": {st.index: list(st.coverage_mm) for st in moved.stations},
+            "warnings": warnings,
         }
 
     @app.get("/api/history")
@@ -668,22 +874,11 @@ def create_app(
             on_done()
         return {"ok": True}
 
-    def write_site(revision: str, text: str) -> None:
-        with saving:
-            data, _ = read()
-            if site_toml.revision(data) != revision:
-                raise HTTPException(
-                    409, f"{state.path} changed on disk since the page loaded it"
-                )
-            keep_and_write(data, text)
-
     placement = site_placement.create_router(
         state.name,
         state.pack,
         lambda: read()[1],
-        write_site,
         served_id,
-        serve,
         context=opened_by,
     )
     app.include_router(placement)

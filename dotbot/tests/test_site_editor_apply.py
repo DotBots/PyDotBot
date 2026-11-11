@@ -18,42 +18,42 @@ def _with_area(site: dict, name: str) -> dict:
     }
 
 
-def test_a_refused_second_step_leaves_site_toml_written_and_reports_both(
-    client, placed  # noqa: F811
-):
+def test_a_refused_calibration_writes_nothing(client, placed, home):  # noqa: F811
     loaded = client.get("/api/site").json()
-    body = client.post(
+    files = sorted((home / "arena").iterdir())
+    response = client.post(
         "/api/apply",
         json={
             "revision": loaded["revision"],
             "site": _with_area(loaded["site"], "pen"),
-            "boxes_of": placed.id,
-            "boxes": {"stations": {"0": [0, 0, 99999, 2000]}},
+            "calibration": {
+                "source": placed.id,
+                "stations": {"0": [0, 0, 99999, 2000]},
+            },
         },
-    ).json()
-    assert body["ok"] is False
-    assert [(s["step"], s["status"]) for s in body["steps"]] == [
-        ("site.toml", "written"),
-        ("calibration", "refused"),
-    ]
-    assert "extent" in body["steps"][1]["detail"]
-    assert body["revision"] != loaded["revision"]
-    assert "pen" in [a["name"] for a in client.get("/api/site").json()["site"]["areas"]]
+    )
+    assert response.status_code == 422
+    assert "extent" in response.json()["detail"]["message"]
+    assert client.get("/api/site").json()["revision"] == loaded["revision"]
+    assert sorted((home / "arena").iterdir()) == files
+    assert client.get("/api/history").json() == []
 
 
-def test_both_steps_write_in_order(client, placed):  # noqa: F811
+def test_the_calibration_then_site_toml_are_written(client, placed):  # noqa: F811
     loaded = client.get("/api/site").json()
     body = client.post(
         "/api/apply",
         json={
             "revision": loaded["revision"],
             "site": _with_area(loaded["site"], "pen"),
-            "boxes_of": placed.id,
-            "boxes": {"stations": {"0": [0, 0, 1000, 2000]}},
+            "calibration": {
+                "source": placed.id,
+                "stations": {"0": [0, 0, 1000, 2000]},
+            },
         },
     ).json()
     assert body["ok"] is True
-    site_step, cal_step = body["steps"]
+    cal_step, site_step = body["steps"]
     assert site_step["status"] == "written"
     boxed = read_calibration_file(cal_step["detail"])
     assert boxed.id == cal_step["id"] and boxed.station(0).coverage_mm == (

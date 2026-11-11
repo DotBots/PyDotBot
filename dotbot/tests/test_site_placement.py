@@ -34,6 +34,22 @@ def spun(home):
     return calibration
 
 
+def save(client, **calibration):
+    """One Save of the calibration edit `calibration`, the site as it is."""
+    revision = client.get("/api/site").json()["revision"]
+    return client.post(
+        "/api/apply", json={"revision": revision, "calibration": calibration}
+    )
+
+
+def saved(response):
+    """The calibration a Save wrote or reused."""
+    assert response.status_code == 200, response.text
+    step = next(s for s in response.json()["steps"] if s["step"] == "calibration")
+    assert step["status"] in ("written", "reused"), step
+    return read_calibration_file(step["detail"])
+
+
 @pytest.fixture
 def client(tmp_path, home):
     pack = tmp_path / "arena"
@@ -70,19 +86,14 @@ def test_a_placement_writes_a_new_calibration_and_keeps_the_original(
     client, spun, home
 ):
     source = spun.path.read_bytes()
-    body = client.post(
-        f"/api/calibrations/{spun.id8}/place",
-        json={"dx_mm": 100, "dy_mm": 200, "theta_deg": 0},
-    ).json()
+    placed = saved(save(client, source=spun.id8, place={"dx_mm": 100, "dy_mm": 200}))
     assert spun.path.read_bytes() == source
-    placed = read_calibration_file(home / "arena" / body["path"].split("/")[-1])
-    assert placed.id == body["id"] != spun.id
+    assert placed.path.parent == home / "arena"
+    assert placed.id != spun.id and placed.placed_from == spun.id
     assert placed.site.name == "arena"
     assert placed.site.anchor == "the corner where the top wall meets the door wall"
     assert placed.coverage_mm == (0, 0, 2000, 4000)
-    assert body["push"] == (
-        f"dotbot swarm calibrate-lh2 push {placed.id8} --site arena --site-changed"
-    )
+    assert placed.tag == "spin-arena"
     move = Rigid2D(100, 200, 0)
     before = spin_centres(spun)[0]
     after = spin_centres(placed)[0]
@@ -103,53 +114,43 @@ def test_a_corner_calibration_is_refused_unless_re_anchored(client, spun):
     write_calibration(corner)
     listed = {c["tag"]: c["free"] for c in client.get("/api/calibrations").json()}
     assert listed == {"spin": True, "corner": False}
-    refused = client.post("/api/calibrations/corner/place", json={"dx_mm": 10})
+    refused = save(client, source="corner", place={"dx_mm": 10})
     assert refused.status_code == 422
-    assert "collected at points of the room" in refused.json()["detail"]
-    moved = client.post(
-        "/api/calibrations/corner/place", json={"dx_mm": 10, "reanchor": True}
-    )
+    assert "collected at points of the room" in refused.json()["detail"]["message"]
+    moved = save(client, source="corner", place={"dx_mm": 10, "reanchor": True})
     assert moved.status_code == 200
-    assert any("re-anchored" in w for w in moved.json()["warnings"])
+    assert any("re-anchored" in w for w in moved.json()["calibration"]["warnings"])
 
 
 def test_placing_twice_the_same_way_keeps_the_first_file(client, spun, home):
     move = {"dx_mm": 100, "dy_mm": 200, "theta_deg": 0}
-    first = client.post(f"/api/calibrations/{spun.id8}/place", json=move).json()
-    written = (home / "arena" / first["path"].split("/")[-1]).read_bytes()
-    second = client.post(f"/api/calibrations/{spun.id8}/place", json=move).json()
-    assert (second["id"], second["tag"], second["path"]) == (
-        first["id"],
-        first["tag"],
-        first["path"],
-    )
+    first = saved(save(client, source=spun.id8, place=move))
+    written = first.path.read_bytes()
+    again = save(client, source=spun.id8, place=move)
+    assert again.json()["steps"][0]["status"] == "reused"
+    second = saved(again)
+    assert (second.id, second.tag, second.path) == (first.id, first.tag, first.path)
     assert len(list((home / "arena").glob("*.toml"))) == 1
-    assert (home / "arena" / first["path"].split("/")[-1]).read_bytes() == written
-    assert client.get(f"/api/calibrations/{first['tag']}").status_code == 200
+    assert first.path.read_bytes() == written
+    assert client.get(f"/api/calibrations/{first.tag}").status_code == 200
 
 
 def test_a_placement_below_zero_is_refused(client, spun):
-    refused = client.post(
-        f"/api/calibrations/{spun.id8}/place", json={"theta_deg": 180}
-    )
+    refused = save(client, source=spun.id8, place={"theta_deg": 180})
     assert refused.status_code == 422
-    assert "below zero" in refused.json()["detail"]
+    assert "below zero" in refused.json()["detail"]["message"]
 
 
 def test_a_placement_outside_the_extent_is_saved_with_a_warning(client, spun):
-    body = client.post(
-        f"/api/calibrations/{spun.id8}/place", json={"dx_mm": 1500}
-    ).json()
-    assert any("outside the site's extent" in w for w in body["warnings"])
+    body = save(client, source=spun.id8, place={"dx_mm": 1500}).json()
+    assert any(
+        "outside the site's extent" in w for w in body["calibration"]["warnings"]
+    )
 
 
 @pytest.fixture
 def placed(client, spun, home):
-    body = client.post(
-        f"/api/calibrations/{spun.id8}/place",
-        json={"dx_mm": 100, "dy_mm": 200, "theta_deg": 0},
-    ).json()
-    return read_calibration_file(body["path"])
+    return saved(save(client, source=spun.id8, place={"dx_mm": 100, "dy_mm": 200}))
 
 
 def test_the_listing_says_which_calibrations_are_in_the_site_s_frame(
@@ -164,32 +165,23 @@ def test_the_listing_says_which_calibrations_are_in_the_site_s_frame(
 
 def test_boxes_write_a_new_calibration_with_only_the_rectangles_changed(client, placed):
     source = placed.path.read_bytes()
-    revision = client.get("/api/site").json()["revision"]
-    response = client.post(
-        f"/api/calibrations/{placed.id}/boxes",
-        json={"revision": revision, "stations": {"0": [0, 0, 1000, 2000]}},
-    )
-    assert response.status_code == 200, response.text
-    body = response.json()
+    response = save(client, source=placed.id, stations={"0": [0, 0, 1000, 2000]})
+    boxed = saved(response)
+    body = response.json()["calibration"]
     assert placed.path.read_bytes() == source
-    boxed = read_calibration_file(body["path"])
     assert boxed.id == body["id"] != placed.id
     assert boxed.station(0).coverage_mm == (0, 0, 1000, 2000)
     assert boxed.coverage_mm == (0, 0, 1000, 2000)
     assert boxed.station(0).homography == placed.station(0).homography
     assert boxed.edited_from == placed.id
-    assert boxed.tag == f"{placed.tag}-boxes"
-    assert body["stations"][0]["rect"] == [0, 0, 1000, 2000]
+    assert boxed.tag == f"{placed.tag}-split"
     assert body["source"] == placed.id8
     assert body["push"] == f"dotbot swarm calibrate-lh2 push {boxed.id8} --site arena"
 
 
 def test_boxes_leaving_out_circles_are_saved_with_a_warning(client, placed):
-    body = client.post(
-        f"/api/calibrations/{placed.id}/boxes",
-        json={"stations": {"0": [1500, 3000, 2000, 4000]}},
-    ).json()
-    (warning,) = body["warnings"]
+    body = save(client, source=placed.id, stations={"0": [1500, 3000, 2000, 4000]})
+    (warning,) = body.json()["calibration"]["warnings"]
     assert "leaves out" in warning and "spin circle(s)" in warning
 
 
@@ -201,36 +193,33 @@ def test_boxes_leaving_out_circles_are_saved_with_a_warning(client, placed):
     ],
 )
 def test_boxes_a_robot_cannot_take_are_refused(client, placed, home, rect, why):
-    response = client.post(
-        f"/api/calibrations/{placed.id}/boxes", json={"stations": {"0": rect}}
-    )
+    response = save(client, source=placed.id, stations={"0": rect})
     assert response.status_code == 422
-    assert why in response.json()["detail"]
+    assert why in response.json()["detail"]["message"]
     assert len(list((home / "arena").glob("*.toml"))) == 1
 
 
 def test_boxes_of_a_free_mode_calibration_are_refused(client, spun):
-    response = client.post(
-        f"/api/calibrations/{spun.id}/boxes", json={"stations": {"0": [0, 0, 10, 10]}}
-    )
+    response = save(client, source=spun.id, stations={"0": [0, 0, 10, 10]})
     assert response.status_code == 422
-    assert "free-mode spin calibration" in response.json()["detail"]
+    assert "free-mode spin calibration" in response.json()["detail"]["message"]
 
 
 def test_boxes_checked_against_an_older_site_toml_are_a_409(client, placed, home):
     response = client.post(
-        f"/api/calibrations/{placed.id}/boxes",
-        json={"revision": "stale", "stations": {"0": [0, 0, 1000, 2000]}},
+        "/api/apply",
+        json={
+            "revision": "stale",
+            "calibration": {"source": placed.id, "stations": {"0": [0, 0, 1000, 2000]}},
+        },
     )
     assert response.status_code == 409
     assert len(list((home / "arena").glob("*.toml"))) == 1
 
 
 def test_the_site_library_groups_box_layouts_by_spin(client, spun, placed):
-    boxed = client.post(
-        f"/api/calibrations/{placed.id}/boxes",
-        json={"stations": {"0": [0, 0, 1000, 2000]}},
-    ).json()
+    boxed = save(client, source=placed.id, stations={"0": [0, 0, 1000, 2000]})
+    boxed = boxed.json()["calibration"]
     library = client.get("/api/calibrations?scope=site").json()
     assert library["site"] == "arena" and library["served"] is None
     # The spin of site "lab" lives in another site's folder, so it is not here
@@ -270,22 +259,16 @@ def test_an_unknown_library_scope_is_refused(client):
 
 def test_a_dry_run_names_the_id_and_writes_nothing(client, placed, home):
     before = sorted((home / "arena").iterdir())
-    body = client.post(
-        f"/api/calibrations/{placed.id}/boxes?dry_run=1",
-        json={"stations": {"0": [0, 0, 1000, 2000]}},
-    ).json()
-    assert body["written"] is False and body["existing"] is None
+    revision = client.get("/api/site").json()["revision"]
+    edit = {"source": placed.id, "stations": {"0": [0, 0, 1000, 2000]}}
+    dry = {"revision": revision, "calibration": edit, "dry_run": True}
+    body = client.post("/api/apply", json=dry).json()["calibration"]
+    assert body["new"] is True and body["existing"] is None
     assert sorted((home / "arena").iterdir()) == before
-    saved = client.post(
-        f"/api/calibrations/{placed.id}/boxes",
-        json={"stations": {"0": [0, 0, 1000, 2000]}},
-    ).json()
-    assert saved["id"] == body["id"]
-    again = client.post(
-        f"/api/calibrations/{placed.id}/boxes?dry_run=1",
-        json={"stations": {"0": [0, 0, 1000, 2000]}},
-    ).json()
-    assert again["existing"]["id"] == saved["id"]
+    written = saved(save(client, **edit))
+    assert written.id == body["id"]
+    again = client.post("/api/apply", json=dry).json()["calibration"]
+    assert again["existing"]["id"] == written.id and again["new"] is False
 
 
 def test_a_standalone_editor_has_no_served_calibration(client):
@@ -383,10 +366,8 @@ def test_an_empty_tag_is_refused(client, spun):
 
 
 def test_a_tag_another_file_of_the_site_carries_is_refused(client, placed):
-    boxed = client.post(
-        f"/api/calibrations/{placed.id}/boxes",
-        json={"stations": {"0": [0, 0, 1000, 2000]}},
-    ).json()
+    boxed = save(client, source=placed.id, stations={"0": [0, 0, 1000, 2000]})
+    boxed = boxed.json()["calibration"]
     refused = client.patch(
         f"/api/calibrations/{boxed['id']}", json={"tag": "Spin-Arena"}
     )
