@@ -5,11 +5,12 @@
 again in a new frame, site.toml's frame id changed, no other number."""
 
 import dataclasses
+import math
 
 import pytest
 from click.testing import CliRunner
 
-from dotbot.calibration import conics, lighthouse2
+from dotbot.calibration import conics, lighthouse2, site_turn
 from dotbot.calibration.lighthouse2 import read_calibration_file, write_calibration
 from dotbot.calibration.placement import Rigid2D, place_calibration, spin_centres
 from dotbot.calibration.site_turn import (
@@ -64,14 +65,54 @@ def test_a_turned_calibration_moves_every_fix_by_the_floor_move(placed):
         )
     assert result.id != placed.id
     assert [st.valid_mm for st in result.stations] == [
-        st.valid_mm for st in placed.stations
+        tuple(max(0, v) for v in move.box(st.valid_mm)) for st in placed.stations
     ]
-    assert result.valid_mm == placed.valid_mm
+    assert result.valid_mm == tuple(max(0, v) for v in move.box(placed.valid_mm))
     assert result.site == Site(name="arena", anchor="zero moved")
     assert plan_turn([placed], ARENA, 10, (1500, 2000), "zero moved")[0].site.frame
     assert result.edited_from == placed.id
     assert result.placed_from == placed.placed_from != ""
     assert result.tag == "spin-arena-turned"
+
+
+def test_a_shift_keeps_the_coverage_where_it_is_on_the_floor(placed):
+    # Zero moves 500 mm left and up: what covered x 0-3000, y 0-4000 now
+    # covers x 500-3500, y 500-4500
+    result = turned(
+        placed, ARENA, 0, (0, 0), "", move=floor_move(0, (0, 0), (-500, -500))
+    )
+    assert placed.station(0).valid_mm == (0, 0, 3000, 4000)
+    assert [st.valid_mm for st in result.stations] == [(500, 500, 3500, 4500)] * len(
+        placed.stations
+    )
+    assert result.valid_mm == (500, 500, 3500, 4500)
+    assert result.tag == "spin-arena-moved"
+    move = floor_move(0, (0, 0), (-500, -500))
+    assert site_turn._kept(move, (0, 0, 1060, 1220)) == (500, 500, 1560, 1720)
+    assert site_turn.widened_note(0) == []
+
+
+def test_a_quarter_turn_swaps_the_box_sides(placed):
+    # A quarter turn about the floor's middle: 3000 wide by 4000 deep
+    # becomes 4000 wide by 3000 deep, at the same place on the floor
+    move = floor_move(90, (1500, 2000), (-500, 0))
+    result = turned(placed, ARENA, 90, (1500, 2000), "", move=move)
+    assert result.station(0).valid_mm == (0, 500, 4000, 3500)
+    assert result.valid_mm == (0, 500, 4000, 3500)
+    assert result.tag == "spin-arena-turned"
+    assert site_turn.widened_note(90) == site_turn.widened_note(-270) == []
+
+
+def test_any_other_turn_gives_the_box_round_the_turned_rectangle(placed):
+    move = floor_move(30, (1500, 2000), (-1500, -1500))
+    result = turned(placed, ARENA, 30, (1500, 2000), "", move=move)
+    corners = move.apply([(0, 0), (3000, 0), (3000, 4000), (0, 4000)])
+    xs, ys = [p[0] for p in corners], [p[1] for p in corners]
+    x0, y0, x1, y1 = result.station(0).valid_mm
+    assert (x0, y0) == (max(0, math.floor(min(xs))), max(0, math.floor(min(ys))))
+    assert (x1, y1) == (math.ceil(max(xs)), math.ceil(max(ys)))
+    assert x1 - x0 > 3000 and y1 - y0 > 4000 - 1
+    assert site_turn.widened_note(30)
 
 
 def test_a_turn_with_nothing_to_do_is_refused_and_a_note_may_stay(placed):

@@ -239,7 +239,8 @@ def create_router(
             "from_frame": site.frame_id,
             "calibration": {"id": planned.id, "id8": planned.id8, "tag": planned.tag},
             "source": source.id8,
-            "warnings": site_turn.outside_warnings(planned, site),
+            "warnings": site_turn.outside_warnings(planned, site)
+            + site_turn.widened_note(request.theta_deg),
             "push": push_line(planned),
         }
         if request.dry_run:

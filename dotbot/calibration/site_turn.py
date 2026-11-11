@@ -3,11 +3,12 @@
 
 """Turning a whole site on the floor, and shifting its zero.
 
-The site's frame moves with everything in it, so no number in `site.toml`
-changes; a point fixed on the floor gets new site coordinates instead. Each
-calibration of the site maps the stations' sweeps to those coordinates, so
-each is re-expressed by the floor's move as a new calibration, recording the
-new frame's id.
+The site's frame moves, so a point fixed on the floor gets new site
+coordinates. Each calibration of the site maps the stations' sweeps to those
+coordinates, so each is re-expressed by the floor's move as a new
+calibration, recording the new frame's id. Its coverage stays where it is on
+the floor: the stations' boxes and the fence get new numbers by the same
+move, as the box round each turned rectangle, cut at zero.
 """
 
 from __future__ import annotations
@@ -31,6 +32,7 @@ from dotbot.calibration.station_boxes import frame_refusal
 from dotbot.site import Site
 
 TAG_SUFFIX = "turned"
+SHIFT_SUFFIX = "moved"
 # How an anchor made by `site init` starts: no mark in the room is its zero
 SELF_DEFINED = "self-defined"
 
@@ -62,6 +64,29 @@ def new_frame_id(
         f"\nshift {float(shift[0]):g},{float(shift[1]):g}"
     )
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:8]
+
+
+def square_turn(theta_deg: float) -> bool:
+    """Whether a turn by `theta_deg` keeps a rectangle a rectangle."""
+    return abs(((float(theta_deg) + 45) % 90) - 45) < 1e-9
+
+
+def widened_note(theta_deg: float) -> list[str]:
+    """One line when the turn widens the coverage boxes to stay rectangles."""
+    if square_turn(theta_deg):
+        return []
+    return [
+        "the coverage boxes and the fence are widened to the rectangles round "
+        "them once turned"
+    ]
+
+
+def _kept(move: Rigid2D, rect: Sequence[float] | None):
+    """`rect`, fixed on the floor, in the moved frame's numbers, cut at zero."""
+    if rect is None:
+        return None
+    x0, y0, x1, y1 = move.box(rect)
+    return (max(0, x0), max(0, y0), max(0, x1), max(0, y1))
 
 
 def default_pivot(site: Site) -> tuple[float, float]:
@@ -122,10 +147,11 @@ def turned(
     `frame`, as a new calibration.
 
     Every homography becomes `floor_move . H` and every placement point
-    moves with it. The stations' rectangles and the fence are site
-    numbers, and stay as they are. Refused when `source` is not in `site`'s
-    frame, was edited by hand, or when a spin centre or placement point
-    would land below zero.
+    moves with it. The stations' boxes and the fence stay where they are on
+    the floor, so they get new numbers by the same move (`widened_note`).
+    The tag takes `-turned` for a turn, else `-moved`. Refused when
+    `source` is not in `site`'s frame, was edited by hand, or when a spin
+    centre or placement point would land below zero.
     """
     why = frame_refusal(source.site, site)
     if why is not None:
@@ -138,21 +164,22 @@ def turned(
         raise TurnRefused(str(exc)) from exc
     if site.extent_mm is None:
         raise TurnRefused(f"site {site.name} has no extent to turn")
+    move = move or floor_move(theta_deg, pivot)
     try:
-        moved = place_calibration(
-            source, site, move or floor_move(theta_deg, pivot), reanchor=True
-        )
+        moved = place_calibration(source, site, move, reanchor=True)
     except PlacementRefused as exc:
         raise TurnRefused(f"calibration {source.id8}: {exc}") from exc
-    rects = {st.index: st.valid_mm for st in source.stations}
+    rects = {st.index: _kept(move, st.valid_mm) for st in source.stations}
+    turns = abs(((move.theta_deg + 180) % 360) - 180) > 1e-9
+    suffix = TAG_SUFFIX if turns else SHIFT_SUFFIX
     return dataclasses.replace(
         moved,
         site=Site(name=site.name, anchor=anchor, frame=frame),
-        valid_mm=source.valid_mm,
+        valid_mm=_kept(move, source.valid_mm),
         stations=[
             dataclasses.replace(st, valid_mm=rects[st.index]) for st in moved.stations
         ],
-        tag=suffixed_tag(source.tag, TAG_SUFFIX, taken_tags),
+        tag=suffixed_tag(source.tag, suffix, taken_tags),
         placed_from=source.placed_from,
         edited_from=source.id,
     )

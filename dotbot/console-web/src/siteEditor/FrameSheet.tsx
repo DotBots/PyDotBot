@@ -86,7 +86,7 @@ export const FrameSheet: React.FC<{
           {
             icon: "file" as const,
             title: `1 · A new calibration from ${from}`,
-            body: `Named ${made}, with the new origin. ${from} itself is kept.`,
+            body: `Named ${made}, with the new origin. The coverage stays where it is on the floor, with new numbers. ${from} itself is kept.`,
             step: steps.find((s) => s.step === "calibration"),
           },
           {

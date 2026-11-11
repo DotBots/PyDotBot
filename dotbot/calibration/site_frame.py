@@ -4,11 +4,10 @@
 """Moving a site's frame on the floor: turning it about a point, shifting
 its zero, or both, as one change with a new frame id.
 
-The site's numbers stay as they are, since the floor rectangle moves with
-the frame; a point fixed on the floor gets new coordinates instead, so the
-served calibration is re-expressed by the floor's move as a new file
-recording the new frame id. Data logged before the change stays in the old
-frame.
+A point fixed on the floor gets new coordinates, so the served calibration
+is re-expressed by the floor's move as a new file recording the new frame
+id; its coverage stays where it is on the floor, with new numbers. Data
+logged before the change stays in the old frame.
 """
 
 from __future__ import annotations
