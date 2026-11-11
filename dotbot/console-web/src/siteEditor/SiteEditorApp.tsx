@@ -74,6 +74,10 @@ const sameContext = (a: EditorContext | null, b: EditorContext) => JSON.stringif
 /** Below these widths a pane folds into a rail of icons that opens it as a drawer. */
 export const LEFT_FOLD_PX = 1100;
 export const RIGHT_FOLD_PX = 980;
+/** Map widths under which the kinds bar drops its key numbers, then its labels;
+ * a 1366 px window with both panes open keeps the labels. */
+export const KINDS_COMPACT_PX = 960;
+export const KINDS_TIGHT_PX = 740;
 /** How often the page checks whether site.toml changed on disk, ms. */
 export const FILE_POLL_MS = 2000;
 /** Where this browser keeps the last 3D camera. */
@@ -268,6 +272,15 @@ export const SiteEditorApp: React.FC = () => {
   });
   const [roomZoom, setRoomZoom] = useState<Zoom>(FIT);
   const [mapSize, setMapSize] = useState<Size>({ w: 900, h: 600 });
+  // The centre's width in every view, for the kinds bar; mapSize follows the 3D view only
+  const [centreW, setCentreW] = useState(900);
+  const centreObserver = useRef<ResizeObserver | null>(null);
+  const centreRef = useCallback((el: HTMLElement | null) => {
+    centreObserver.current?.disconnect();
+    if (!el || typeof ResizeObserver === "undefined") return;
+    centreObserver.current = new ResizeObserver(([e]) => setCentreW(e.contentRect.width));
+    centreObserver.current.observe(el);
+  }, []);
   const [planCam, setPlanCam] = useState<{ cam: Camera; n: number } | undefined>(undefined);
   const planView = useRef<{ cam: Camera; size: Size } | null>(null);
   // The 3D camera to come back to after editing
@@ -1703,7 +1716,7 @@ export const SiteEditorApp: React.FC = () => {
             {leftPane}
           </aside>
         )}
-        <main className="center">
+        <main className="center" ref={centreRef}>
           {draft ? (
             mapIn3d ? (
               <RoomView
@@ -1850,10 +1863,10 @@ export const SiteEditorApp: React.FC = () => {
               </button>
             </div>
           )}
-          <div className={`float kinds${mapSize.w < 1180 ? " tight" : ""}`} data-testid="editing-switch" role="tablist" aria-label="Editing">
+          <div className={`float kinds${centreW < KINDS_TIGHT_PX ? " tight" : centreW < KINDS_COMPACT_PX ? " compact" : ""}`} data-testid="editing-switch" role="tablist" aria-label="Editing">
             {stage === "edit" || stage === "toTop" ? (
               <button type="button" className="btn primary sm" data-testid="done-editing" title="Back to the 3D view; the draft stays (Esc)" onClick={() => leaveEdit()}>
-                Done editing
+                Done
               </button>
             ) : (
               <button type="button" className="btn primary sm" data-testid="enter-edit" title="Edit, looking straight down (or a kind's number)" onClick={() => enterEdit()}>
@@ -1865,7 +1878,7 @@ export const SiteEditorApp: React.FC = () => {
               <span className="tx">View</span>
             </button>
             <span className="vsep" />
-            {!narrow && mapSize.w >= 1180 && <span className="lbl2">Editing</span>}
+            {!narrow && centreW >= 1180 && <span className="lbl2">Editing</span>}
             {KINDS.map((k) => (
               <button
                 key={k}

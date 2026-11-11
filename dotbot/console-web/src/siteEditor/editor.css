@@ -1003,7 +1003,7 @@ body {
   align-items: center;
   gap: 2px;
   padding: 3px;
-  max-width: calc(100% - 300px);
+  max-width: calc(100% - 215px);
   overflow: hidden;
 }
 .se .kinds .lbl2 {
@@ -1047,11 +1047,18 @@ body {
   background: var(--hairline);
   margin: 0 3px;
 }
-.se.narrow .kinds button .tx,
+.se .kinds.compact button,
+.se .kinds.tight button {
+  padding: 0 6px;
+  gap: 4px;
+}
+.se .kinds.compact button .k,
+.se .kinds.tight button .k {
+  display: none;
+}
 .se .kinds.tight button .tx {
   display: none;
 }
-.se.narrow .kinds button.on .tx,
 .se .kinds.tight button.on .tx {
   display: inline;
 }
@@ -1104,7 +1111,7 @@ body {
   gap: 6px;
 }
 .se .mapbar .presets button {
-  padding: 0 10px;
+  padding: 0 8px;
 }
 .se .mapback {
   top: 12px;

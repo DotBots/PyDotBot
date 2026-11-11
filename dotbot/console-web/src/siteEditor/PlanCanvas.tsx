@@ -924,15 +924,21 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
         <line x1={x} y1={y - r * 1.6} x2={x} y2={y + r * 1.6} stroke={hue} strokeWidth={1.3 * chrome} />
         {(() => {
           const said = stationLabel(s.index, s.height, s.fit);
-          const size = 11.5 * label;
+          const fs = 11.5 * label;
           const cw = said.length * 5.5 * label + 14 * chrome;
-          const ch = size * 1.9;
-          const cx = x + r + 8 * chrome;
-          const cy = y - ch / 2;
+          const ch = fs * 1.9;
+          // On the marker's right, else its left, and always inside the canvas
+          const toX = (v: number) => size.w / 2 + cam.tx + cam.scale * (v - geom.boxW / 2);
+          const toY = (v: number) => size.h / 2 + cam.ty + cam.scale * (v - geom.boxH / 2);
+          const pad = 8;
+          const right = x + r + 8 * chrome;
+          let cx = toX(right + cw) > size.w - pad ? x - r - 8 * chrome - cw : right;
+          cx = Math.min(Math.max(cx, (pad - toX(0)) / cam.scale), (size.w - pad - toX(0)) / cam.scale - cw);
+          const cy = Math.min(Math.max(y - ch / 2, (pad - toY(0)) / cam.scale), (size.h - pad - toY(0)) / cam.scale - ch);
           return (
             <g data-testid={`station-card-${s.index}`}>
               <rect x={cx} y={cy} width={cw} height={ch} rx={6 * chrome} fill="var(--surface)" stroke={hue} strokeWidth={1.4 * chrome} />
-              <text x={cx + 7 * chrome} y={cy + ch / 2 + size * 0.36} fontSize={size} fontWeight={600} fill="var(--text)">
+              <text x={cx + 7 * chrome} y={cy + ch / 2 + fs * 0.36} fontSize={fs} fontWeight={600} fill="var(--text)">
                 <tspan fill={hue} fontWeight={700}>
                   S{s.index}
                 </tspan>
