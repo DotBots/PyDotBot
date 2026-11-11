@@ -60,6 +60,8 @@ export interface LibraryRow {
   served: boolean;
   /** A spin in its own frame, zero at its robots' top-left: placed in a room before use */
   free?: boolean;
+  /** The spin this file was placed from, "" when it was not placed. */
+  placed_from?: string;
   /** Where the stations stand, estimated from the homographies. */
   geometry?: {
     stations: Record<string, { x_mm: number; y_mm: number; height_mm: number; off_square_deg: number }>;

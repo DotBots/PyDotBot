@@ -1268,6 +1268,7 @@ export const SiteEditorApp: React.FC = () => {
             onClose={() => (setNewRoom(false), setPlacePreview(null))}
             onCheck={() => (setNewRoom(false), setChecking(true))}
             servedId={servedId && servedRowNow?.in_frame !== false ? servedId : null}
+            rows={rows}
             placed={draft.place}
             onDraft={draftPlace}
             onSave={editable ? () => setReviewing(true) : undefined}

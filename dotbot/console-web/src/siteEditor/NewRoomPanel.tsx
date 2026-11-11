@@ -59,6 +59,8 @@ export const NewRoomPanel: React.FC<{
   onCheck?: () => void;
   /** What the controller serves in this room's frame, if anything */
   servedId?: string | null;
+  /** Every calibration of this site, to tell a spin already placed in the room */
+  rows?: LibraryRow[];
 }> = (props) => {
   const { doc, spin } = props;
   const spinning = spin && (spin.phase === "spinning" || spin.phase === "solving");
@@ -73,8 +75,17 @@ export const NewRoomPanel: React.FC<{
   const [markA, setMarkA] = useState<Mark>({ robot: "", at: [null, null] });
   const [markB, setMarkB] = useState<Mark>({ robot: "", at: [null, null] });
   const [note, setNote] = useState(doc.anchor ?? "");
-  // A room already served in its frame is placed, unless a spin is picked to place again
-  const written = !props.placed && !props.placeId && !justSpun && !spinning && props.servedId ? { id: props.servedId, served: true } : null;
+  // A spin already put in this room (a reload keeps it so) is placed; so is a room
+  // served in its frame, unless a spin is picked to place again
+  const placedAs = placeId ? (props.rows ?? []).filter((r) => r.in_frame && r.placed_from === placeId).sort((a, b) => b.created_at.localeCompare(a.created_at))[0] : undefined;
+  const written =
+    props.placed || spinning
+      ? null
+      : placedAs
+        ? { id: placedAs.id, served: placedAs.id === props.servedId }
+        : !props.placeId && !justSpun && props.servedId
+          ? { id: props.servedId, served: true }
+          : null;
 
   useEffect(() => {
     setOverlay(null);
@@ -187,7 +198,7 @@ export const NewRoomPanel: React.FC<{
         <>
           <Step n={3} title="Put it in the room" state="done">
             <div className="note">
-              {written.id.slice(0, 8)} is in use in this room. To put another spin in it, pick the spin in Calibrations and choose Put in this room.
+              {written.id.slice(0, 8)} {written.served ? "is in use in this room" : "is placed in this room; choose it in Calibrations to use it"}. To put another spin in it, pick the spin in Calibrations and choose Put in this room.
             </div>
           </Step>
           <Step n={4} title="Push it, then verify" state="on">

@@ -86,6 +86,8 @@ def _row(path: Path) -> dict | None:
         # A spin in its own frame, zero at its robots' top-left: placed in a
         # room before it is served there
         "free": is_free_mode(cal),
+        # The spin this file was placed from, so a placed spin is known as such
+        "placed_from": cal.placed_from,
     }
     _ROWS[path] = (key, row)
     return row
