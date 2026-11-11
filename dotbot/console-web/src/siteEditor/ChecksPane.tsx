@@ -7,7 +7,7 @@ import type { Doc } from "./model";
 import type { Problem } from "./rules";
 
 // The left pane's Checks home: the room's rows, then what to look at before
-// a run, then the problems, then the tools (Present, the setup summary,
+// a run, then the problems, then the tools (the setup summary,
 // snapshots). Every row has the same shape and one action; none edits.
 
 const STATE_ICON: Record<Goal["state"], React.ReactNode> = {
@@ -33,6 +33,7 @@ const GoalRow: React.FC<{ g: Goal; onAction: (a: GoalAction) => void; editable: 
         <button
           type="button"
           className="btn xs"
+          title={g.action.title}
           onClick={(e) => {
             e.stopPropagation();
             onAction(g.action!);
@@ -54,7 +55,6 @@ export const ChecksPane: React.FC<{
   /** Bumped when what the summary reads changed. */
   refresh: number;
   onAction: (a: GoalAction) => void;
-  onPresent: () => void;
   onRestore: (p: RestorePoint) => void;
   onShowProblem: (key: string) => void;
   onToast: (text: string) => void;
@@ -149,9 +149,6 @@ export const ChecksPane: React.FC<{
         )}
       </div>
       <div className="acts" style={{ marginTop: 10 }}>
-        <button type="button" className="btn sm" onClick={props.onPresent} title="The status and the room, large, for a projector">
-          <Icon name="present" size={13} /> Present
-        </button>
         <button type="button" className="btn sm" onClick={copy} disabled={!provenance} title="The block an experiment log keeps">
           <Icon name="copy" size={13} /> Copy setup summary
         </button>

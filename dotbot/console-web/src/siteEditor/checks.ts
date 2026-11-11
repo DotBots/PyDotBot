@@ -1,6 +1,6 @@
 import type { UnifiedBot } from "../types";
-import type { Coverage } from "./coverage";
-import { moved } from "./coverage";
+import type { Boxes, Coverage } from "./coverage";
+import { coverageSay, moved, SPLIT_TIP } from "./coverage";
 import type { EditKind } from "./keys";
 import { nameOf, residuals, shortWhen } from "./library";
 import type { Doc } from "./model";
@@ -16,6 +16,8 @@ export type GoalState = "ok" | "warn" | "fail" | "unknown";
 
 export interface GoalAction {
   label: string;
+  /** What the action does, for its tooltip. */
+  title?: string;
   /** Where the fix lives in the editor. */
   go: { kind?: EditKind; tool?: string; tab?: "library" | "outline"; select?: string; sheet?: "check" | "split" | "newroom"; mode?: "fix" | "error"; href?: string };
 }
@@ -55,6 +57,8 @@ export interface GoalInputs {
   frameChangeOpen: boolean;
   /** The calibration in use was switched in this run, from the editor */
   servedHere?: boolean;
+  /** The coverage the canvas draws, when it is not the served file's: a draft or a preview. */
+  drawn?: Boxes | null;
 }
 
 /** Whether a check on a mark agrees with the frame: under the larger of
@@ -132,21 +136,16 @@ export function goals(i: GoalInputs): Goal[] {
       detail: `${i.served.stations.length} · fit ${residuals(i.served)}${m.spins > 1 ? (m.verdict === "moved?" ? ` · may have moved${since}` : ` · no sign of a move${since}`) : ""}`,
       action: { label: "Show…", go: { kind: "stations", mode: "fix" } },
     });
-    const shared = i.served.stations.length > 1 && new Set(i.served.stations.map((s) => s.box.join())).size === 1;
-    const handover = /handover ([xy]) ([\d.]+)/.exec(i.served.reading);
+    const inUse = i.served.stations.map((s) => ({ index: s.index, rect: s.box }));
+    const shared = inUse.length > 1 && new Set(inUse.map((b) => b.rect.join())).size === 1;
+    const said = coverageSay(i.drawn ?? inUse, inUse);
     out.push({
       id: "coverage",
       group: "room",
       title: "Coverage",
       state: shared ? "warn" : "ok",
-      detail: shared
-        ? "both stations cover the whole floor, no handover: robots pick the closer fix, so the two can flicker"
-        : handover
-          ? `handover at ${handover[1]} ${Math.round(Number(handover[2]))} mm`
-          : i.served.stations.length === 1
-            ? "one station covers the floor"
-            : "each station has its own region",
-      action: shared ? { label: "Add a handover…", go: { kind: "stations", sheet: "split", mode: "fix" } } : { label: "Edit…", go: { kind: "stations", mode: "fix" } },
+      detail: said.differs ? said.text : shared ? "both stations cover the whole floor, no handover: robots pick the closer fix, so the two can flicker" : said.text,
+      action: shared && !said.differs ? { label: "Split the floor at the best line", title: SPLIT_TIP, go: { kind: "stations", sheet: "split", mode: "fix" } } : { label: "Edit…", go: { kind: "stations", mode: "fix" } },
     });
   }
 

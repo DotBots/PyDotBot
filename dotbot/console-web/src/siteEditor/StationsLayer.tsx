@@ -11,7 +11,7 @@ import type { CoverageMode } from "./StationsPanel";
 // legend and the point readout beside them.
 
 const images = new Map<string, ReturnType<typeof fixImage>>();
-function fixImageCached(boxes: Boxes, extent: [number, number]) {
+export function fixImageCached(boxes: Boxes, extent: [number, number]) {
   const key = JSON.stringify([boxes, extent]);
   if (!images.has(key)) {
     if (images.size > 40) images.clear();
@@ -86,7 +86,8 @@ export function stationsUnderlay(mode: CoverageMode, coverage: Coverage | null, 
   };
 }
 
-export function stationsOverlay(coverage: Coverage | null, showNext: boolean, probe: Point | null) {
+/** `flash` remounts the handover line with a one-shot highlight when it changes. */
+export function stationsOverlay(coverage: Coverage | null, showNext: boolean, probe: Point | null, flash = 0) {
   return (p: PlanPaint, boxes: Boxes) => {
     const line = boxes.length === 2 ? handover(boxes[0].rect, boxes[1].rect) : null;
     return (
@@ -97,7 +98,7 @@ export function stationsOverlay(coverage: Coverage | null, showNext: boolean, pr
             const [c, d] = p.px(line.to);
             const w = line.label.length * 6.2 + 14;
             return (
-              <g data-testid="handover">
+              <g data-testid="handover" key={`handover-${flash}`} className={flash ? "flash" : undefined}>
                 <line x1={a} y1={b} x2={c} y2={d} stroke="var(--text)" strokeWidth={1.4 * p.chrome} strokeDasharray={`${5 * p.chrome} ${4 * p.chrome}`} />
                 <rect x={a - (w / 2) * p.chrome} y={b + 10 * p.chrome} width={w * p.chrome} height={17 * p.chrome} rx={4 * p.chrome} fill="var(--surface)" stroke="var(--hairline)" strokeWidth={p.chrome} />
                 <text x={a} y={b + 22 * p.chrome} fontSize={10.5 * p.label} textAnchor="middle" fill="var(--text)" fontFamily="var(--font-mono)" fontWeight={600}>

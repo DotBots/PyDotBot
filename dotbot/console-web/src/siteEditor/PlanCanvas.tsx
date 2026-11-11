@@ -3,12 +3,11 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { BotMarker, MARKER_SCALE_VAR } from "../BotMarker";
 import { DEFAULT_BODY_COLOR_MODE } from "../bodyColor";
 import { areaColor } from "../areaColor";
-import { siteViewMarginMm, withMargin } from "../frame";
 import { gridStepMm } from "../grid";
 import { DEFAULT_ROBOT_DRAWING } from "../robotDrawing";
 import { ringDash, spinRings } from "../shared/spinRings";
 import { facing } from "../siteObjects";
-import type { Area, SpinCircle, UnifiedBot } from "../types";
+import type { SpinCircle, UnifiedBot } from "../types";
 import {
   clampCam,
   FRAME_CAMERA,
@@ -22,9 +21,12 @@ import {
   zoomFraction,
   ZOOM_MAX_FLOOR,
   ZOOM_MAX_PX_PER_MM,
+  ZOOM_STEP,
   type Camera,
   type ViewGeom,
 } from "../zoom";
+import { movedHandover, handover as handoverOf } from "./coverage";
+import { planViewport } from "./mapView";
 import { Icon } from "./icons";
 import type { EditKind, Tool } from "./keys";
 import { freshKey, freshName, numberedName, type Doc, type DocObject, type ObjectKind, type Point } from "./model";
@@ -50,9 +52,23 @@ export interface PlanLayers {
   robots: boolean;
   boxes: boolean;
   circles: boolean;
+  stations: boolean;
 }
 
-export const DEFAULT_LAYERS: PlanLayers = { grid: true, robots: true, boxes: true, circles: true };
+export const DEFAULT_LAYERS: PlanLayers = { grid: true, robots: true, boxes: true, circles: true, stations: true };
+
+/** A station's estimated place: over (x, y) on the floor, `height` mm up. */
+export interface StationPose {
+  index: number;
+  x: number;
+  y: number;
+  height: number;
+}
+
+/** Two presses of the zoom further out than the whole viewport, so what
+ * stands around the floor can be seen. */
+export const PLAN_ZOOM_MIN = ZOOM_STEP ** -2;
+
 
 /** The kind an entity key belongs to on the plan; robots belong to none. */
 export function kindOfKey(key: string): EditKind {
@@ -89,6 +105,7 @@ type Drag =
   | { type: "move"; keys: string[]; from: Point; moved: boolean }
   | { type: "resize"; key: string; handle: Handle }
   | { type: "box"; index: number; handle: Handle; rect: Rect }
+  | { type: "handover"; axis: 0 | 1 }
   | { type: "area"; from: Point; to: Point }
   | { type: "marquee"; from: Point; to: Point; base: string[] }
   | { type: "measure"; from: Point; to: Point }
@@ -129,6 +146,10 @@ interface PlanCanvasProps {
   onEdge: (edge: { key: string; handle: Handle } | null) => void;
   /** A station box dragged to a new rectangle; absent where boxes are read only. */
   onBoxEdit?: (index: number, rect: Rect) => void;
+  /** Both boxes at once, as a drag of their handover line leaves them. */
+  onBoxesEdit?: (rects: Record<number, Rect>) => void;
+  /** Where the stations stand, estimated; drawn in View and Stations. */
+  stations?: StationPose[];
   onEdit: (doc: Doc) => void;
   onCursor?: (mm: Point | null) => void;
   /** What the last drag snapped to, for the status bar. */
@@ -148,6 +169,10 @@ interface PlanCanvasProps {
   fitSignal?: number;
   /** False hides the zoom, fit, scale and shortcuts, as for a projector. */
   chrome?: boolean;
+  /** A camera the page sets, e.g. to match the 3D view; a new `n` applies it. */
+  camRequest?: { cam: Camera; n: number };
+  /** The camera and canvas size, as they change. */
+  onView?: (cam: Camera, size: { w: number; h: number }) => void;
 }
 
 const MIN_AREA_MM = 20;
@@ -171,18 +196,26 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
   const { doc, kind, tool, selected, editable } = props;
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState<{ w: number; h: number }>({ w: 800, h: 600 });
-  const [cam, setCam] = useState<Camera>(FRAME_CAMERA);
+  const [cam, setCam] = useState<Camera>(props.camRequest?.cam ?? FRAME_CAMERA);
+  useEffect(() => {
+    if (props.camRequest) setCam(props.camRequest.cam);
+  }, [props.camRequest?.n]);
+  const onViewRef = useRef(props.onView);
+  onViewRef.current = props.onView;
   const [drag, setDrag] = useState<Drag | null>(null);
   // A drag's edit, drawn live and committed as one step on release
   const [preview, setPreview] = useState<Doc | null>(null);
   const [poly, setPoly] = useState<Point[]>([]);
   const [hover, setHover] = useState<Point | null>(null);
   const [boxPreview, setBoxPreview] = useState<{ index: number; rect: Rect } | null>(null);
+  const [pairPreview, setPairPreview] = useState<Record<number, Rect> | null>(null);
   const [, setHoverBot] = useState<string | null>(null);
 
   const extent: [number, number] = doc.extent_mm ?? [2000, 2000];
-  const floor: Area = { x: 0, y: 0, w: extent[0], h: extent[1] };
-  const viewport = useMemo(() => withMargin(floor, siteViewMarginMm(floor)), [extent[0], extent[1]]);
+  // The floor, and any station standing near it
+  const framed = props.layers.stations ? (props.stations ?? []) : [];
+  const nearKey = framed.map((s) => `${Math.round(s.x)},${Math.round(s.y)}`).join(";");
+  const viewport = useMemo(() => planViewport(extent, framed), [extent[0], extent[1], nearKey]);
   const geom: ViewGeom = useMemo(() => viewGeom(size.w, size.h, viewport), [size, viewport]);
   const maxScale = Math.max(ZOOM_MAX_FLOOR, viewport.w > 0 ? ZOOM_MAX_PX_PER_MM / (geom.boxW / viewport.w) : 1);
   const perMm = pxPerMmAt(cam, viewport, geom);
@@ -194,6 +227,9 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
   useEffect(() => {
     if (props.fitSignal) setCam(FRAME_CAMERA);
   }, [props.fitSignal]);
+  useEffect(() => {
+    onViewRef.current?.(cam, size);
+  }, [cam, size]);
 
   useLayoutEffect(() => {
     const el = wrapRef.current;
@@ -227,7 +263,7 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
     e.preventDefault();
     if (e.ctrlKey || e.metaKey) {
       const at = local(e);
-      setCam((c) => zoomAbout(c, wheelScale(c.scale, wheelDeltaPx(e), maxScale), { x: at[0], y: at[1] }, geom));
+      setCam((c) => zoomAbout(c, wheelScale(c.scale, wheelDeltaPx(e), maxScale, PLAN_ZOOM_MIN), { x: at[0], y: at[1] }, geom));
     } else {
       setCam((c) => clampCam({ ...c, tx: c.tx - e.deltaX, ty: c.ty - e.deltaY }, geom));
     }
@@ -354,6 +390,11 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
       props.onFloorDrag?.(drag.from, rawMm(e), drag.turn, false);
       return;
     }
+    if (drag.type === "handover") {
+      const s = snapped(e);
+      setPairPreview(movedHandover(props.boxes, Math.round(s.point[drag.axis])));
+      return;
+    }
     if (drag.type === "pan") {
       const p = local(e);
       const dx = p[0] - drag.from[0];
@@ -388,6 +429,8 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
     if (drag?.type === "floor" && e) props.onFloorDrag?.(drag.from, rawMm(e), drag.turn, true);
     if (drag?.type === "box" && boxPreview) props.onBoxEdit?.(boxPreview.index, boxPreview.rect);
     setBoxPreview(null);
+    if (drag?.type === "handover" && pairPreview) props.onBoxesEdit?.(pairPreview);
+    setPairPreview(null);
     if (drag?.type === "pan" && !drag.moved && tool === "select") {
       props.onSelect([]);
       props.onEdge(null);
@@ -414,7 +457,7 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
   };
 
   const zoomTo = (scale: number) => setCam((c) => zoomAbout(c, scale, viewCentre(geom), geom));
-  const zoomBy = (presses: number) => zoomTo(steppedScale(cam.scale, presses, maxScale));
+  const zoomBy = (presses: number) => zoomTo(steppedScale(cam.scale, presses, maxScale, PLAN_ZOOM_MIN));
 
   // --- drawing ---------------------------------------------------------
 
@@ -536,7 +579,35 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
     );
   });
 
-  const shownBoxes = boxPreview ? props.boxes.map((b) => (b.index === boxPreview.index ? boxPreview : b)) : props.boxes;
+  const shownBoxes = pairPreview
+    ? props.boxes.map((b) => (pairPreview[b.index] ? { index: b.index, rect: pairPreview[b.index] } : b))
+    : boxPreview
+      ? props.boxes.map((b) => (b.index === boxPreview.index ? boxPreview : b))
+      : props.boxes;
+  // The handover line takes a drag in the Stations kind, when it runs straight across an axis
+  const line = kind === "stations" && props.onBoxesEdit && tool === "select" && shownBoxes.length === 2 ? handoverOf(shownBoxes[0].rect, shownBoxes[1].rect) : null;
+  const lineAxis = line ? (line.from[0] === line.to[0] ? 0 : line.from[1] === line.to[1] ? 1 : null) : null;
+  const handoverGrip =
+    line && lineAxis !== null ? (
+      <line
+        data-testid="handover-grip"
+        x1={px(line.from)[0]}
+        y1={px(line.from)[1]}
+        x2={px(line.to)[0]}
+        y2={px(line.to)[1]}
+        stroke="transparent"
+        strokeWidth={14 * chrome}
+        style={{ cursor: lineAxis === 0 ? "ew-resize" : "ns-resize", pointerEvents: "stroke" }}
+        onPointerDown={(e) => {
+          if (e.button !== 0) return;
+          e.stopPropagation();
+          capture(e);
+          setDrag({ type: "handover", axis: lineAxis });
+        }}
+      >
+        <title>Drag to move the handover; both coverages follow, their overlap kept</title>
+      </line>
+    ) : null;
   const boxNodes = props.layers.boxes
     ? shownBoxes.map((b, i) => {
         const inset = (i + 1) * 3 * chrome;
@@ -802,7 +873,61 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
   const cursor =
     tool === "select" ? (drag?.type === "pan" && drag.moved ? "grabbing" : "default") : tool === "measure" || tool === "probe" ? "crosshair" : "copy";
   const bar = scaleBar(perMm);
-  const frac = zoomFraction(cam.scale, maxScale);
+  const frac = zoomFraction(cam.scale, maxScale, PLAN_ZOOM_MIN);
+
+  // Where the stations stand: a marker on the floor, or an arrow at the
+  // canvas edge pointing at one out of view
+  const poses = props.layers.stations && (kind === "view" || kind === "stations") ? (props.stations ?? []) : [];
+  const onScreen = (p: Point): Point => {
+    const [bx, by] = px(p);
+    return [size.w / 2 + cam.tx + cam.scale * (bx - geom.boxW / 2), size.h / 2 + cam.ty + cam.scale * (by - geom.boxH / 2)];
+  };
+
+  const poseNodes = poses.map((s) => {
+    const [x, y] = px([s.x, s.y]);
+    const hue = `var(--st-${s.index % 2})`;
+    const r = 8 * chrome;
+    const tip = `S${s.index} stands about (${Math.round(s.x)}, ${Math.round(s.y)}) mm, ${(s.height / 1000).toFixed(1)} m up: estimated, not to tape`;
+    return (
+      <g key={`pose-${s.index}`} data-testid={`station-pos-${s.index}`} style={{ pointerEvents: "visiblePainted" }}>
+        <title>{tip}</title>
+        <circle cx={x} cy={y} r={r} fill={`color-mix(in srgb, ${hue} 28%, transparent)`} stroke={hue} strokeWidth={1.8 * chrome} />
+        <line x1={x - r * 1.6} y1={y} x2={x + r * 1.6} y2={y} stroke={hue} strokeWidth={1.3 * chrome} />
+        <line x1={x} y1={y - r * 1.6} x2={x} y2={y + r * 1.6} stroke={hue} strokeWidth={1.3 * chrome} />
+        <text className="halo" x={x + r + 6 * chrome} y={y - 2 * chrome} fontSize={11.5 * label} fill={hue} fontWeight={700} strokeWidth={3 * chrome}>
+          S{s.index} ≈ {(s.height / 1000).toFixed(1)} m up
+        </text>
+        <text className="tl halo" x={x + r + 6 * chrome} y={y + 11 * label} fontSize={9.5 * label} fontFamily="var(--font-mono)" strokeWidth={3 * chrome}>
+          ({Math.round(s.x)}, {Math.round(s.y)}) mm
+        </text>
+      </g>
+    );
+  });
+  const poseArrows = poses.flatMap((s) => {
+    const [sx, sy] = onScreen([s.x, s.y]);
+    if (sx >= 0 && sy >= 0 && sx <= size.w && sy <= size.h) return [];
+    // Clear of the floating bars along the top and bottom
+    const ax = Math.max(40, Math.min(size.w - 140, sx));
+    const ay = Math.max(70, Math.min(size.h - 130, sy));
+    const deg = (Math.atan2(sy - ay, sx - ax) * 180) / Math.PI;
+    const right = ax > size.w / 2;
+    return [
+      <div
+        key={`arrow-${s.index}`}
+        className="pose-arrow"
+        data-testid={`station-arrow-${s.index}`}
+        title={`S${s.index} stands about (${Math.round(s.x)}, ${Math.round(s.y)}) mm, out of view: estimated, not to tape`}
+        style={{ left: ax, top: ay, color: `var(--st-${s.index % 2})` }}
+      >
+        <span className="tip" style={{ transform: `translate(-50%, -50%) rotate(${deg}deg)` }}>
+          ➜
+        </span>
+        <span className={`lb${right ? " r" : ""}`}>
+          S{s.index} ≈ {(s.height / 1000).toFixed(1)} m up
+        </span>
+      </div>,
+    ];
+  });
 
   return (
     <div style={{ position: "relative", flex: 1, minWidth: 0, minHeight: 0, display: "flex" }}>
@@ -862,7 +987,9 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
               {shown.obstacles.map((o) => barrier(o, true))}
               {objectNodes}
               {frameNodes}
+              {poseNodes}
               {props.overlay?.(paint, shownBoxes)}
+              {handoverGrip}
               {handles}
               {boxHandles}
               {boxPill}
@@ -892,6 +1019,7 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
           </div>
         </div>
       </div>
+      {poseArrows}
       {props.children}
       {props.chrome !== false && outlines.length > 0 && (
         <div className="float chipc" data-testid="coincident-chip" title="These rectangles are the same, so they are drawn as one outline">
@@ -916,7 +1044,7 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
           style={{ cursor: "pointer" }}
           onPointerDown={(e) => {
             const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-            zoomTo(scaleForFraction((e.clientX - r.left) / r.width, maxScale));
+            zoomTo(scaleForFraction((e.clientX - r.left) / r.width, maxScale, PLAN_ZOOM_MIN));
           }}
           onKeyDown={(e) => {
             if (e.key === "ArrowRight" || e.key === "ArrowUp") zoomBy(1);

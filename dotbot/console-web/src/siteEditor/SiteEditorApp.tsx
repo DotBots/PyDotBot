@@ -36,7 +36,7 @@ import { anchorsOverlay, FramePanel } from "./FramePanel";
 import { moveBody, moves, NO_MOVE, onPlan, sameMove, toNew, toOld, turnedAbout, withOrigin, type Anchor, type FrameMove } from "./frameMove";
 import { ServeSheet } from "./ServeSheet";
 import { heldCalibrationId } from "../botFacts";
-import { splitFloor, type Coverage } from "./coverage";
+import { bestSplit, coverageSay, type Coverage, type Geometry } from "./coverage";
 import { FRAME_LOST, forget, newDraft, pending, persist, reapply, redo, restore, serialize, step, storageKey, undo, type Change, type Draft, type KeyValue, type PlaceDraft, type Snap } from "./draft";
 import "./editor.css";
 import { EditorFleet } from "./EditorFleet";
@@ -48,7 +48,7 @@ import { KV } from "./fields";
 import { FileView } from "./FileView";
 import { Icon, type IconName } from "./icons";
 import { Inspector } from "./Inspector";
-import { EDITOR_SHORTCUTS, KIND_KEY, KIND_LABEL, keyAction, SHARED_KEY, TOOL_ICON, TOOL_LABEL, TOOLS, type EditKind, type Tool } from "./keys";
+import { EDITOR_SHORTCUTS, KIND_KEY, KIND_LABEL, keyAction, PRESENT_KEY, SHARED_KEY, TOOL_ICON, TOOL_LABEL, TOOLS, type EditKind, type Tool } from "./keys";
 import { LibraryPane, type LibraryAction } from "./LibraryPane";
 import { coverageText, nameOf, residuals, when } from "./library";
 import { docFromPayload, docFromSite, movedDoc, siteModel, type Doc, type Point } from "./model";
@@ -56,10 +56,12 @@ import { saveBody } from "./save";
 import { pushOf, statusOf, statusText } from "./status";
 import { StatusLine, StatusSide } from "./StatusLine";
 import { OutlinePane } from "./OutlinePane";
-import { DEFAULT_LAYERS, kindOfKey, PlanCanvas, type PlanLayers, type PlanPaint } from "./PlanCanvas";
+import { DEFAULT_LAYERS, kindOfKey, PlanCanvas, type PlanLayers, type PlanPaint, type StationPose } from "./PlanCanvas";
 import { edgeMoved, handleAt, movedAll, removed, resized, type Handle } from "./plan";
 import { ReviewSheet } from "./ReviewSheet";
-import { RoomView } from "./RoomView";
+import { HOME, MapPresets, presetOf, RoomView } from "./RoomView";
+import { FIT, planCamFromRoom, planViewport, roomFit, roomZoomFromPlan, TOP_DOWN, turn, zoomAt, type Insets, type RoomCam, type Size, type Zoom } from "./mapView";
+import type { Camera } from "../zoom";
 import { Readout, StationsLegend, stationsOverlay, stationsUnderlay } from "./StationsLayer";
 import { StationsPanel, type CoverageMode } from "./StationsPanel";
 import { problems as rulesOf } from "./rules";
@@ -74,6 +76,14 @@ export const LEFT_FOLD_PX = 1100;
 export const RIGHT_FOLD_PX = 980;
 /** How often the page checks whether site.toml changed on disk, ms. */
 export const FILE_POLL_MS = 2000;
+/** Where this browser keeps the last 3D camera. */
+export const CAMERA_KEY = "dotbot.siteEditor.camera";
+/** How long the camera takes between the 3D view and the top-down edit, ms. */
+export const TURN_MS = 500;
+
+/** The map's stage: the 3D view, turning down to edit, editing top-down on
+ * the plan, or turning back up. */
+export type Stage = "3d" | "toTop" | "edit" | "fromTop";
 
 const storage = (): KeyValue | null => {
   try {
@@ -98,7 +108,7 @@ const KIND_ICON: Record<EditKind, IconName> = { view: "view", frame: "frame", ar
 
 type LeftTab = "checks" | "outline" | "library";
 type RightTab = "inspect" | "layers";
-type View = "plan" | "room" | "table" | "file";
+type View = "plan" | "table" | "file";
 
 const Rail: React.FC<{ side: "left" | "right"; items: { key: string; icon: IconName; title: string; on: boolean; n?: number }[]; onOpen: (key: string) => void }> = ({
   side,
@@ -244,6 +254,24 @@ export const SiteEditorApp: React.FC = () => {
   const [checks, setChecks] = useState<CheckRecord[]>([]);
   const [checking, setChecking] = useState<string | true | null>(null);
   const [present, setPresent] = useState(false);
+  // The one map: always opens in 3D, on the camera this browser last left
+  const [stage, setStage] = useState<Stage>("3d");
+  const [roomCam, setRoomCam] = useState<RoomCam>(() => {
+    try {
+      const kept = JSON.parse(window.localStorage.getItem(CAMERA_KEY) ?? "null");
+      if (kept && Number.isFinite(kept.az) && Number.isFinite(kept.el)) return { az: kept.az, el: kept.el };
+    } catch {
+      // no storage, or nothing kept: the 3/4 view
+    }
+    return HOME;
+  });
+  const [roomZoom, setRoomZoom] = useState<Zoom>(FIT);
+  const [mapSize, setMapSize] = useState<Size>({ w: 900, h: 600 });
+  const [planCam, setPlanCam] = useState<{ cam: Camera; n: number } | undefined>(undefined);
+  const planView = useRef<{ cam: Camera; size: Size } | null>(null);
+  // The 3D camera to come back to after editing
+  const lastCam = useRef<RoomCam>(roomCam);
+  const [flash, setFlash] = useState(0);
   const [restoring, setRestoring] = useState<RestorePoint | null>(null);
   const [checksRefresh, setChecksRefresh] = useState(0);
   const [sitesSheet, setSitesSheet] = useState<"new" | "switch" | null>(null);
@@ -430,6 +458,7 @@ export const SiteEditorApp: React.FC = () => {
   const frameOpen = !!frameChange && (bots.length === 0 || frameHeld < bots.length);
   const editable = context?.can_write !== false;
   const noSite = !!context?.no_site;
+  const presenting = present && !noSite && !placeParam;
   const servedRowNow = rows.find((r) => r.id === servedId) ?? null;
   useEffect(() => {
     setServedCoverage(null);
@@ -472,29 +501,35 @@ export const SiteEditorApp: React.FC = () => {
         checks,
         frameChangeOpen: frameOpen,
         servedHere: (context?.served?.source ?? "").startsWith("the site editor"),
+        drawn: shown?.in_frame ? boxes : null,
       })
     : [];
   const verdict = verdictOf(goalList);
-  const [beforePresent, setBeforePresent] = useState<{ kind: EditKind; view: View }>({ kind: "view", view: "plan" });
   const startPresent = () => {
-    setBeforePresent({ kind, view });
-    if (servedRowNow && servedRowNow.stations.length > 1) {
-      setKind("stations");
-      setCoverageMode("fix");
-    } else setKind("view");
-    setView(servedRowNow?.geometry ? "room" : "plan");
-    setTool("select");
-    setSelected([]);
     setMenu(false);
+    setDrawer(null);
+    if (stage === "edit" || stage === "toTop") {
+      stopTurn();
+      setKind("view");
+      setTool("select");
+      setView("plan");
+      setRoomCam(lastCam.current);
+      setStage("3d");
+    }
     setPresent(true);
   };
-  const stopPresent = () => {
+  const stopPresent = () => setPresent(false);
+  /** The Table or the File view, in place of the map, at once. */
+  const openSheet = (v: View) => {
+    stopTurn();
+    if (stage === "3d" || stage === "fromTop") lastCam.current = stage === "3d" ? roomCam : lastCam.current;
     setPresent(false);
-    setKind(beforePresent.kind);
-    setView(beforePresent.view);
+    setStage("edit");
+    setRoomCam(TOP_DOWN);
+    setView(v);
   };
   useEffect(() => {
-    if (!present && !restoring) return;
+    if (!presenting && !restoring) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       e.preventDefault();
@@ -534,11 +569,7 @@ export const SiteEditorApp: React.FC = () => {
       setTool((go.tool as Tool) ?? "select");
     }
     if (go.select) setSelected([go.select]);
-    if (go.sheet === "split" && editable && boxes.length === 2) {
-      setCoverageMode("fix");
-      editBoxes(splitFloor(draft?.doc.extent_mm ?? [1000, 1000], servedCoverage?.geometry ?? shown?.geometry ?? null, [boxes[0].index, boxes[1].index]));
-      setToast({ text: "A handover down the middle, as a draft: drag the line if needed, then Save writes it as a new calibration." });
-    }
+    if (go.sheet === "split") splitNow();
     setRightTab("inspect");
   };
   const blocking = problems.filter((p) => p.blocking);
@@ -611,7 +642,7 @@ export const SiteEditorApp: React.FC = () => {
 
   // The Stations kind's numbers, for the boxes as drafted; a little late
   // while an edge is dragged, so a drag never waits on the server
-  const needCoverage = (kind === "stations" || view === "room") && !!shown?.in_frame;
+  const needCoverage = kind === "stations" && !!shown?.in_frame;
   useEffect(() => {
     if (!needCoverage || !shown) return;
     setCoverageStale(true);
@@ -697,12 +728,12 @@ export const SiteEditorApp: React.FC = () => {
   };
 
   const editBoxes = useCallback(
-    (next: Record<number, Rect>) => {
-      if (!shown || !draft) return;
+    (next: Record<number, Rect>): boolean => {
+      if (!shown || !draft) return false;
       // One Save makes one calibration: the coverage of the file an origin move or a placement holds
       if (draft.place || (draft.frame && draft.frame.from !== shown.id) || (draft.boxes && draft.boxes.from !== shown.id)) {
         setNotice({ tone: "warn", text: `The draft already changes another calibration: save it first, or discard it, before editing the coverage of ${nameOf(shown)}.` });
-        return;
+        return false;
       }
       setDraft((d) => {
         if (!d) return d;
@@ -712,9 +743,153 @@ export const SiteEditorApp: React.FC = () => {
         const unchanged = Object.entries(own).every(([k, r]) => (merged[Number(k)] ?? r).join() === r.join());
         return step(d, { boxes: unchanged ? null : { from: shown.id, boxes: merged } });
       });
+      return true;
     },
     [shown, draft],
   );
+
+  // Where the stations stand, estimated, in the frame the plan draws: a
+  // drafted move of the origin moves them with the floor's numbers
+  const poses: Geometry | null = useMemo(() => {
+    const g = shown?.geometry ?? (coverage && coverage.id === shown?.id ? coverage.geometry : null) ?? null;
+    if (!g || !shownMoved) return g;
+    const stations = Object.fromEntries(
+      Object.entries(g.stations).map(([k, p]) => {
+        const [x, y] = toNew(frameDraft!.move, [p.x_mm, p.y_mm]);
+        return [k, { ...p, x_mm: Math.round(x), y_mm: Math.round(y) }];
+      }),
+    );
+    return { ...g, stations };
+  }, [shown?.geometry, shown?.id, coverage, shownMoved, shownMoved ? JSON.stringify(frameDraft!.move) : ""]);
+  const stationPoses: StationPose[] = shown?.in_frame && poses ? Object.entries(poses.stations).map(([k, p]) => ({ index: Number(k), x: p.x_mm, y: p.y_mm, height: p.height_mm })) : [];
+  // The coverage drawn, said against the file in use
+  const inUseBoxes = servedRowNow?.in_frame ? servedRowNow.stations.map((s) => ({ index: s.index, rect: s.box })) : null;
+  const coverageNote = coverageSay(boxes, inUseBoxes).text;
+
+  // --- the map's camera: the 3D view, and the turn down to edit and back ---
+  const anim = useRef<number | null>(null);
+  const stopTurn = () => {
+    if (anim.current !== null) cancelAnimationFrame(anim.current);
+    anim.current = null;
+  };
+  useEffect(() => stopTurn, []);
+  /** Turns the 3D camera from `from` to `to`, eased, then calls `done`; at
+   * once where motion is reduced. */
+  const turnCam = (from: RoomCam, to: RoomCam, done?: () => void) => {
+    stopTurn();
+    const still = typeof requestAnimationFrame === "undefined" || (typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+    const dAz = turn(from.az, to.az);
+    if (still) {
+      setRoomCam(to);
+      done?.();
+      return;
+    }
+    let t0 = -1;
+    const step = (t: number) => {
+      if (t0 < 0) t0 = t;
+      const k = Math.min(1, (t - t0) / TURN_MS);
+      const e = k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2;
+      setRoomCam({ az: from.az + dAz * e, el: from.el + (to.el - from.el) * e });
+      if (k < 1) anim.current = requestAnimationFrame(step);
+      else {
+        anim.current = null;
+        setRoomCam(to);
+        done?.();
+      }
+    };
+    anim.current = requestAnimationFrame(step);
+  };
+  // The geometry both views share, for handing the zoom across
+  const mapStations: [number, number, number][] = stationPoses.map((s) => [s.x, s.y, s.height]);
+  const editInsets: Insets = { top: 64, bottom: 64 };
+  const mapExtent: [number, number] = draft?.doc.extent_mm ?? [1000, 1000];
+  const planFrame = () => planViewport(mapExtent, layers.stations ? stationPoses : []);
+  /** Into the top-down edit: the camera turns straight down, then the plan
+   * takes over at the same scale and place. */
+  const enterEdit = () => {
+    if (stage === "edit" || stage === "toTop") return;
+    if (stage === "3d") lastCam.current = roomCam;
+    setStage("toTop");
+    const top = { az: roomCam.az + turn(roomCam.az, 0), el: 90 };
+    const zoom = roomZoom;
+    turnCam(roomCam, top, () => {
+      const fit = roomFit(TOP_DOWN, mapExtent, mapStations, mapSize, editInsets);
+      setPlanCam((c) => ({ cam: planCamFromRoom(fit, zoom, mapSize, planFrame()), n: (c?.n ?? 0) + 1 }));
+      setRoomCam(TOP_DOWN);
+      setStage("edit");
+    });
+  };
+  /** Out of the top-down edit: the 3D view takes over straight down at the
+   * plan's scale and place, then turns up to `to`. The draft stays. */
+  const leaveEdit = (to: RoomCam = lastCam.current) => {
+    if (stage === "3d" || stage === "fromTop") return;
+    const v = planView.current;
+    if (v && view === "plan") setRoomZoom(roomZoomFromPlan(roomFit(TOP_DOWN, mapExtent, mapStations, v.size, editInsets), v.cam, v.size, planFrame()));
+    setKind("view");
+    setTool("select");
+    setEdge(null);
+    setView("plan");
+    setStage("fromTop");
+    turnCam(TOP_DOWN, to, () => setStage("3d"));
+  };
+  /** A preset: straight there in 3D, or out of the edit first unless it is Top. */
+  const onPreset = (to: RoomCam) => {
+    if (stage === "edit" || stage === "toTop") {
+      if (presetOf(to) === "top") return;
+      leaveEdit(to);
+      return;
+    }
+    setRoomZoom(FIT);
+    // A turn back up from the edit, cut short, still ends in the 3D view
+    turnCam(roomCam, to, () => setStage("3d"));
+  };
+  // Any editing kind is edited top-down
+  useEffect(() => {
+    if (kind !== "view" && (stage === "3d" || stage === "fromTop")) enterEdit();
+  }, [kind]);
+  // The last 3D camera, kept in this browser
+  useEffect(() => {
+    if (stage !== "3d") return;
+    lastCam.current = roomCam;
+    const t = window.setTimeout(() => {
+      try {
+        window.localStorage.setItem(CAMERA_KEY, JSON.stringify({ az: Math.round(roomCam.az * 10) / 10, el: Math.round(roomCam.el * 10) / 10 }));
+      } catch {
+        // no storage: the camera lasts this visit
+      }
+    }, 300);
+    return () => window.clearTimeout(t);
+  }, [roomCam, stage]);
+  const mapIn3d = presenting || stage !== "edit";
+  /** A hand on the 3D view: any turn stops there, and the view is the 3D one,
+   * not an edit on its way. */
+  const grabMap = () => {
+    stopTurn();
+    if (stage === "toTop") {
+      setKind("view");
+      setTool("select");
+    }
+    if (stage !== "3d") setStage("3d");
+  };
+
+
+  /** Splits the floor between the two stations at the best line, as one
+   * draft step, and says where. */
+  const splitNow = () => {
+    if (!editable || boxes.length !== 2 || !draft) return;
+    const fog = (coverage && coverage.id === shown?.id ? coverage.fog : null) ?? (shown && shown.id === servedId && !shownMoved ? servedCoverage?.fog : null) ?? null;
+    const s = bestSplit(draft.doc.extent_mm ?? [1000, 1000], poses, [boxes[0].index, boxes[1].index], fog);
+    if (!editBoxes(s.boxes)) return;
+    setCoverageMode("fix");
+    setKind("stations");
+    setView("plan");
+    setFlash((n) => n + 1);
+    setNotice({
+      tone: "info",
+      text: `Draft: split at ${s.axis} ${s.at} mm. Drag the dashed line to move it, then Save.`,
+      act: { label: "Undo", on: () => (setDraft((d) => (d ? undo(d) : d)), setNotice(null)) },
+    });
+  };
 
   /** The draft as a move of the origin `m` would leave it, checked by the server. */
   const checkFrame = useCallback(
@@ -789,6 +964,14 @@ export const SiteEditorApp: React.FC = () => {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const ctrl = holds(e, "ctrl");
+      if (!ctrl && !e.altKey && !e.metaKey && !reviewing && !typingIn(e.target) && !noSite && e.key.toLowerCase() === PRESENT_KEY.toLowerCase()) {
+        e.preventDefault();
+        if (presenting) stopPresent();
+        else startPresent();
+        return;
+      }
+      // Presenting, the page takes no editing key
+      if (presenting) return;
       if (!editable && (ctrl || e.key.startsWith("Arrow") || e.key === "Delete" || e.key === "Backspace")) return;
       if (ctrl && e.key.toLowerCase() === "s" && !reviewing) {
         e.preventDefault();
@@ -807,7 +990,7 @@ export const SiteEditorApp: React.FC = () => {
       if (e.key === SHARED_KEY.shortcuts) return setShortcuts((s) => !s);
       if (e.key === SHARED_KEY.leftPanel) return setLeftFolded((f) => !f);
       if (e.key === SHARED_KEY.rightPanel) return setRightFolded((f) => !f);
-      if (e.key.startsWith("Arrow") && draft && view === "plan") {
+      if (e.key.startsWith("Arrow") && draft && view === "plan" && stage === "edit") {
         const d = e.shiftKey ? 100 : e.altKey ? 1 : 10;
         const dx = e.key === "ArrowLeft" ? -d : e.key === "ArrowRight" ? d : 0;
         const dy = e.key === "ArrowUp" ? -d : e.key === "ArrowDown" ? d : 0;
@@ -848,6 +1031,12 @@ export const SiteEditorApp: React.FC = () => {
         if (edge) return setEdge(null);
         if (tool !== "select") return setTool("select");
         if (checking) return setChecking(null);
+        // Esc with nothing else to cancel leaves the edit for the 3D view
+        if (stage === "edit" || stage === "toTop") {
+          e.preventDefault();
+          leaveEdit();
+        }
+        return;
       }
       const action = keyAction(e.key, kind);
       if (!action) return;
@@ -947,7 +1136,6 @@ export const SiteEditorApp: React.FC = () => {
             live={live}
             refresh={checksRefresh}
             onAction={goalAction}
-            onPresent={() => startPresent()}
             onRestore={setRestoring}
             onShowProblem={(key) => {
               setView("plan");
@@ -1119,7 +1307,7 @@ export const SiteEditorApp: React.FC = () => {
             onAnchors={setAnchors}
             points={measured}
           />
-        ) : rightTab === "inspect" && kind === "stations" && !selected.some((k) => k.startsWith("robot:")) ? (
+        ) : rightTab === "inspect" && (kind === "stations" || (stage !== "edit" && selected.length === 1 && selected[0].startsWith("box:"))) && !selected.some((k) => k.startsWith("robot:")) ? (
           <StationsPanel
             shown={shown}
             servedId={servedId}
@@ -1137,7 +1325,9 @@ export const SiteEditorApp: React.FC = () => {
             onSelectBox={(i) => setSelected(i === null ? [] : [`box:${i}`])}
             showNext={showNext}
             onShowNext={setShowNext}
-            reading={boxDraft && plan?.calibration ? plan.calibration.reading : null}
+            inUse={inUseBoxes}
+            onSplit={splitNow}
+            geometry={poses}
           />
         ) : rightTab === "inspect" ? (
           <Inspector
@@ -1170,6 +1360,7 @@ export const SiteEditorApp: React.FC = () => {
                 ["robots", "Robots", "live, as the console draws them; labels up to 200 robots"],
                 ["boxes", "Coverage", `of ${shown ? nameOf(shown) : "the shown calibration"}`],
                 ["circles", "Spin circles", "where robots spun to measure the stations"],
+                ["stations", "Station positions", "where each station stands, estimated, not to tape; in View and Stations"],
               ] as [keyof PlanLayers, string, string][]
             ).map(([k, text, hint]) => (
               <CheckRow key={k} label={text} hint={hint} on={layers[k]} onToggle={() => setLayers((l) => ({ ...l, [k]: !l[k] }))} />
@@ -1187,12 +1378,25 @@ export const SiteEditorApp: React.FC = () => {
   const leftProblems = blocking.length;
 
   return (
-    <div className={`se${narrow ? " narrow" : ""}${present ? " present" : ""}`} data-theme={theme}>
+    <div className={`se${narrow ? " narrow" : ""}${presenting ? " present" : ""}`} data-theme={theme}>
       <TitleBar gap={10}>
         <span className="selbl" style={{ fontWeight: 600, fontSize: 13, flex: "none" }}>Site editor</span>
         <span className="sitesw" title={payload?.path}>
           {context?.site ?? payload?.name ?? ""}
         </span>
+        {!noSite && (
+          <button
+            type="button"
+            data-testid="present"
+            className={`btn primary presentbtn${presenting ? " on" : ""}`}
+            aria-pressed={presenting}
+            title={presenting ? `Back to editing (${PRESENT_KEY} or Esc)` : `The room in 3D, full screen, for a projector (${PRESENT_KEY})`}
+            onClick={() => (presenting ? stopPresent() : startPresent())}
+          >
+            <Icon name="present" />
+            Present <span className="kbd">{PRESENT_KEY}</span>
+          </button>
+        )}
         {width >= LEFT_FOLD_PX && (
           <span className="live" title={live ? "Robots and Stop come from the controller that opened this page" : "Opened with dotbot site edit: no controller, no robots"}>
             <span className="dot" style={{ background: live ? "var(--ok)" : "transparent", border: live ? undefined : "1.5px solid var(--muted)" }} />
@@ -1290,13 +1494,13 @@ export const SiteEditorApp: React.FC = () => {
                 <Icon name="undo" /> Discard unsaved changes
               </button>
             )}
-            <button type="button" className="mi" role="menuitem" onClick={() => startPresent()}>
-              <Icon name="present" /> Present, for a projector
-            </button>
             <button type="button" className="mi" role="menuitem" onClick={() => (setLeftTab("checks"), setMenu(false))}>
               <Icon name="restore" /> Snapshots and setup summary
             </button>
-            <button type="button" className="mi" role="menuitem" onClick={() => (setView("file"), setMenu(false))}>
+            <button type="button" className="mi" role="menuitem" onClick={() => (openSheet("table"), setMenu(false))}>
+              <Icon name="table" /> The room as tables
+            </button>
+            <button type="button" className="mi" role="menuitem" onClick={() => (openSheet("file"), setMenu(false))}>
               <Icon name="file" /> The room file, as Save writes it
             </button>
             <button type="button" className="mi" role="menuitem" onClick={() => (setShortcuts(true), setMenu(false))}>
@@ -1396,7 +1600,41 @@ export const SiteEditorApp: React.FC = () => {
         )}
         <main className="center">
           {draft ? (
-            view === "plan" ? (
+            mapIn3d ? (
+              <RoomView
+                doc={draft.doc}
+                extent={draft.doc.extent_mm ?? [1000, 1000]}
+                geometry={poses}
+                boxes={shown?.in_frame ? boxes : []}
+                coverage={coverage && coverage.id === shown?.id ? coverage : null}
+                mode="fix"
+                bots={bots}
+                shownName={shown ? nameOf(shown) : null}
+                shownId={shown?.id ?? null}
+                stationFit={shown ? Object.fromEntries(shown.stations.map((s) => [s.index, s.residual_mm])) : undefined}
+                coverageNote={coverageNote}
+                light={theme === "light"}
+                large={presenting}
+                insets={presenting ? { top: 84, bottom: 20 } : editInsets}
+                cam={roomCam}
+                zoom={roomZoom}
+                onCam={(c) => {
+                  grabMap();
+                  setRoomCam(c);
+                }}
+                onZoom={setRoomZoom}
+                onGrab={grabMap}
+                onHome={() => onPreset(HOME)}
+                onSize={setMapSize}
+                selectedStation={selected.length === 1 && selected[0].startsWith("box:") ? Number(selected[0].slice(4)) : null}
+                onSelectStation={(i) => setSelected(i === null ? [] : [`box:${i}`])}
+                selectedRobot={selected.find((k) => k.startsWith("robot:"))?.slice(6) ?? null}
+                onSelectRobot={(id) => {
+                  setSelected(id ? [`robot:${id}`] : []);
+                  setRightTab("inspect");
+                }}
+              />
+            ) : view === "plan" ? (
               <PlanCanvas
                 doc={draft.doc}
                 kind={kind}
@@ -1409,9 +1647,11 @@ export const SiteEditorApp: React.FC = () => {
                 layers={layers}
                 robots={bots}
                 fitSignal={fitSignal}
-                labelScale={present ? 1.7 : 1}
-                chrome={!present}
+                stations={stationPoses}
+                camRequest={planCam}
+                onView={(cam, size) => (planView.current = { cam, size })}
                 onBoxEdit={shown?.in_frame ? (index, rect) => editBoxes({ [index]: rect }) : undefined}
+                onBoxesEdit={shown?.in_frame && editable ? (rects) => editBoxes(rects) : undefined}
                 underlay={kind === "stations" ? stationsUnderlay(coverageMode, coverage && coverage.id === shown?.id ? coverage : null, draft.doc.extent_mm ?? [1000, 1000], theme === "light", coverageStale) : undefined}
                 overlay={
                   newRoom && placePreview
@@ -1419,7 +1659,7 @@ export const SiteEditorApp: React.FC = () => {
                     : newRoom && draft.doc.extent_mm && !servedId
                       ? mountOverlay(draft.doc.extent_mm)
                       : kind === "stations"
-                    ? stationsOverlay(coverage && coverage.id === shown?.id ? coverage : null, showNext && coverageMode === "error", probe?.at ?? null)
+                    ? stationsOverlay(coverage && coverage.id === shown?.id ? coverage : null, showNext && coverageMode === "error", probe?.at ?? null, flash)
                     : kind === "frame" && tool === "capture"
                       ? (p: PlanPaint) => (
                           <>
@@ -1455,26 +1695,6 @@ export const SiteEditorApp: React.FC = () => {
                   />
                 )}
               </PlanCanvas>
-            ) : view === "room" ? (
-              <RoomView
-                doc={draft.doc}
-                extent={draft.doc.extent_mm ?? [1000, 1000]}
-                geometry={(coverage && coverage.id === shown?.id ? coverage.geometry : null) ?? shown?.geometry ?? null}
-                boxes={boxes}
-                coverage={coverage && coverage.id === shown?.id ? coverage : null}
-                mode={coverageMode}
-                bots={bots}
-                shownName={shown ? nameOf(shown) : null}
-                shownId={shown?.id ?? null}
-                stationFit={shown ? Object.fromEntries(shown.stations.map((s) => [s.index, s.residual_mm])) : undefined}
-                light={theme === "light"}
-                large={present}
-                selectedStation={selected.length === 1 && selected[0].startsWith("box:") ? Number(selected[0].slice(4)) : null}
-                onSelectStation={(i) => {
-                  setSelected(i === null ? [] : [`box:${i}`]);
-                  if (i !== null) setKind("stations");
-                }}
-              />
             ) : view === "table" ? (
               <TableView
                 doc={draft.doc}
@@ -1504,7 +1724,7 @@ export const SiteEditorApp: React.FC = () => {
           ) : (
             <div style={{ margin: "auto", color: "var(--muted)", fontSize: 12 }}>{error ? "" : "Reading site.toml…"}</div>
           )}
-          {present && (
+          {presenting && (
             <div className="float presbar" data-testid="presbar">
               <span className="dot" style={{ width: 12, height: 12, background: verdict.fails ? "var(--err)" : verdict.needs ? "var(--warn)" : "var(--ok)" }} />
               <b>{verdict.title}</b>
@@ -1512,13 +1732,22 @@ export const SiteEditorApp: React.FC = () => {
                 {statusText(status)}
               </span>
               <span className="sp" style={{ flex: 1 }} />
-              <button type="button" className="btn" onClick={stopPresent}>
-                Exit <span className="kbd">Esc</span>
+              <button type="button" className="btn primary" data-testid="present-edit" onClick={stopPresent} title="Leave Present for the editor, in 3D (Esc)">
+                <Icon name="select" /> Edit · <span className="kbd">Esc</span>
               </button>
             </div>
           )}
           <div className="float kinds" data-testid="editing-switch" role="tablist" aria-label="Editing">
-            <button type="button" role="tab" aria-selected={kind === "view"} className={kind === "view" ? "on" : undefined} title="View: nothing editable (Esc)" onClick={() => pickKind("view")}>
+            {stage === "edit" || stage === "toTop" ? (
+              <button type="button" className="btn primary sm" data-testid="done-editing" title="Back to the 3D view; the draft stays (Esc)" onClick={() => leaveEdit()}>
+                Done editing
+              </button>
+            ) : (
+              <button type="button" className="btn primary sm" data-testid="enter-edit" title="Edit, looking straight down (or a kind's number)" onClick={() => enterEdit()}>
+                Edit
+              </button>
+            )}
+            <button type="button" role="tab" aria-selected={kind === "view"} className={kind === "view" ? "on" : undefined} title="View: nothing editable" onClick={() => pickKind("view")}>
               <Icon name="view" />
               <span className="tx">View</span>
             </button>
@@ -1540,7 +1769,7 @@ export const SiteEditorApp: React.FC = () => {
               </button>
             ))}
           </div>
-          {view === "plan" && tools.length > 0 && editable && (
+          {stage === "edit" && view === "plan" && tools.length > 0 && editable && (
             <div className="float rail" role="toolbar" aria-label="Tools" data-testid="tools">
               {tools.map(([key, t]) => (
                 <button key={t} type="button" aria-pressed={tool === t} className={tool === t ? "on" : undefined} title={`${TOOL_LABEL[t]} (${key})`} aria-label={TOOL_LABEL[t]} onClick={() => setTool(t)}>
@@ -1550,18 +1779,44 @@ export const SiteEditorApp: React.FC = () => {
               ))}
             </div>
           )}
-          {live && bots.length > 0 && (frameDraft || frameOpen) && view === "plan" && (
+          {live && bots.length > 0 && (frameDraft || frameOpen) && stage === "edit" && view === "plan" && (
             <div className="float rnote" role="note" data-testid="robots-old-origin">
               robots report in the old origin until pushed
             </div>
           )}
-          <div className="float views seg" role="tablist" aria-label="View as" style={{ border: "1px solid var(--hairline)" }}>
-            {(["plan", "room", "table", "file"] as View[]).map((v) => (
-              <button key={v} type="button" role="tab" aria-selected={view === v} className={view === v ? "on" : undefined} onClick={() => setView(v)} title={v === "room" ? "The room as a twin: stations above the floor, coverage, robots" : undefined}>
-                {v === "plan" ? "Plan" : v === "room" ? "Room" : v === "table" ? "Table" : "File"}
-              </button>
-            ))}
-          </div>
+          {draft && !presenting && (stage !== "edit" || view === "plan") && (
+            <MapPresets
+              cam={stage === "edit" ? null : roomCam}
+              onPreset={onPreset}
+              zoom={
+                stage === "edit"
+                  ? undefined
+                  : {
+                      fit: roomZoom.k === 1 && roomZoom.tx === 0 && roomZoom.ty === 0,
+                      onIn: () => setRoomZoom((z) => zoomAt(z, 1.4, [mapSize.w / 2, mapSize.h / 2], mapSize)),
+                      onOut: () => setRoomZoom((z) => zoomAt(z, 1 / 1.4, [mapSize.w / 2, mapSize.h / 2], mapSize)),
+                      onFit: () => setRoomZoom(FIT),
+                    }
+              }
+            />
+          )}
+          {presenting && (
+            <MapPresets
+              cam={roomCam}
+              onPreset={onPreset}
+              zoom={{
+                fit: roomZoom.k === 1 && roomZoom.tx === 0 && roomZoom.ty === 0,
+                onIn: () => setRoomZoom((z) => zoomAt(z, 1.4, [mapSize.w / 2, mapSize.h / 2], mapSize)),
+                onOut: () => setRoomZoom((z) => zoomAt(z, 1 / 1.4, [mapSize.w / 2, mapSize.h / 2], mapSize)),
+                onFit: () => setRoomZoom(FIT),
+              }}
+            />
+          )}
+          {stage === "edit" && view !== "plan" && (
+            <button type="button" className="float btn sm mapback" data-testid="back-to-map" onClick={() => setView("plan")}>
+              <Icon name="plan" /> Back to the map
+            </button>
+          )}
         </main>
         {rightAsRail ? (
           <Rail

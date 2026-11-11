@@ -86,6 +86,8 @@ beforeEach(() => {
   fleet.bots = [];
   window.localStorage.clear();
   Object.defineProperty(window, "innerWidth", { configurable: true, value: 1440 });
+  // Reduced motion: the camera turns at once, so a test waits on no animation
+  vi.stubGlobal("matchMedia", (q: string) => ({ matches: q.includes("reduce"), media: q, addEventListener: () => {}, removeEventListener: () => {} }));
 });
 afterEach(() => vi.unstubAllGlobals());
 
@@ -147,6 +149,12 @@ describe("the editor page", () => {
 });
 
 
+/** Into the top-down edit, from the 3D view the page opens on. */
+async function toPlan() {
+  fireEvent.click(await screen.findByTestId("enter-edit"));
+  await waitFor(() => expect(screen.getByTestId("plan")).toBeTruthy());
+}
+
 const keyDown = (key: string, extra: Partial<KeyboardEventInit> = {}) =>
   fireEvent.keyDown(window, { key, ...extra });
 
@@ -154,7 +162,7 @@ describe("the editor shell", () => {
   it("switches kinds by number, leaves R unbound, and goes back to View on Esc", async () => {
     stubFetch();
     render(<SiteEditorApp />);
-    await waitFor(() => expect(screen.getByTestId("plan")).toBeTruthy());
+    await toPlan();
     const kindTab = (name: RegExp) => screen.getByRole("tab", { name });
     keyDown("2");
     expect(kindTab(/^Areas/).getAttribute("aria-selected")).toBe("true");
@@ -167,7 +175,7 @@ describe("the editor shell", () => {
   it("brings an unsaved draft back on reload, and says it is kept in this browser", async () => {
     stubFetch();
     const first = render(<SiteEditorApp />);
-    await waitFor(() => expect(screen.getByTestId("area-field")).toBeTruthy());
+    await toPlan();
     // Rename the field from the inspector
     fireEvent.click(screen.getByRole("tab", { name: "Outline" }));
     fireEvent.click(screen.getByTestId("outline-area:field"));
@@ -177,6 +185,7 @@ describe("the editor shell", () => {
     await waitFor(() => expect(screen.getByTestId("unsaved").textContent).toContain("1 unsaved, kept in this browser"));
     first.unmount();
     render(<SiteEditorApp />);
+    await toPlan();
     await waitFor(() => expect(screen.getByTestId("area-arena")).toBeTruthy());
     expect(screen.getByTestId("notice").textContent).toContain("restored from this browser");
   });
@@ -190,7 +199,7 @@ describe("the editor shell", () => {
         ),
     });
     render(<SiteEditorApp />);
-    await waitFor(() => expect(screen.getByTestId("area-field")).toBeTruthy());
+    await toPlan();
     fireEvent.click(screen.getByRole("tab", { name: "Outline" }));
     fireEvent.click(screen.getByTestId("outline-area:field"));
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "arena" } });
@@ -216,7 +225,7 @@ describe("the editor shell", () => {
       },
     });
     render(<SiteEditorApp />);
-    await waitFor(() => expect(screen.getByTestId("area-field")).toBeTruthy());
+    await toPlan();
     fireEvent.click(screen.getByRole("tab", { name: "Outline" }));
     fireEvent.click(screen.getByTestId("outline-area:field"));
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "arena" } });
@@ -252,7 +261,7 @@ describe("capturing zero", () => {
   it("shows the capture panel even when the new room sheet was open", async () => {
     stubFetch();
     render(<SiteEditorApp />);
-    await waitFor(() => expect(screen.getByTestId("plan")).toBeTruthy());
+    await toPlan();
     fireEvent.click(screen.getByLabelText("More"));
     fireEvent.click(screen.getByRole("menuitem", { name: /Set up a room/ }));
     expect(screen.getByTestId("new-room")).toBeTruthy();
@@ -265,7 +274,7 @@ describe("capturing zero", () => {
 
 describe("keeping the operator's work", () => {
   const edit = async () => {
-    await waitFor(() => expect(screen.getByTestId("area-field")).toBeTruthy());
+    await toPlan();
     fireEvent.click(screen.getByRole("tab", { name: "Outline" }));
     fireEvent.click(screen.getByTestId("outline-area:field"));
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "arena" } });
@@ -344,27 +353,137 @@ describe("keeping the operator's work", () => {
   });
 });
 
-describe("the room view", () => {
-  it("draws the stations above the floor, the coverage and the robots, and opens Present on it", async () => {
-    const geometry = { stations: { "0": { x_mm: -542, y_mm: 1268, height_mm: 2423, off_square_deg: 5.4 }, "1": { x_mm: 1387, y_mm: -245, height_mm: 1606, off_square_deg: -3.1 } }, apart_mm: { "0-1": 2583 } };
-    const withGeometry = { ...LIBRARY, serving: { ...served, geometry }, groups: [{ ...LIBRARY.groups[0], rows: inFrame.map((r) => (r.id === served.id ? { ...r, geometry } : r)) }] };
-    stubFetch({ "api/calibrations?": () => new Response(JSON.stringify(withGeometry), { status: 200 }) });
+const holding = (id: string, held: string) => ({ id, address: id, application: "DotBot", state: "Running", status: 0, position: { x: 300, y: 400 }, swarmit: { info: { info_version: 4, lh2_station_mask: 3, lh2_calibration_id: held } } });
+
+describe("the one map", () => {
+  const geometry = { stations: { "0": { x_mm: -542, y_mm: 1268, height_mm: 2423, off_square_deg: 5.4 }, "1": { x_mm: 1387, y_mm: -245, height_mm: 1606, off_square_deg: -3.1 } }, apart_mm: { "0-1": 2583 } };
+  const withGeometry = (rows: LibraryRow[]) => ({ ...LIBRARY, serving: { ...served, geometry }, groups: [{ ...LIBRARY.groups[0], rows: rows.map((r) => (r.id === served.id ? { ...r, geometry } : r)) }] });
+  const stub = () => stubFetch({ "api/calibrations?": () => new Response(JSON.stringify(withGeometry(inFrame)), { status: 200 }) });
+  const preset = (name: string) => screen.getByRole("button", { name, pressed: undefined });
+
+  it("opens in 3D at 3/4 with both panes, and draws the stations, their rays to their own coverage and the robots", async () => {
+    fleet.bots = [holding("DE00000000002222", served.id)];
+    stub();
     render(<SiteEditorApp />);
-    await waitFor(() => expect(screen.getByTestId("plan")).toBeTruthy());
-    fireEvent.click(screen.getByRole("tab", { name: "Room" }));
-    await waitFor(() => expect(screen.getByTestId("room-view")).toBeTruthy());
-    expect(screen.getByTestId("room-station-0").textContent).toContain("S0 · channel 1");
-    expect(screen.getByTestId("room-station-0").textContent).toContain("2.4 m up");
+    await waitFor(() => expect(screen.getByTestId("room-card-0")).toBeTruthy());
+    expect(screen.queryByTestId("plan")).toBeNull();
+    expect(screen.queryByTestId("presbar")).toBeNull();
+    expect(screen.getByTestId("pane-left")).toBeTruthy();
+    expect(screen.getByTestId("pane-right")).toBeTruthy();
+    expect(preset("3/4").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByTestId("room-card-0").textContent).toBe("S0 · 2.4 m up · fit 1.10 mm");
+    expect(screen.getAllByTestId("room-ray-0")).toHaveLength(4);
     expect(screen.getAllByTestId(/room-cover-/)).toHaveLength(2);
-    expect(screen.getByTestId("room-legend").textContent).toContain("both cover the whole floor, no handover");
-    fireEvent.click(screen.getByRole("tab", { name: "Plan" }));
+    await waitFor(() => expect(screen.getAllByTestId("room-robot")).toHaveLength(1));
+    expect(screen.getByTestId("room-coverage-note").textContent).toBe("both cover the whole floor, no handover");
+    expect(screen.queryByRole("tab", { name: "Plan" })).toBeNull();
+  });
+
+  it("goes top-down to edit and back: Edit, a kind's number, Done editing and Esc", async () => {
+    stub();
+    render(<SiteEditorApp />);
+    await waitFor(() => expect(screen.getByTestId("room-view")).toBeTruthy());
+    fireEvent.click(screen.getByTestId("enter-edit"));
     await waitFor(() => expect(screen.getByTestId("plan")).toBeTruthy());
-    fireEvent.click(screen.getByLabelText("More"));
-    fireEvent.click(screen.getByRole("menuitem", { name: /Present/ }));
-    await waitFor(() => expect(screen.getByTestId("presbar")).toBeTruthy());
-    expect(screen.getByTestId("room-view")).toBeTruthy();
+    expect(screen.queryByTestId("room-view")).toBeNull();
+    expect(preset("Top").getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(screen.getByTestId("done-editing"));
+    await waitFor(() => expect(screen.getByTestId("room-view")).toBeTruthy());
+    await waitFor(() => expect(preset("3/4").getAttribute("aria-pressed")).toBe("true"));
+    keyDown("2");
+    await waitFor(() => expect(screen.getByTestId("tools")).toBeTruthy());
+    expect(screen.getByRole("tab", { name: /^Areas/ }).getAttribute("aria-selected")).toBe("true");
     keyDown("Escape");
+    await waitFor(() => expect(screen.getByTestId("room-view")).toBeTruthy());
+    expect(screen.getByRole("tab", { name: /^View/ }).getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("leaves the edit for a preset other than Top, and keeps the draft across the round trip", async () => {
+    stub();
+    render(<SiteEditorApp />);
+    await toPlan();
+    fireEvent.click(screen.getByRole("tab", { name: "Outline" }));
+    fireEvent.click(screen.getByTestId("outline-area:field"));
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "arena" } });
+    fireEvent.keyDown(screen.getByLabelText("Name"), { key: "Enter" });
+    await waitFor(() => expect(screen.getByTestId("unsaved").textContent).toContain("1 unsaved"));
+    fireEvent.click(preset("Top"));
+    expect(screen.getByTestId("plan")).toBeTruthy();
+    fireEvent.click(preset("Side"));
+    await waitFor(() => expect(screen.getByTestId("room-view")).toBeTruthy());
+    await waitFor(() => expect(preset("Side").getAttribute("aria-pressed")).toBe("true"));
+    expect(screen.getByTestId("unsaved").textContent).toContain("1 unsaved");
+    expect(screen.getByTestId("room-label-area-area:field").textContent).toBe("arena");
+    await toPlan();
+    expect(screen.getByTestId("area-arena")).toBeTruthy();
+  });
+
+  it("keeps the last 3D camera in this browser, and a preset resets the zoom", async () => {
+    stub();
+    const first = render(<SiteEditorApp />);
+    await waitFor(() => expect(screen.getByTestId("room-view")).toBeTruthy());
+    fireEvent.click(screen.getByLabelText("Zoom in"));
+    expect(screen.getByTestId("room-fit").className).toBe("");
+    fireEvent.click(preset("Front"));
+    expect(screen.getByTestId("room-fit").className).toBe("on");
+    await waitFor(() => expect(JSON.parse(window.localStorage.getItem("dotbot.siteEditor.camera") ?? "{}")).toEqual({ az: 0, el: 10 }));
+    first.unmount();
+    render(<SiteEditorApp />);
+    await waitFor(() => expect(screen.getByTestId("room-view")).toBeTruthy());
+    expect(preset("Front").getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("presents the same map full screen, and Edit · Esc or Esc goes back to the editor in 3D", async () => {
+    stub();
+    render(<SiteEditorApp />);
+    await waitFor(() => expect(screen.getByTestId("room-view")).toBeTruthy());
+    fireEvent.click(screen.getByTestId("present"));
+    await waitFor(() => expect(screen.getByTestId("presbar")).toBeTruthy());
+    expect(screen.getByTestId("present-edit").textContent).toContain("Edit · Esc");
+    expect(screen.queryByText("Exit")).toBeNull();
+    fireEvent.click(screen.getByTestId("present-edit"));
+    await waitFor(() => expect(screen.queryByTestId("presbar")).toBeNull());
+    expect(screen.getByTestId("room-view")).toBeTruthy();
+    keyDown("f");
+    await waitFor(() => expect(screen.getByTestId("presbar")).toBeTruthy());
+    keyDown("2");
+    expect(screen.queryByTestId("plan")).toBeNull();
+    keyDown("Escape");
+    await waitFor(() => expect(screen.queryByTestId("presbar")).toBeNull());
+    expect(screen.getByTestId("room-view")).toBeTruthy();
+  });
+
+  it("follows a drafted split: the canvas, the legend and the Coverage check all describe the draft", async () => {
+    stub();
+    render(<SiteEditorApp />);
+    await waitFor(() => expect(screen.getByTestId("goal-coverage")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Split the floor at the best line" }));
+    await waitFor(() => expect(screen.getByTestId("notice").textContent).toContain("Draft: split at x 530 mm. Drag the dashed line to move it, then Save."));
     await waitFor(() => expect(screen.getByTestId("plan")).toBeTruthy());
+    expect(screen.getByTestId("goal-coverage").textContent).toContain("handover at x 530 mm · not in use yet (in use: both cover the whole floor)");
+    expect(screen.getByTestId("coverage-card").textContent).toContain("Handover at x 530 mm · not in use yet");
+    fireEvent.click(screen.getByTestId("done-editing"));
+    await waitFor(() => expect(screen.getByTestId("room-handover")).toBeTruthy());
+    expect(screen.getByTestId("room-coverage-note").textContent).toBe("handover at x 530 mm · not in use yet (in use: both cover the whole floor)");
+    fireEvent.click(screen.getByTestId("notice-act"));
+    await waitFor(() => expect(screen.getByTestId("goal-coverage").textContent).toContain("robots pick the closer fix"));
+  });
+
+  it("marks where each station stands on the plan, with a layer to hide them", async () => {
+    stub();
+    render(<SiteEditorApp />);
+    await toPlan();
+    await waitFor(() => expect(screen.getByTestId("station-pos-0")).toBeTruthy());
+    expect(screen.getByTestId("station-pos-0").textContent).toContain("S0 ≈ 2.4 m up");
+    expect(screen.getByTestId("station-pos-0").textContent).toContain("(-542, 1268) mm");
+    expect(screen.getByTestId("station-pos-0").querySelector("title")?.textContent).toContain("estimated, not to tape");
+    keyDown("2");
+    expect(screen.queryByTestId("station-pos-0")).toBeNull();
+    keyDown("5");
+    expect(screen.getByTestId("station-pos-1")).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: "Layers" }));
+    fireEvent.click(screen.getByText("Station positions"));
+    expect(screen.queryByTestId("station-pos-1")).toBeNull();
   });
 });
 
@@ -401,7 +520,7 @@ describe("the frame tools", () => {
   it("drops the turn's ghost when the tool changes", async () => {
     stubFetch({ "api/frame": () => new Response(JSON.stringify({ frame: "f2", from_frame: "f1", calibration: { id: "x", id8: "x", tag: "" }, source: "", warnings: [], push: "", steps: [] }), { status: 200 }) });
     render(<SiteEditorApp />);
-    await waitFor(() => expect(screen.getByTestId("plan")).toBeTruthy());
+    await toPlan();
     keyDown("1");
     keyDown("t");
     const turn = screen.getByLabelText("turn");
@@ -418,7 +537,7 @@ describe("the collapse order", () => {
     stubFetch();
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 1024 });
     const { unmount } = render(<SiteEditorApp />);
-    await waitFor(() => expect(screen.getByTestId("plan")).toBeTruthy());
+    await toPlan();
     expect(screen.getByTestId("rail-left")).toBeTruthy();
     expect(screen.getByTestId("pane-right")).toBeTruthy();
     // The status line's name and Save stay
@@ -433,7 +552,6 @@ describe("the collapse order", () => {
   });
 });
 
-const holding = (id: string, held: string) => ({ id, address: id, application: "DotBot", state: "Running", status: 0, position: { x: 300, y: 400 }, swarmit: { info: { info_version: 4, lh2_station_mask: 3, lh2_calibration_id: held } } });
 
 describe("Push to robots", () => {
   it("stays off while every robot holds what the controller uses, and opens the push sheet once one does not", async () => {
@@ -479,7 +597,7 @@ describe("a move of the origin in the draft", () => {
     fleet.bots = [holding("DE00000000002B07", served.id)];
     const calls = stubFetch({ "api/frame": () => new Response(JSON.stringify(moved), { status: 200 }) });
     render(<SiteEditorApp />);
-    await waitFor(() => expect(screen.getByTestId("plan")).toBeTruthy());
+    await toPlan();
     keyDown("1");
     keyDown("t");
     for (const [label, v] of [

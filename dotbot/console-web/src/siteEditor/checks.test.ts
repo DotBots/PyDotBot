@@ -63,8 +63,20 @@ describe("the rows", () => {
   });
 
   it("reads coverage as a handover, or asks for one when both stations cover everything", () => {
-    expect(goal(inputs([]), "coverage")).toMatchObject({ state: "warn", action: { label: "Add a handover…" } });
+    expect(goal(inputs([]), "coverage")).toMatchObject({ state: "warn", action: { label: "Split the floor at the best line" } });
     expect(goal(inputs([], { served: HANDOVER }), "coverage")).toMatchObject({ state: "ok", detail: "handover at x 530 mm" });
+  });
+
+  it("describes the drafted coverage when it differs from the file in use, and names what is in use", () => {
+    const drawn = HANDOVER.stations.map((s) => ({ index: s.index, rect: s.box }));
+    expect(goal(inputs([], { drawn }), "coverage")).toMatchObject({
+      state: "warn",
+      detail: "handover at x 530 mm · not in use yet (in use: both cover the whole floor)",
+      action: { label: "Edit…" },
+    });
+    // A draft equal to the file says only the file
+    const same = SERVED.stations.map((s) => ({ index: s.index, rect: s.box }));
+    expect(goal(inputs([], { drawn: same }), "coverage").detail).toContain("robots pick the closer fix");
   });
 
   it("states accuracy against the limit", () => {

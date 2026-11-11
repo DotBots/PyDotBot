@@ -196,21 +196,143 @@ export function share(boxes: Boxes, extent: [number, number], station: number, c
   return mine / n;
 }
 
-/** Two boxes splitting the floor with `overlap` mm in common, cut across the
- * axis the stations stand apart on, each station on its own side. */
-export function splitFloor(extent: [number, number], geometry: Geometry | null, stations: [number, number], overlap = 200): Record<number, Rect> {
+/** The axis two stations stand apart on, for the floor's size (0 is x), and
+ * whether `a` is the one on the low side. */
+function splitAxis(extent: [number, number], geometry: Geometry | null, a: number, b: number): { along: 0 | 1; aLow: boolean } {
   const [w, h] = extent;
-  const [a, b] = stations;
   const pa = geometry?.stations[String(a)];
   const pb = geometry?.stations[String(b)];
-  // Across the axis the stations stand farthest apart on, for the floor's size
   const along = pa && pb ? (Math.abs(pa.x_mm - pb.x_mm) / w >= Math.abs(pa.y_mm - pb.y_mm) / h ? 0 : 1) : w >= h ? 0 : 1;
-  const span = along === 0 ? w : h;
-  const cut = Math.round(span / 2 / 10) * 10;
-  const lo: Rect = along === 0 ? [0, 0, cut + overlap / 2, h] : [0, 0, w, cut + overlap / 2];
-  const hi: Rect = along === 0 ? [cut - overlap / 2, 0, w, h] : [0, cut - overlap / 2, w, h];
   const aLow = pa && pb ? (along === 0 ? pa.x_mm <= pb.x_mm : pa.y_mm <= pb.y_mm) : true;
+  return { along, aLow };
+}
+
+/** The low box's far edge and the high box's near edge that put the handover
+ * (halfway between the two centres) at `at` (rounded to 10 mm), `lo0` and
+ * `hi1` being the edges that stay. The robots' rule only hands over inside the
+ * overlap, so it grows past `overlap` as the line leaves the middle; that
+ * keeps the line within about a third of the span from either end. */
+function splitEdges(at: number, lo0: number, hi1: number, overlap: number): { at: number; loEnd: number; hiStart: number } {
+  const lo = (2 * lo0 + hi1 + 30) / 3;
+  const hi = (lo0 + 2 * hi1 - 30) / 3;
+  const line = Math.max(Math.ceil(lo / 10) * 10, Math.min(Math.floor(hi / 10) * 10, Math.round(at / 10) * 10));
+  const o = 2 * Math.ceil(Math.max(overlap, 2 * Math.abs(line - (lo0 + hi1) / 2) + 20) / 2);
+  const sum = 4 * line - lo0 - hi1;
+  return { at: line, loEnd: Math.round((sum + o) / 2), hiStart: Math.round((sum - o) / 2) };
+}
+
+/** Two boxes splitting the floor with `overlap` mm in common, cut across the
+ * axis the stations stand apart on, each station on its own side, the
+ * handover at `at` mm along that axis (the middle by default). */
+export function splitFloor(extent: [number, number], geometry: Geometry | null, stations: [number, number], overlap = 200, at?: number): Record<number, Rect> {
+  const [w, h] = extent;
+  const [a, b] = stations;
+  const { along, aLow } = splitAxis(extent, geometry, a, b);
+  const span = along === 0 ? w : h;
+  const { loEnd, hiStart } = splitEdges(at ?? span / 2, 0, span, overlap);
+  const lo: Rect = along === 0 ? [0, 0, loEnd, h] : [0, 0, w, loEnd];
+  const hi: Rect = along === 0 ? [hiStart, 0, w, h] : [0, hiStart, w, h];
   return aLow ? { [a]: lo, [b]: hi } : { [a]: hi, [b]: lo };
+}
+
+export const SPLIT_TIP = "Gives each station its own side, split where each is more accurate. A draft: nothing changes for robots until you Save and push.";
+
+export interface Split {
+  boxes: Record<number, Rect>;
+  axis: "x" | "y";
+  /** Where the handover lands, mm along `axis`. */
+  at: number;
+}
+
+/** The split of the floor between two stations where each is the more
+ * accurate: the handover where the summed predicted error of the station used
+ * is least, from each station's own error map; the middle without one. */
+export function bestSplit(extent: [number, number], geometry: Geometry | null, stations: [number, number], fog: Coverage["fog"] | null, overlap = 200): Split {
+  const [a, b] = stations;
+  const { along, aLow } = splitAxis(extent, geometry, a, b);
+  const span = along === 0 ? extent[0] : extent[1];
+  const other = along === 0 ? extent[1] : extent[0];
+  let at = Math.round(span / 2 / 10) * 10;
+  const lo = fog?.own[String(aLow ? a : b)];
+  const hi = fog?.own[String(aLow ? b : a)];
+  if (fog && lo && hi) {
+    // Each line of cells across the axis, summed for either station
+    const n = along === 0 ? fog.cols : fog.rows;
+    const m = along === 0 ? fog.rows : fog.cols;
+    const centre = (k: number, axis: 0 | 1) => fog.origin[axis] + (k + 0.5) * fog.cell_mm;
+    const penalty = 50;
+    const sums: { c: number; lo: number; hi: number }[] = [];
+    for (let i = 0; i < n; i++) {
+      const c = centre(i, along);
+      if (c < 0 || c > span) continue;
+      let sl = 0;
+      let sh = 0;
+      for (let j = 0; j < m; j++) {
+        const cj = centre(j, along === 0 ? 1 : 0);
+        if (cj < 0 || cj > other) continue;
+        const k = along === 0 ? j * fog.cols + i : i * fog.cols + j;
+        sl += lo[k] ?? penalty;
+        sh += hi[k] ?? penalty;
+      }
+      sums.push({ c, lo: sl, hi: sh });
+    }
+    if (sums.length > 1) {
+      let best = Infinity;
+      for (let cut = 0; cut <= sums.length; cut++) {
+        let cost = 0;
+        for (let i = 0; i < sums.length; i++) cost += i < cut ? sums[i].lo : sums[i].hi;
+        if (cost < best - 1e-9) {
+          best = cost;
+          at = cut === 0 ? 0 : cut === sums.length ? span : (sums[cut - 1].c + sums[cut].c) / 2;
+        }
+      }
+    }
+  }
+  const line = splitEdges(at, 0, span, overlap).at;
+  return { boxes: splitFloor(extent, geometry, stations, overlap, line), axis: along === 0 ? "x" : "y", at: line };
+}
+
+/** Two boxes with their handover moved to `at` mm along the axis it cuts,
+ * their outer edges kept and `overlap` mm in common (more far from the
+ * middle); null when the handover is not straight across an axis. */
+export function movedHandover(boxes: Boxes, at: number, overlap = 200): Record<number, Rect> | null {
+  if (boxes.length !== 2) return null;
+  const line = handover(boxes[0].rect, boxes[1].rect);
+  if (!line) return null;
+  const straight = line.from[0] === line.to[0] ? 0 : line.from[1] === line.to[1] ? 1 : null;
+  if (straight === null) return null;
+  const axis: 0 | 1 = straight;
+  const [p, q] = boxes[0].rect[axis] <= boxes[1].rect[axis] ? [boxes[0], boxes[1]] : [boxes[1], boxes[0]];
+  const lo0 = p.rect[axis];
+  const hi1 = q.rect[axis + 2];
+  const { loEnd, hiStart } = splitEdges(at, lo0, hi1, overlap);
+  const lo = [...p.rect] as Rect;
+  const hi = [...q.rect] as Rect;
+  lo[axis + 2] = loEnd;
+  hi[axis] = hiStart;
+  return { [p.index]: lo, [q.index]: hi };
+}
+
+/** A coverage layout in a few words, from its rectangles. */
+export function layoutText(boxes: Boxes): string {
+  if (boxes.length === 0) return "no station covers the floor";
+  if (boxes.length === 1) return "one station covers the floor";
+  if (boxes.length === 2) {
+    if (boxes[0].rect.join() === boxes[1].rect.join()) return "both cover the whole floor, no handover";
+    const line = handover(boxes[0].rect, boxes[1].rect);
+    if (line) return line.label.replace("handover ", "handover at ");
+  }
+  return "each station has its own region";
+}
+
+/** What the canvas draws, said against what is in use: "handover at x 530 mm
+ * · not in use yet (in use: both cover the whole floor)" when they differ. */
+export function coverageSay(drawn: Boxes, inUse: Boxes | null): { text: string; differs: boolean } {
+  const now = layoutText(drawn);
+  if (!inUse) return { text: now, differs: false };
+  const used = layoutText(inUse);
+  if (used === now) return { text: now, differs: false };
+  return { text: `${now} · not in use yet (in use: ${used.replace(", no handover", "")})`, differs: true };
 }
 
 export interface Moved {

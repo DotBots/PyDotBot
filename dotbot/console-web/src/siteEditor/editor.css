@@ -1094,13 +1094,28 @@ body {
   font: 600 8px var(--font-mono);
   opacity: 0.6;
 }
-.se .views {
+.se .mapbar {
   top: 12px;
   right: 12px;
   padding: 3px;
+  display: flex;
+  gap: 6px;
 }
-.se .views button {
-  padding: 6px 12px;
+.se .mapbar .presets button {
+  padding: 0 10px;
+}
+.se .mapback {
+  top: 12px;
+  right: 12px;
+  gap: 6px;
+}
+.se.present .mapbar {
+  top: auto;
+  bottom: 14px;
+  right: 20px;
+}
+.se .kinds .btn {
+  margin-right: 4px;
 }
 .se .banner {
   top: 56px;
@@ -1879,7 +1894,7 @@ body {
 }
 .se .presbar {
   left: 20px;
-  top: 16px;
+  top: 14px;
   right: 20px;
   display: flex;
   align-items: center;
@@ -1970,6 +1985,8 @@ body {
 }
 .se .goal {
   display: flex;
+  flex-wrap: wrap;
+  row-gap: 5px;
   gap: 9px;
   align-items: flex-start;
   padding: 7px 6px;
@@ -2016,13 +2033,16 @@ body {
   color: var(--muted);
   font: 700 9px var(--font-mono);
 }
+/* The text keeps about 60% of the row; a wider button wraps under it */
 .se .goal > .acts {
   flex: none;
   margin-top: 1px;
+  margin-left: auto;
+  max-width: 100%;
 }
 .se .goal .t {
-  flex: 1;
-  min-width: 0;
+  flex: 1 1 0;
+  min-width: calc(60% - 25px);
   display: block;
 }
 .se .goal .t .a {
@@ -2082,10 +2102,10 @@ body {
 
 /* presentation mode: the plan, the verdict and the legend, labels larger */
 .se.present .pane,
+.se.present .drawer,
 .se.present .prail,
 .se.present .kinds,
 .se.present .rail,
-.se.present .views,
 .se.present .status,
 .se.present .banner,
 .se.present .readout {
@@ -2260,11 +2280,15 @@ body {
   flex-direction: column;
   background: var(--canvas);
 }
-.se .room svg {
+.se .room-canvas {
   flex: 1;
   min-height: 0;
-  width: 100%;
-  height: 100%;
+  position: relative;
+  overflow: hidden;
+}
+.se .room-canvas > svg {
+  position: absolute;
+  inset: 0;
   display: block;
   user-select: none;
 }
@@ -2279,14 +2303,14 @@ body {
   stroke-linejoin: round;
 }
 .se .room-legend {
-  flex: none;
+  left: 12px;
+  bottom: 12px;
+  max-width: calc(100% - 24px);
   display: flex;
   align-items: center;
   gap: 14px;
   flex-wrap: wrap;
   padding: 5px 12px;
-  border-top: 1px solid var(--hairline);
-  background: var(--surface);
   font-size: 11px;
 }
 .se .room-legend .row {
@@ -2303,8 +2327,81 @@ body {
 .se .room-legend .muted {
   color: var(--muted);
 }
-.se .room.large svg text {
-  font-size: 1.2em;
+.se .room-legend .presets button {
+  padding: 0 9px;
+}
+.se .room.large .room-legend {
+  font-size: 14px;
+  padding: 8px 16px;
+  gap: 18px;
+}
+.se .room.large .room-legend .lsw {
+  width: 22px;
+  height: 14px;
+}
+.se .room.large .room-legend .presets button {
+  font-size: 13px;
+  height: 28px;
+  padding: 0 12px;
+}
+
+/* the Present button in the title bar */
+.se .presentbtn {
+  flex: none;
+  gap: 6px;
+}
+.se .presentbtn .kbd {
+  opacity: 0.8;
+}
+
+/* a station out of the plan's view: an arrow at the edge pointing at it */
+.se .pose-arrow {
+  position: absolute;
+  z-index: 4;
+  width: 0;
+  height: 0;
+  font-weight: 700;
+  pointer-events: auto;
+}
+.se .pose-arrow .tip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-size: 20px;
+  line-height: 1;
+  text-shadow: 0 0 3px var(--canvas);
+}
+.se .pose-arrow .lb {
+  position: absolute;
+  top: 12px;
+  left: -10px;
+  white-space: nowrap;
+  font-size: 11.5px;
+  background: var(--surface);
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  padding: 1px 6px;
+}
+.se .pose-arrow .lb.r {
+  left: auto;
+  right: -10px;
+}
+
+/* the handover line, once, after a split */
+.se [data-testid="handover"].flash line {
+  animation: handover-flash 1.4s ease-out 1;
+}
+@keyframes handover-flash {
+  0%,
+  60% {
+    stroke: var(--accent);
+    stroke-width: 6px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .se [data-testid="handover"].flash line {
+    animation: none;
+  }
 }
 
 /* the Use sheet's steps and ticks */
@@ -2376,7 +2473,8 @@ body {
   .se [data-testid="title-bar"] button[aria-label="Redo"] {
     display: none;
   }
-  .se .views {
+  .se .mapbar,
+  .se .mapback {
     top: 56px;
   }
   .se .kinds {
@@ -2397,4 +2495,7 @@ body {
   border-color: color-mix(in srgb, var(--warn) 50%, transparent);
   white-space: nowrap;
   pointer-events: none;
+}
+.se.present .room-legend {
+  max-width: calc(100% - 460px);
 }

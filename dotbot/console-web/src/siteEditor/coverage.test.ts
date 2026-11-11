@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { contours, fixtureAgreement, handover, moved, share, splitFloor, type Coverage } from "./coverage";
+import { bestSplit, contours, coverageSay, fixtureAgreement, handover, layoutText, moved, movedHandover, share, splitFloor, type Coverage } from "./coverage";
 import type { LibraryRow } from "./types";
 
 const GEOMETRY = {
@@ -23,6 +23,44 @@ describe("the Stations kind's drawing", () => {
     expect(splitFloor([1060, 1220], GEOMETRY, [0, 1])).toEqual({ 0: [0, 0, 630, 1220], 1: [430, 0, 1060, 1220] });
     const swapped = { ...GEOMETRY, stations: { "0": GEOMETRY.stations["1"], "1": GEOMETRY.stations["0"] } };
     expect(splitFloor([1060, 1220], swapped, [0, 1])).toEqual({ 1: [0, 0, 630, 1220], 0: [430, 0, 1060, 1220] });
+  });
+
+  it("splits where each station is the more accurate, and in the middle without an error map", () => {
+    expect(bestSplit([1060, 1220], GEOMETRY, [0, 1], null)).toMatchObject({ axis: "x", at: 530, boxes: { 0: [0, 0, 630, 1220], 1: [430, 0, 1060, 1220] } });
+    // S0 is better up to x 400, S1 beyond: one row of 100 mm cells
+    const cols = 11;
+    const own = {
+      "0": Array.from({ length: cols }, (_, i) => (i * 100 + 50 < 400 ? 0.5 : 2)),
+      "1": Array.from({ length: cols }, (_, i) => (i * 100 + 50 < 400 ? 2 : 0.5)),
+    };
+    const fog: NonNullable<Coverage["fog"]> = { origin: [0, 0], cell_mm: 100, cols, rows: 1, sigma: [], undecided: [], own };
+    const split = bestSplit([1060, 1220], GEOMETRY, [0, 1], fog);
+    expect(split.at).toBe(400);
+    expect(handover(split.boxes[0], split.boxes[1])?.label).toBe("handover x 400 mm");
+  });
+
+  it("moves a handover to a new line, keeping the overlap and the outer edges", () => {
+    const boxes = [
+      { index: 0, rect: [0, 0, 630, 1220] as [number, number, number, number] },
+      { index: 1, rect: [430, 0, 1060, 1220] as [number, number, number, number] },
+    ];
+    const moved = movedHandover(boxes, 600)!;
+    expect(moved).toEqual({ 0: [0, 0, 770, 1220], 1: [570, 0, 1060, 1220] });
+    expect(handover(moved[0], moved[1])?.label).toBe("handover x 600 mm");
+  });
+
+  it("says what is drawn, and what is in use when the two differ", () => {
+    const whole = [
+      { index: 0, rect: [0, 0, 1060, 1220] as [number, number, number, number] },
+      { index: 1, rect: [0, 0, 1060, 1220] as [number, number, number, number] },
+    ];
+    const split = [
+      { index: 0, rect: [0, 0, 630, 1220] as [number, number, number, number] },
+      { index: 1, rect: [430, 0, 1060, 1220] as [number, number, number, number] },
+    ];
+    expect(layoutText(whole)).toBe("both cover the whole floor, no handover");
+    expect(coverageSay(whole, whole)).toEqual({ text: "both cover the whole floor, no handover", differs: false });
+    expect(coverageSay(split, whole)).toEqual({ text: "handover at x 530 mm · not in use yet (in use: both cover the whole floor)", differs: true });
   });
 
   it("gives each station its share of the floor", () => {

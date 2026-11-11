@@ -1,11 +1,12 @@
 import React from "react";
 
-import type { Geometry } from "./coverage";
+import type { Boxes, Geometry } from "./coverage";
 
 /** How the stations see the floor, in a small isometric sketch: the floor,
- * each station on a pole at its estimated height, and its cone to the floor's
- * corners. Estimated from the homographies: it explains, it does not measure. */
-export const Inset: React.FC<{ geometry: Geometry; extent: [number, number]; height?: number }> = ({ geometry, extent, height = 190 }) => {
+ * each station on a pole at its estimated height, and its rays to the corners
+ * of its own coverage. Estimated from the homographies: it explains, it does
+ * not measure. */
+export const Inset: React.FC<{ geometry: Geometry; extent: [number, number]; boxes: Boxes; height?: number }> = ({ geometry, extent, boxes, height = 190 }) => {
   const pts = Object.entries(geometry.stations);
   if (!pts.length) return null;
   const [w, h] = extent;
@@ -30,6 +31,10 @@ export const Inset: React.FC<{ geometry: Geometry; extent: [number, number]; hei
     return [pad + (u - minX) * k, pad + (v - minY) * k] as [number, number];
   };
   const floor = [P(0, 0), P(w, 0), P(w, h), P(0, h)];
+  const corners = (s: string) => {
+    const r = boxes.find((b) => b.index === Number(s))?.rect;
+    return r ? [P(r[0], r[1]), P(r[2], r[1]), P(r[2], r[3]), P(r[0], r[3])] : [];
+  };
   return (
     <svg viewBox={`0 0 ${width} ${height}`} className="inset" role="img" aria-label="Where the stations stand, estimated" data-testid="inset" style={{ display: "block", width: "100%", height: "auto", borderRadius: 8, background: "var(--canvas)", border: "1px solid var(--hairline)" }}>
       <polygon points={floor.map((p) => p.join(",")).join(" ")} fill="color-mix(in srgb, var(--text) 6%, transparent)" stroke="var(--muted)" strokeWidth={1} />
@@ -42,7 +47,8 @@ export const Inset: React.FC<{ geometry: Geometry; extent: [number, number]; hei
         const foot = P(p.x_mm, p.y_mm, 0);
         return (
           <g key={s}>
-            {floor.map((c, i) => (
+            {corners(s).length > 0 && <polygon points={corners(s).map((c) => c.join(",")).join(" ")} fill={hue} fillOpacity={0.14} stroke={hue} strokeOpacity={0.6} strokeWidth={0.8} />}
+            {corners(s).map((c, i) => (
               <line key={i} x1={top[0]} y1={top[1]} x2={c[0]} y2={c[1]} stroke={hue} strokeOpacity={0.35} strokeWidth={1} />
             ))}
             <line x1={foot[0]} y1={foot[1]} x2={top[0]} y2={top[1]} stroke={hue} strokeDasharray="3 3" strokeWidth={1.2} />

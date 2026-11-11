@@ -16,6 +16,9 @@ export const KIND_KEY: Record<EditKind, string> = {
   stations: "5",
 };
 
+/** Present the room, full screen, and back to editing. */
+export const PRESENT_KEY = "F";
+
 export type Tool =
   | "select"
   | "area"
@@ -53,6 +56,7 @@ export function editorKeys(): Set<string> {
   const keys = new Set<string>(Object.values(KIND_KEY));
   for (const tools of Object.values(TOOLS)) for (const k of Object.keys(tools)) keys.add(k);
   for (const k of Object.values(SHARED_KEY)) keys.add(k);
+  keys.add(PRESENT_KEY);
   keys.add("Delete");
   keys.add("Backspace");
   return keys;
@@ -121,6 +125,7 @@ export const EDITOR_SHORTCUTS: ShortcutGroup[] = [
       { keys: ["arrows"], does: "Nudge the selection or a picked edge 10 mm (Alt 1, Shift 100)" },
       { keys: ["Escape"], does: "Back to View; cancels a drawing, never commits it" },
       { keys: ["1 to 5"], does: "Floor, Areas, Walls, Objects, Stations" },
+      { keys: [PRESENT_KEY], does: "Present the room in 3D, and back (Esc leaves too)" },
       { keys: ["Delete"], does: "Delete the selection" },
     ],
   },

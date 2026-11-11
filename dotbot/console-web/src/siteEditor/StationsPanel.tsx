@@ -1,11 +1,11 @@
 import React from "react";
 
 import { Badge } from "../shared/Badge";
-import { fixtureAgreement, handover, moved, share, splitFloor, type Boxes, type Coverage } from "./coverage";
+import { coverageSay, fixtureAgreement, SPLIT_TIP, handover, moved, share, type Boxes, type Coverage, type Geometry } from "./coverage";
 import { KV, NumField, Sec } from "./fields";
 import { Icon } from "./icons";
 import { Inset } from "./Inset";
-import { coverageText, nameOf } from "./library";
+import { nameOf } from "./library";
 import type { LibraryRow, Rect } from "./types";
 
 // The right pane in the Stations kind: the station strip, coverage, the
@@ -35,8 +35,12 @@ export interface StationsPanelProps {
   onSelectBox: (index: number | null) => void;
   showNext: boolean;
   onShowNext: (on: boolean) => void;
-  /** The drafted coverage in one line, as Save would write it; null until known. */
-  reading: string | null;
+  /** The coverage of the calibration in use, to say a draft against; null with none. */
+  inUse: Boxes | null;
+  /** Where the stations stand, in the frame the plan draws. */
+  geometry?: Geometry | null;
+  /** Splits the floor between the two stations at the best line, as a draft. */
+  onSplit: () => void;
 }
 
 const boxText = (r: Rect, extent: [number, number]) =>
@@ -78,12 +82,9 @@ const Rule: React.FC<{ boxes: Boxes; coverage: Coverage | null }> = ({ boxes, co
 export const StationsPanel: React.FC<StationsPanelProps> = (props) => {
   const { shown, boxes, coverage, extent, editable } = props;
   const m = moved(shown, props.rows);
-  const geometry = coverage?.geometry ?? shown?.geometry ?? null;
+  const geometry = props.geometry ?? coverage?.geometry ?? shown?.geometry ?? null;
   const rectsNow = Object.fromEntries(boxes.map((b) => [b.index, b.rect])) as Record<number, Rect>;
-  const split =
-    boxes.length === 2 && editable
-      ? () => props.onBoxes(splitFloor(extent, geometry, [boxes[0].index, boxes[1].index]))
-      : null;
+  const split = boxes.length === 2 && editable ? props.onSplit : null;
 
   if (!shown) {
     return (
@@ -154,8 +155,8 @@ export const StationsPanel: React.FC<StationsPanelProps> = (props) => {
               Cover the whole floor
             </button>
             {other && (
-              <button type="button" className="btn sm" onClick={() => props.onBoxes(splitFloor(extent, geometry, [sel.index, other.index]))}>
-                Add a handover with S{other.index}
+              <button type="button" className="btn sm" onClick={props.onSplit} title={SPLIT_TIP}>
+                Split the floor at the best line
               </button>
             )}
           </div>
@@ -193,6 +194,7 @@ export const StationsPanel: React.FC<StationsPanelProps> = (props) => {
   const h = coverage?.headline;
   const limit = coverage?.limit_mm ?? 2;
   const shared = boxes.length === 2 && boxes[0].rect.join() === boxes[1].rect.join();
+  const said = coverageSay(boxes, props.inUse);
   return (
     <div data-testid="stations-panel">
       <div className="ins-h">
@@ -254,15 +256,15 @@ export const StationsPanel: React.FC<StationsPanelProps> = (props) => {
       </div>
       <div className={`callout ${shared ? "warn" : "ok"}`} style={{ marginTop: 12 }} data-testid="coverage-card">
         <div className="h">
-          <Icon name={shared ? "warn" : "check"} size={14} /> {shared ? "Both stations cover the whole floor, no handover" : coverageText(props.reading ?? shown.reading)}
+          <Icon name={shared ? "warn" : "check"} size={14} /> {said.text.charAt(0).toUpperCase() + said.text.slice(1)}
         </div>
         {shared ? (
           <>
             Robots pick whichever station's position lands closer to the centre, so the two can flicker. A handover gives each station its own side.
             {editable && split && (
               <div className="acts">
-                <button type="button" className="btn sm primary" onClick={split} data-testid="split-floor">
-                  Add a handover…
+                <button type="button" className="btn sm primary" onClick={split} data-testid="split-floor" title={SPLIT_TIP}>
+                  Split the floor at the best line
                 </button>
               </div>
             )}
@@ -298,7 +300,7 @@ export const StationsPanel: React.FC<StationsPanelProps> = (props) => {
       )}
       {geometry && (
         <Sec title="Where the stations stand" aside={<Badge tone="unknown">estimated</Badge>}>
-          <Inset geometry={geometry} extent={extent} />
+          <Inset geometry={geometry} extent={extent} boxes={boxes} />
           <div className="note" style={{ marginTop: 6 }}>
             Worked out from the calibration (about ±10 cm, {Object.values(geometry.stations).map((p) => `${Math.abs(p.off_square_deg).toFixed(0)}°`).join(" and ")} off square): not a tape measurement.
           </div>
