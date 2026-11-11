@@ -114,7 +114,7 @@ flag.
 The console runs the same spin without a terminal: its Localization tab spins
 the selected robots (or every robot on the `calibrate-spin` app), shows each
 robot's reads arriving and what the solve kept and left out, and hands the
-result to the [site editor](site-editor.md#a-new-room) to place in the room.
+result to the [site editor](site-editor.md#a-new-site) to place in the site.
 It does not flash: robots on another app are named, and the spin refuses
 until they run `calibrate-spin`.
 

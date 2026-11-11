@@ -1,11 +1,26 @@
 # The site editor
 
-The site editor is where a room is set up and checked: its floor, origin, areas,
-walls and objects, which LH2 calibration the controller uses, which station
-covers which part of the floor and how far off a position may be. It writes
+The site editor is where a site is set up and checked: its extent, origin,
+areas, walls and objects, which LH2 calibration the controller uses, which
+station covers which part of the extent and how far off a position may be. It writes
 the site pack's `site.toml` and calibration files, and it never moves a robot.
 Everything it does has a CLI twin, which it names where it matters, so a
 script or an agent can do the same thing.
+
+## Words
+
+The page uses the words of `site.toml` and the calibration file:
+
+| Key | On the page | What it is |
+|---|---|---|
+| `site` | **Site** | the site's name, in the header |
+| `extent_mm` | **Extent** | the rectangle positions are measured in; its top-left corner is the **origin**, (0, 0) |
+| `frame` | **Frame** | the id of the coordinate system, shown under the Extent inspector |
+| `anchor`, `[[anchor_spots]]` | **Anchor** | how the frame is tied to the floor |
+| `areas` | **Areas** | named rectangles; `field` is one area's name |
+| `[[station]]` | **Stations** | S0, S1... |
+| `coverage_mm` | **Coverage** | where robots may use a station; where two overlap is the **handover**: the band where both are allowed, the line where robots switch |
+| `tag` | **Tag** | a calibration's name in lists and the status line |
 
 ## Open it
 
@@ -35,14 +50,14 @@ three states (good, needs you, cannot tell) with one action. A row whose
 data is missing, such as which calibration the robots have when the fleet
 sends no device info, is "cannot tell", never a pass and never a failure.
 
-- **This room**: the floor, the origin (verified with a robot or not), the
+- **This site**: the extent, the origin (verified with a robot or not), the
   stations (fit, and whether they look moved since the other spins of this
-  room), coverage (where the handover is), accuracy against the site's limit,
+  site), coverage (where the handover is), accuracy against the site's limit,
   the field and staging.
 - **Before a run**: the robots (how many have the calibration in use) and
   the last verification with a robot on a measured spot.
 
-**More** holds chargers and walls, **Present** (the status and the Room view,
+**More** holds chargers and walls, **Present** (the status and the site in 3D,
 large, for a projector; Esc leaves it), **Copy setup summary** (a block for
 an experiment log: site, frame id, calibration in use, fit, accuracy, the
 last verification, and the date; `dotbot swarm calibrate-lh2 show` prints
@@ -53,14 +68,14 @@ under a name ("Monday class"); restoring one puts both back. The last 20
 saved versions of `site.toml` are listed under them, each restorable, so any
 Save can be undone.
 
-## Edit the room
+## Edit the site
 
-The top of the plan picks what you edit: **Floor** (its size and the origin),
-**Areas**, **Walls**, **Objects** and **Stations**. Click to select,
-Shift-click or drag a box to select several, drag to move, drag a handle to
+The top of the plan picks what you edit: **Extent** (its size and the origin),
+**Stations**, **Anchor**, **Areas**, **Walls** and **Objects**. Click to select,
+Shift-click or drag a rectangle to select several, drag to move, drag a handle to
 resize, arrows to nudge; numbers can be typed in the inspector on the right
-in mm, cm or m. **Room** draws the same room as a twin: the stations on poles
-at their estimated heights, coverage tinted on the floor with the handover
+in mm, cm or m. The 3D view draws the same site as a twin: the stations on poles
+at their estimated heights, coverage tinted on the extent with the handover
 line, the areas and the robots; drag to orbit it. **Table** lists everything
 as rows, **File** shows `site.toml` as Save will write it, and can be edited
 there. `?` lists the shortcuts.
@@ -70,13 +85,13 @@ staging apart, names unique. **Save** shows what changes, line by line, then
 writes `site.toml` (and, for edited coverage, a new calibration file). It
 never touches a robot. A draft not yet saved is kept in this browser until you
 save or discard it (**Discard unsaved changes** in the ⋯ menu); another tab of
-the same room shows it too, and a reload re-applies it on top of a file that
+the same site shows it too, and a reload re-applies it on top of a file that
 changed meanwhile, keeping any text it could not re-apply for copying.
 
 ## Calibrations: use, send, verify
 
-**Calibrations** in the left pane lists this room's LH2 calibration files by
-name, grouped by the measurement they came from. A row shows its coverage on
+**Calibrations** in the left pane lists this site's LH2 calibration files by
+tag, grouped by the measurement they came from. A row shows its coverage on
 the plan, compares with another file, renames it (the id never changes), or
 archives it (moved into `archived/`, still found by its full id). Archiving or
 renaming a file the controller's config or a snapshot names asks first. Files
@@ -87,7 +102,7 @@ files, not hidden.
 after a restart, if you tick it: written to the controller's config), it is
 sent to the robots you tick (a robot takes a calibration in its bootloader,
 so a running app stops; robots that send no device info cannot be ticked),
-and a verification is offered after. It refuses a file not in this room, and
+and a verification is offered after. It refuses a file not placed in this site, and
 refuses to switch when the controller changed meanwhile, showing what it uses
 now. Robots not sent to keep what they have.
 
@@ -95,22 +110,22 @@ now. Robots not sent to keep what they have.
 
 The Stations kind draws **coverage**: which station a robot uses where, by
 the robots' own rule, with the **handover** line between them; and
-**accuracy**, the predicted error of the station used across the floor,
+**accuracy**, the predicted error of the station used across the extent,
 against the site's `lh2_error_limit_mm` (2 mm by default). The probe (I)
 reads both at any point. A coverage edge or the handover can be dragged
-(**Add a handover** splits the floor when both stations cover all of it);
+(**Add a handover** splits the extent when both stations cover all of it);
 Save writes the result as a new calibration file and the original is kept. The
 panel shows where the stations stand, estimated from the calibration, and
-their heights; a spin that disagrees with this room's other spins is flagged
+their heights; a spin that disagrees with this site's other spins is flagged
 "Moved?". The rule robots follow is under "How robots choose a station, in
 detail".
 
 ## The origin
 
-The Floor kind moves the origin, with **Turn or shift** (T) or **From robots**
-(C): put robots on spots you measured from where the origin should be, type
+The Extent kind moves the origin, with **Turn or shift** (T), and the
+Anchor kind ties the frame to the floor: put robots on spots you measured from where the origin should be, type
 where each stands (one spot sets the origin, two set the turn as well, more
-check each other), then drag the plan to carry the room over the dots (hold
+check each other), then drag the plan to carry the extent over the dots (hold
 Alt or Shift as you press to turn it) or nudge with the arrows until the dots
 sit on their spots, and apply. The plan hatches where the origin may not go: robots report
 unsigned millimetres, so every measured point must stay right of and below
@@ -130,25 +145,25 @@ the setup summary name the last one. A robot that cannot say which
 calibration it has can still be read; that check is recorded as unverified
 and does not turn the origin green.
 
-## A new room
+## A new site
 
-With no site pack yet, the editor opens on **A new room**; from any site,
+With no site pack yet, the editor opens on **A new site**; from any site,
 **New site…** in the ⋯ menu does the same.
 
-1. **Name the room** (up to 16 letters, digits, `-` and `_`, since robots
-   receive the name) and say where the origin is. Start from an empty floor, a floor
+1. **Name the site** (up to 16 letters, digits, `-` and `_`, since robots
+   receive the name) and say where the origin is. Start from an empty extent, an extent
    of a known size, or a spin calibration already done. The controller
    switches to the new site at once; **Switch site…** goes back.
-2. **Mount two stations** at opposite corners, outside the floor, high enough
-   to see all of it; the plan shows where once the floor's size is known.
+2. **Mount two stations** at opposite corners, outside the extent, high enough
+   to see all of it; the plan shows where once the extent is known.
 3. **Spin robots in the console**: its Localization tab spins the robots
    where they stand (they must run the calibrate-spin app) and saves a
    calibration in its own frame. The editor follows the spin as it runs.
-4. **Put it in the room**: round the robots as they stood, from two robots
+4. **Place it in the site**: round the robots as they stood, from two robots
    that spun on measured spots (type where each is; the page checks the
    tape against the spin), or from a typed turn and shift. **Save and use**
-   writes `site.toml` with the floor and field proposed from the spins, then
-   the calibration placed in the room, then uses it.
+   writes `site.toml` with the extent and field proposed from the spins, then
+   the calibration placed in the site, then uses it.
 5. Send it to the robots, then verify it with a robot on a measured spot.
 
 The CLI path is the same steps: `dotbot swarm calibrate-lh2 collect --spin`,
