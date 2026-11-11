@@ -9,7 +9,7 @@ import type { EditKind } from "./keys";
 import type { Doc, DocArea, DocBarrier, DocObject, ObjectKind } from "./model";
 import { arranged, ARRANGE_LABEL, removed, type Arrange } from "./plan";
 import { heldBy, heldText, tail, whereItStands } from "./robots";
-import { AREA_NAME, roleOf, type Problem } from "./rules";
+import { areaArg, roleOf, type Problem } from "./rules";
 import { coverageText, nameOf } from "./library";
 import type { LibraryRow, Rect } from "./types";
 
@@ -245,7 +245,7 @@ export const Inspector: React.FC<InspectorProps> = (props) => {
           <pre>{areaToml(area)}</pre>
         </div>
         <div className="note" style={{ marginTop: 10 }}>
-          Names are API: scripts, --area {AREA_NAME.test(area.name) ? area.name : "NAME"} and camera stills find it by name. Moving it keeps them; renaming breaks them.
+          Names are API: scripts, --area {areaArg(area.name)} and camera stills find it by name. Moving it keeps them; renaming breaks them.
         </div>
         <div className="acts">{del([area.key])}</div>
       </div>

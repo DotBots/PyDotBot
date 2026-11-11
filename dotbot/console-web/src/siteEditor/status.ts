@@ -66,7 +66,11 @@ export function reasonOf(context: EditorContext, label: (spec: string) => string
   const s = context.served;
   if (!s) return "The controller uses no calibration: robots keep whatever they hold.";
   if (s.source.startsWith("the site editor")) {
-    return s.source.endsWith("for this run") ? `Chosen here, until the controller restarts; then it starts with ${label(restartOf(context))}.` : "Chosen here, and kept for the next start.";
+    if (!s.source.endsWith("for this run")) return "Chosen here, and kept for the next start.";
+    const after = restartOf(context);
+    // A restart that starts with this same calibration takes nothing back
+    const same = after !== "none" && (after === s.spec || s.id.startsWith(after) || (s.tag !== "" && after === s.tag));
+    return same ? "Chosen here; a restart starts with it too." : `Chosen here, until the controller restarts; then it starts with ${label(after)}.`;
   }
   const from = s.source === "the command line" ? "its command line" : "its config";
   const next = context.next_start;

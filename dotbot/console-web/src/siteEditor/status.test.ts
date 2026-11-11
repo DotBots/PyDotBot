@@ -64,6 +64,16 @@ describe("the status line", () => {
     expect(s.reason).toBe("Chosen here, until the controller restarts; then it starts with none.");
   });
 
+  it("does not say a restart goes back to the calibration it already uses", () => {
+    const s = statusOf({
+      context: context({ served: { id: SERVED_ID, id8: "4640cfde", tag: "r3", created_at: "", spec: "4640cfde", source: "the site editor, for this run" }, next_start: { spec: "4640cfde", source: "dotbot.toml" } }),
+      bots: [],
+      looking: null,
+      unsaved: 0,
+    });
+    expect(s.reason).toBe("Chosen here; a restart starts with it too.");
+  });
+
   it("keeps the calibration in use first while looking at another", () => {
     const s = statusOf({ context: context(), bots: [], looking: row("a1b41f12", "inria-hil-handover"), unsaved: 0 });
     expect(s.name).toBe("inria-hil-r3");

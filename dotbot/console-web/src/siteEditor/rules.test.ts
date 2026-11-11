@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { docFromSite } from "./model";
-import { problems } from "./rules";
+import { areaArg, problems } from "./rules";
 
 const ROOM = (staging: { x: number; y: number; w: number; h: number }) =>
   docFromSite({
@@ -62,8 +62,27 @@ describe("area names and a staging corner", () => {
         { name: "staging", x: 800, y: 900, w: 400, h: 300 },
       ],
     });
-    const fix = problems(doc)[0].fixes.find((f) => f.label.startsWith("Shrink"))!;
-    expect(fix.label).toBe("Shrink the field to 1000 × 900");
-    expect(problems(fix.doc)).toEqual([]);
+    const fixes = problems(doc)[0].fixes.filter((f) => f.label.startsWith("Shrink"));
+    expect(fixes.map((f) => f.label)).toEqual(["Shrink the staging to 400 × 200", "Shrink the field to 1000 × 900"]);
+    for (const f of fixes) expect(problems(f.doc)).toEqual([]);
+  });
+
+  it("gives up the small corner square rather than a strip of the field", () => {
+    const doc = docFromSite({
+      anchor: "x",
+      extent_mm: [3000, 2000],
+      areas: [
+        { name: "field", x: 0, y: 0, w: 3000, h: 2000 },
+        { name: "staging", x: 2800, y: 1800, w: 300, h: 300 },
+      ],
+    });
+    const [first] = problems(doc)[0].fixes;
+    expect(first.label).toBe("Shrink the staging to 300 × 100");
+    expect(first.note).toContain("the field stays whole");
+  });
+
+  it("quotes a name the shell would split when it says --area", () => {
+    expect(areaArg("field")).toBe("field");
+    expect(areaArg("Parking Zone!")).toBe("'Parking Zone!'");
   });
 });

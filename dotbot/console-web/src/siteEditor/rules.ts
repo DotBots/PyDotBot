@@ -44,7 +44,7 @@ function splitFixes(doc: Doc, field: DocArea, staging: DocArea): Fix[] {
   const fixes: Fix[] = [];
   const spansWidth = staging.x <= field.x && staging.x + staging.w >= field.x + field.w;
   const spansHeight = staging.y <= field.y && staging.y + staging.h >= field.y + field.h;
-  const scripts = `Shrinking it changes what scripts using --area ${field.name} get.`;
+  const scripts = `Shrinking it changes what scripts using --area ${areaArg(field.name)} get.`;
   if (spansWidth && staging.y > field.y) {
     const h = staging.y - field.y;
     fixes.push({ label: `Shrink the field to ${field.w} × ${h}`, note: scripts, doc: withArea(doc, field.key, { h }) });
@@ -68,10 +68,21 @@ function splitFixes(doc: Doc, field: DocArea, staging: DocArea): Fix[] {
     if (staging.x > field.x) cuts.push({ area: field.h * (staging.x - field.x), patch: { w: staging.x - field.x }, size: `${staging.x - field.x} × ${field.h}` });
     if (staging.x + staging.w < fx1) cuts.push({ area: field.h * (fx1 - staging.x - staging.w), patch: { x: staging.x + staging.w, w: fx1 - staging.x - staging.w }, size: `${fx1 - staging.x - staging.w} × ${field.h}` });
     const best = cuts.sort((a, b) => b.area - a.area)[0];
-    if (best) {
-      const lost = field.w * field.h - best.area;
-      fixes.push({ label: `Shrink the field to ${best.size}`, note: `It gives up ${Math.round(lost / 1000) / 1000} m² along the side the staging meets. ${scripts}`, doc: withArea(doc, field.key, best.patch) });
-    }
+    const lost = best ? field.w * field.h - best.area : Infinity;
+    // A staging that only clips the field's corner gives up less of itself than the field would
+    const sy1 = staging.y + staging.h;
+    const sx1 = staging.x + staging.w;
+    const own: { area: number; patch: Partial<DocArea>; size: string }[] = [];
+    if (staging.y < field.y) own.push({ area: staging.w * (field.y - staging.y), patch: { h: field.y - staging.y }, size: `${staging.w} × ${field.y - staging.y}` });
+    if (sy1 > fy1) own.push({ area: staging.w * (sy1 - fy1), patch: { y: fy1, h: sy1 - fy1 }, size: `${staging.w} × ${sy1 - fy1}` });
+    if (staging.x < field.x) own.push({ area: staging.h * (field.x - staging.x), patch: { w: field.x - staging.x }, size: `${field.x - staging.x} × ${staging.h}` });
+    if (sx1 > fx1) own.push({ area: staging.h * (sx1 - fx1), patch: { x: fx1, w: sx1 - fx1 }, size: `${sx1 - fx1} × ${staging.h}` });
+    const mine = own.sort((a, b) => b.area - a.area)[0];
+    const given = mine ? staging.w * staging.h - mine.area : Infinity;
+    const m2 = (mm2: number) => Math.round(mm2 / 1000) / 1000;
+    const shrinkStaging = mine && { label: `Shrink the staging to ${mine.size}`, note: `It gives up ${m2(given)} m² of the staging; the field stays whole.`, doc: withArea(doc, staging.key, mine.patch) };
+    const shrinkField = best && { label: `Shrink the field to ${best.size}`, note: `It gives up ${m2(lost)} m² along the side the staging meets. ${scripts}`, doc: withArea(doc, field.key, best.patch) };
+    for (const f of given < lost ? [shrinkStaging, shrinkField] : [shrinkField, shrinkStaging]) if (f) fixes.push(f);
   }
   const ext = doc.extent_mm;
   if (ext) {
@@ -101,6 +112,9 @@ function splitFixes(doc: Doc, field: DocArea, staging: DocArea): Fix[] {
 
 /** What an area may be called: a word scripts can pass to --area unquoted. */
 export const AREA_NAME = /^[A-Za-z0-9_-]+(\+[A-Za-z0-9_-]+)*$/;
+
+/** An area's name as typed after --area: quoted for the shell unless it is a plain word. */
+export const areaArg = (name: string) => (AREA_NAME.test(name) ? name : `'${name.replace(/'/g, "'\\''")}'`);
 
 /** Every rule the draft breaks, with what would fix it. */
 export function problems(doc: Doc): Problem[] {
