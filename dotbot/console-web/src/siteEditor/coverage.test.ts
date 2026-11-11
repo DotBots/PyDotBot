@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { bestSplit, contours, coverageSay, fixtureAgreement, handover, layoutText, moved, movedHandover, share, splitFloor, type Coverage } from "./coverage";
+import { bestSplit, contours, coverageSay, fixtureAgreement, handover, layoutText, moved, movedHandover, overlapBand, share, splitFloor, switchLabel, type Coverage } from "./coverage";
 import type { LibraryRow } from "./types";
 
 const GEOMETRY = {
@@ -17,6 +17,9 @@ describe("the Stations kind's drawing", () => {
     expect(handover([0, 0, 630, 1220], [430, 0, 1060, 1220])?.label).toBe("handover x 530 mm");
     expect(handover([0, 0, 1060, 1220], [0, 0, 1060, 1220])).toBeNull();
     expect(handover([0, 0, 300, 1220], [500, 0, 1060, 1220])).toBeNull();
+    expect(switchLabel(handover([0, 0, 630, 1220], [430, 0, 1060, 1220])!)).toBe("switches here · x 530 mm");
+    expect(overlapBand([0, 0, 630, 1220], [430, 0, 1060, 1220])).toEqual([430, 0, 630, 1220]);
+    expect(overlapBand([0, 0, 300, 1220], [500, 0, 1060, 1220])).toBeNull();
   });
 
   it("splits the floor with S0 on its own side and 200 mm of overlap", () => {

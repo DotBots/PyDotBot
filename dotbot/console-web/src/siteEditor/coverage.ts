@@ -182,6 +182,15 @@ export function handover(a: Rect, b: Rect): { from: [number, number]; to: [numbe
   return { from: [m[0] + t0 * dir[0], m[1] + t0 * dir[1]], to: [m[0] + t1 * dir[0], m[1] + t1 * dir[1]], label: "handover" };
 }
 
+/** The handover line's label on the map: "switches here · x 530 mm". */
+export const switchLabel = (line: { label: string }) => (line.label === "handover" ? "switches here" : line.label.replace(/^handover /, "switches here · "));
+
+/** Where two coverages overlap, both stations allowed, or null when they do not. */
+export function overlapBand(a: Rect, b: Rect): Rect | null {
+  const r: Rect = [Math.max(a[0], b[0]), Math.max(a[1], b[1]), Math.min(a[2], b[2]), Math.min(a[3], b[3])];
+  return r[2] > r[0] && r[3] > r[1] ? r : null;
+}
+
 /** The share of `extent` where `station` alone gives the fix. */
 export function share(boxes: Boxes, extent: [number, number], station: number, cells = 40): number {
   const rects = asRects(boxes);

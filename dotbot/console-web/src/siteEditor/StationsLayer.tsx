@@ -1,6 +1,6 @@
 import React from "react";
 
-import { contours, fixImage, fogImage, handover, sample, type Boxes, type Coverage } from "./coverage";
+import { contours, fixImage, fogImage, handover, overlapBand, sample, switchLabel, type Boxes, type Coverage } from "./coverage";
 import type { Point } from "./model";
 import type { PlanPaint } from "./PlanCanvas";
 import { candidates } from "./stationRule";
@@ -86,27 +86,59 @@ export function stationsUnderlay(mode: CoverageMode, coverage: Coverage | null, 
   };
 }
 
-/** `flash` remounts the handover line with a one-shot highlight when it changes. */
-export function stationsOverlay(coverage: Coverage | null, showNext: boolean, probe: Point | null, flash = 0) {
+type Box = [number, number, number, number];
+const hits = (a: Box, b: Box) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
+
+/** Where two coverages meet: the band both are allowed in, labelled, and the
+ * dashed line robots switch at, labelled with where. Each label takes the
+ * first of a few spots along its band or line that no robot or label covers.
+ * `flash` remounts the line with a one-shot highlight when it changes. */
+export function coverageLabels(robots: Point[], flash = 0) {
   return (p: PlanPaint, boxes: Boxes) => {
     const line = boxes.length === 2 ? handover(boxes[0].rect, boxes[1].rect) : null;
+    const band = line ? overlapBand(boxes[0].rect, boxes[1].rect) : null;
+    if (!line || !band) return null;
+    const size = 10.5 * p.label;
+    const taken: Box[] = robots.map((r) => {
+      const [x, y] = p.px(r);
+      const k = Math.max(p.pxLen(70), 12 * p.chrome);
+      return [x - k, y - k, x + k, y + k];
+    });
+    const place = (w: number, at: Point[]): Point => {
+      const box = ([x, y]: Point): Box => [x - w / 2, y - size, x + w / 2, y + size * 0.4];
+      const free = at.find((q) => !taken.some((t) => hits(box(q), t))) ?? at[0];
+      taken.push(box(free));
+      return free;
+    };
+    const [a, b] = p.px(line.from);
+    const [c, d] = p.px(line.to);
+    const said = switchLabel(line);
+    const lw = said.length * 6.1 * p.label + 14 * p.chrome;
+    const along = (t: number): Point => [a + (c - a) * t, b + (d - b) * t];
+    const at = place(lw, [0.08, 0.92, 0.3, 0.7, 0.5].map((t) => along(t)).map(([x, y]) => [x, y + 4 * p.chrome] as Point));
+    const [b0x, b0y] = p.px([band[0], band[1]]);
+    const [b1x, b1y] = p.px([band[2], band[3]]);
+    const bw = 12 * 6.1 * p.label;
+    const bandAt = place(bw, [0.2, 0.8, 0.5, 0.35, 0.65].map((t) => [(b0x + b1x) / 2, b0y + (b1y - b0y) * t] as Point));
+    return (
+      <g data-testid="handover" key={`handover-${flash}`} className={flash ? "flash" : undefined} style={{ pointerEvents: "none" }}>
+        <line x1={a} y1={b} x2={c} y2={d} stroke="var(--text)" strokeWidth={1.6 * p.chrome} strokeDasharray={`${6 * p.chrome} ${4 * p.chrome}`} />
+        <text data-testid="band-label" className="tl halo" x={bandAt[0]} y={bandAt[1]} fontSize={size} textAnchor="middle" strokeWidth={3 * p.chrome}>
+          both allowed
+        </text>
+        <rect x={at[0] - lw / 2} y={at[1] - size * 1.15} width={lw} height={size * 1.6} rx={4 * p.chrome} fill="var(--surface)" stroke="var(--hairline)" strokeWidth={p.chrome} />
+        <text data-testid="switch-label" x={at[0]} y={at[1]} fontSize={size} textAnchor="middle" fill="var(--text)" fontFamily="var(--font-mono)" fontWeight={600}>
+          {said}
+        </text>
+      </g>
+    );
+  };
+}
+
+export function stationsOverlay(coverage: Coverage | null, showNext: boolean, probe: Point | null) {
+  return (p: PlanPaint) => {
     return (
       <g style={{ pointerEvents: "none" }}>
-        {line &&
-          (() => {
-            const [a, b] = p.px(line.from);
-            const [c, d] = p.px(line.to);
-            const w = line.label.length * 6.2 + 14;
-            return (
-              <g data-testid="handover" key={`handover-${flash}`} className={flash ? "flash" : undefined}>
-                <line x1={a} y1={b} x2={c} y2={d} stroke="var(--text)" strokeWidth={1.4 * p.chrome} strokeDasharray={`${5 * p.chrome} ${4 * p.chrome}`} />
-                <rect x={a - (w / 2) * p.chrome} y={b + 10 * p.chrome} width={w * p.chrome} height={17 * p.chrome} rx={4 * p.chrome} fill="var(--surface)" stroke="var(--hairline)" strokeWidth={p.chrome} />
-                <text x={a} y={b + 22 * p.chrome} fontSize={10.5 * p.label} textAnchor="middle" fill="var(--text)" fontFamily="var(--font-mono)" fontWeight={600}>
-                  {line.label}
-                </text>
-              </g>
-            );
-          })()}
         {showNext &&
           coverage?.next.map((n, i) => {
             const [x, y] = p.px([n.x, n.y]);

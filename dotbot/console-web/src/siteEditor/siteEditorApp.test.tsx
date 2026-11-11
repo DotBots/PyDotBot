@@ -500,8 +500,12 @@ describe("the one map", () => {
     await waitFor(() => expect(screen.getByTestId("plan")).toBeTruthy());
     expect(screen.getByTestId("goal-stations-coverage").textContent).toContain("handover at x 530 mm · not in use yet (in use: both cover the whole floor)");
     expect(screen.getByTestId("coverage-card").textContent).toContain("Handover at x 530 mm · not in use yet");
+    expect(screen.getByTestId("switch-label").textContent).toBe("switches here · x 530 mm");
+    expect(screen.getByTestId("band-label").textContent).toBe("both allowed");
     fireEvent.click(screen.getByTestId("done-editing"));
     await waitFor(() => expect(screen.getByTestId("room-handover")).toBeTruthy());
+    expect(screen.getByTestId("room-label-handover").textContent).toBe("switches here · x 530 mm");
+    expect(screen.getByTestId("room-label-band").textContent).toBe("both allowed");
     expect(screen.getByTestId("room-coverage-note").textContent).toBe("handover at x 530 mm · not in use yet (in use: both cover the whole floor)");
     fireEvent.click(screen.getByTestId("notice-act"));
     await waitFor(() => expect(screen.getByTestId("goal-stations-coverage").textContent).toContain("robots pick the closer fix"));

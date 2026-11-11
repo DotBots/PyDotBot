@@ -62,7 +62,7 @@ import { ReviewSheet } from "./ReviewSheet";
 import { HOME, MapPresets, presetOf, RoomView } from "./RoomView";
 import { FIT, planCamFromRoom, planViewport, roomFit, roomZoomFromPlan, TOP_DOWN, turn, zoomAt, type Insets, type RoomCam, type Size, type Zoom } from "./mapView";
 import type { Camera } from "../zoom";
-import { Readout, StationsLegend, stationsOverlay, stationsUnderlay } from "./StationsLayer";
+import { coverageLabels, Readout, StationsLegend, stationsOverlay, stationsUnderlay } from "./StationsLayer";
 import { StationsPanel, type CoverageMode } from "./StationsPanel";
 import { problems as rulesOf } from "./rules";
 import { TableView, type TableTab } from "./TableView";
@@ -1467,6 +1467,18 @@ export const SiteEditorApp: React.FC = () => {
   );
 
   const tools = Object.entries(TOOLS[kind]) as [string, Tool][];
+  // The band two coverages share and the line robots switch at, labelled, in View and Stations
+  const robotSpots: Point[] = bots.filter((b) => b.position).map((b) => [b.position!.x, b.position!.y]);
+  const showCoverage = layers.boxes && boxes.length === 2 && (kind === "view" || kind === "stations") && !(newRoom && placePreview);
+  const withCoverage = (o: ((p: PlanPaint, b: { index: number; rect: Rect }[]) => React.ReactNode) | undefined) =>
+    showCoverage
+      ? (p: PlanPaint, b: { index: number; rect: Rect }[]) => (
+          <>
+            {coverageLabels(robotSpots, flash)(p, b)}
+            {o?.(p, b)}
+          </>
+        )
+      : o;
   const leftProblems = blocking.length;
 
   return (
@@ -1747,13 +1759,13 @@ export const SiteEditorApp: React.FC = () => {
                 onBoxEdit={shown?.in_frame ? (index, rect) => editBoxes({ [index]: rect }) : undefined}
                 onBoxesEdit={shown?.in_frame && editable ? (rects) => editBoxes(rects) : undefined}
                 underlay={kind === "stations" ? stationsUnderlay(coverageMode, coverage && coverage.id === shown?.id ? coverage : null, draft.doc.extent_mm ?? [1000, 1000], theme === "light", coverageStale) : undefined}
-                overlay={
+                overlay={withCoverage(
                   newRoom && placePreview
                     ? placeOverlay(placePreview)
                     : newRoom && draft.doc.extent_mm && !servedId
                       ? mountOverlay(draft.doc.extent_mm)
                       : kind === "stations"
-                    ? stationsOverlay(coverage && coverage.id === shown?.id ? coverage : null, showNext && coverageMode === "error", probe?.at ?? null, flash)
+                    ? stationsOverlay(coverage && coverage.id === shown?.id ? coverage : null, showNext && coverageMode === "error", probe?.at ?? null)
                     : anchorOpen
                       ? (p: PlanPaint) => (
                           <>
@@ -1763,8 +1775,8 @@ export const SiteEditorApp: React.FC = () => {
                         )
                       : kind === "frame" && tool === "turn" && !sameMove(frameMove, draft.frame?.move ?? null)
                         ? frameGhost(frameMove, draft.base.extent_mm ?? [1000, 1000], draft.frame?.move ?? null)
-                        : undefined
-                }
+                        : undefined,
+                )}
                 onProbe={(at, px) => setProbe(at && px ? { at, px } : null)}
                 onPoint={(p) => setFrameMove((m) => ({ ...m, pivot: draft.frame ? toOld(draft.frame.move, p) : p }))}
                 onFloorDrag={anchorOpen && anchors.length > 0 ? onFloorDrag : undefined}

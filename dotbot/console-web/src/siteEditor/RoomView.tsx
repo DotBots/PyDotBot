@@ -3,7 +3,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "re
 import { areaColor } from "../areaColor";
 import { heldCalibrationId } from "../botFacts";
 import type { UnifiedBot } from "../types";
-import { fogImage, handover, type Boxes, type Coverage, type Geometry } from "./coverage";
+import { fogImage, handover, overlapBand, switchLabel, type Boxes, type Coverage, type Geometry } from "./coverage";
 import type { Doc, Point } from "./model";
 import { lens, roomFit, roomProject, TOP_DOWN, turn, zoomAt, type Insets, type RoomCam, type Size, type Zoom } from "./mapView";
 import type { CoverageMode } from "./StationsPanel";
@@ -319,7 +319,9 @@ export const RoomView: React.FC<{
       obstacles.push([q[0] - 3, q[1] - 3, q[0] + 3, q[1] + 3]);
     }
     const at = P((line.from[0] + line.to[0]) / 2, (line.from[1] + line.to[1]) / 2);
-    text("handover", at, line.label.replace("handover ", "handover at "), 11 * f, 2, { must: true, bold: true, mono: true, gap: 8 });
+    text("handover", at, switchLabel(line), 11 * f, 2, { must: true, bold: true, mono: true, gap: 8 });
+    const band = two ? overlapBand(two[0].rect, two[1].rect) : null;
+    if (band) text("band", P((band[0] + band[2]) / 2, band[1] + (band[3] - band[1]) * 0.2), "both allowed", 10.5 * f, 2, { must: true, gap: 4 });
   }
 
   const robotR = 4.5 * f;
