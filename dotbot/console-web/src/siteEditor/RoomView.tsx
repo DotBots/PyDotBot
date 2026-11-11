@@ -645,10 +645,12 @@ export const MapPresets: React.FC<{
   cam: RoomCam | null;
   onPreset: (cam: RoomCam) => void;
   zoom?: { fit: boolean; onIn: () => void; onOut: () => void; onFit: () => void };
-}> = ({ cam, onPreset, zoom }) => {
+  /** On a second row, under the kinds bar, when the two do not fit side by side. */
+  below?: boolean;
+}> = ({ cam, onPreset, zoom, below }) => {
   const on = cam ? presetOf(cam) : "top";
   return (
-    <div className="float mapbar" data-testid="map-presets">
+    <div className={`float mapbar${below ? " below" : ""}`} data-testid="map-presets">
       <span className="seg presets" role="group" aria-label="View from">
         {PRESETS.map((p) => (
           <button

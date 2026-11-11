@@ -46,6 +46,7 @@ import { fetchOverlay } from "./api";
 import { mountOverlay, NewRoomPanel, placeOverlay, type PlacePreview } from "./NewRoomPanel";
 import { KV } from "./fields";
 import { FileView } from "./FileView";
+import { useFold } from "./fold";
 import { Icon, type IconName } from "./icons";
 import { Inspector } from "./Inspector";
 import { EDITOR_SHORTCUTS, KIND_KEY, KIND_LABEL, KINDS, keyAction, PRESENT_KEY, SHARED_KEY, TOOL_ICON, TOOL_LABEL, TOOLS, type EditKind, type Tool } from "./keys";
@@ -74,10 +75,17 @@ const sameContext = (a: EditorContext | null, b: EditorContext) => JSON.stringif
 /** Below these widths a pane folds into a rail of icons that opens it as a drawer. */
 export const LEFT_FOLD_PX = 1100;
 export const RIGHT_FOLD_PX = 980;
-/** Map widths under which the kinds bar drops its key numbers, then its labels;
- * a 1366 px window with both panes open keeps the labels. */
-export const KINDS_COMPACT_PX = 960;
-export const KINDS_TIGHT_PX = 740;
+/** The kinds bar's folds, by the room beside the view presets: the "Editing"
+ * label, then the key numbers, then the labels; at the last, the presets go
+ * to a second row. */
+export const KINDS_FOLDS = ["", "", " compact", " tight", " tight"] as const;
+export const KINDS_LAST = KINDS_FOLDS.length - 1;
+/** The title bar's folds, each dropping a little more; the status line
+ * shrinks first, down to its CSS min-width. */
+export const HEADER_LAST = 7;
+/** Space between the kinds bar and the view presets, and the map's margin, px. */
+const MAP_GAP = 8;
+const MAP_MARGIN = 12;
 /** How often the page checks whether site.toml changed on disk, ms. */
 export const FILE_POLL_MS = 2000;
 /** Where this browser keeps the last 3D camera. */
@@ -272,15 +280,41 @@ export const SiteEditorApp: React.FC = () => {
   });
   const [roomZoom, setRoomZoom] = useState<Zoom>(FIT);
   const [mapSize, setMapSize] = useState<Size>({ w: 900, h: 600 });
-  // The centre's width in every view, for the kinds bar; mapSize follows the 3D view only
-  const [centreW, setCentreW] = useState(900);
+  // The centre's width in every view, set only to measure the kinds bar again; mapSize follows the 3D view only
+  const [, setCentreW] = useState(900);
   const centreObserver = useRef<ResizeObserver | null>(null);
+  const centreEl = useRef<HTMLElement | null>(null);
   const centreRef = useCallback((el: HTMLElement | null) => {
+    centreEl.current = el;
     centreObserver.current?.disconnect();
     if (!el || typeof ResizeObserver === "undefined") return;
     centreObserver.current = new ResizeObserver(([e]) => setCentreW(e.contentRect.width));
     centreObserver.current.observe(el);
   }, []);
+  // The kinds bar and the title bar fold by what they measure, not by breakpoints
+  const kindsEl = useRef<HTMLDivElement | null>(null);
+  const kindsFold = useFold(KINDS_LAST, () => {
+    const main = centreEl.current;
+    const bar = kindsEl.current;
+    if (!main?.clientWidth || !bar?.offsetParent) return null;
+    const right = main.querySelector<HTMLElement>(":scope > .mapbar, :scope > .mapback");
+    const beside = right?.offsetWidth ?? 0;
+    const all = main.clientWidth - 2 * MAP_MARGIN;
+    return {
+      need: bar.scrollWidth + (bar.offsetWidth - bar.clientWidth),
+      roomAt: (l) => (l >= KINDS_LAST || !beside ? all : all - beside - MAP_GAP),
+    };
+  });
+  const seEl = useRef<HTMLDivElement | null>(null);
+  const headerFold = useFold(HEADER_LAST, () => {
+    const bar = seEl.current?.querySelector<HTMLElement>(':scope > [data-testid="title-bar"]');
+    if (!bar?.clientWidth) return null;
+    const cs = getComputedStyle(bar);
+    const items = [...bar.children].filter((c): c is HTMLElement => c instanceof HTMLElement && c.offsetParent !== null);
+    const widths = items.map((c) => (c.classList.contains("sp") ? 0 : c.classList.contains("sline") ? parseFloat(getComputedStyle(c).minWidth) || 0 : c.offsetWidth));
+    const need = widths.reduce((a, b) => a + b, 0) + Math.max(0, items.length - 1) * (parseFloat(cs.columnGap) || 0) + parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+    return { need, roomAt: () => bar.clientWidth };
+  });
   const [planCam, setPlanCam] = useState<{ cam: Camera; n: number } | undefined>(undefined);
   const planView = useRef<{ cam: Camera; size: Size } | null>(null);
   // The 3D camera to come back to after editing
@@ -1504,26 +1538,33 @@ export const SiteEditorApp: React.FC = () => {
   const leftProblems = blocking.length;
 
   return (
-    <div className={`se${narrow ? " narrow" : ""}${presenting ? " present" : ""}`} data-theme={theme}>
+    <div ref={seEl} className={`se${narrow ? " narrow" : ""}${presenting ? " present" : ""}`} data-theme={theme}>
       <TitleBar gap={10}>
-        <span className="selbl" style={{ fontWeight: 600, fontSize: 13, flex: "none" }}>Site editor</span>
-        <span className="sitesw" title={payload?.path}>
-          {context?.site ?? payload?.name ?? ""}
-        </span>
+        {headerFold < 7 && <span className="selbl" style={{ fontWeight: 600, fontSize: 13, flex: "none" }}>Site editor</span>}
+        {headerFold < 6 && (
+          <span className="sitesw" title={payload?.path}>
+            {context?.site ?? payload?.name ?? ""}
+          </span>
+        )}
         {!noSite && (
           <button
             type="button"
             data-testid="present"
             className={`btn primary presentbtn${presenting ? " on" : ""}`}
             aria-pressed={presenting}
+            aria-label={headerFold < 5 ? undefined : "Present"}
             title={presenting ? `Back to editing (${PRESENT_KEY} or Esc)` : `The site in 3D, full screen, for a projector (${PRESENT_KEY})`}
             onClick={() => (presenting ? stopPresent() : startPresent())}
           >
             <Icon name="present" />
-            Present <span className="kbd">{PRESENT_KEY}</span>
+            {headerFold < 5 && (
+              <>
+                Present <span className="kbd">{PRESENT_KEY}</span>
+              </>
+            )}
           </button>
         )}
-        {width >= LEFT_FOLD_PX && (
+        {width >= LEFT_FOLD_PX && headerFold < 3 && (
           <span className="live" title={live ? "Robots and Stop come from the controller that opened this page" : "Opened with dotbot site edit: no controller, no robots"}>
             <span className="dot" style={{ background: live ? "var(--ok)" : "transparent", border: live ? undefined : "1.5px solid var(--muted)" }} />
             {live ? `LIVE · ${bots.length} robot${bots.length === 1 ? "" : "s"}` : "NO CONTROLLER"}
@@ -1532,7 +1573,7 @@ export const SiteEditorApp: React.FC = () => {
         <div className="sp" />
         <StatusLine
           status={status}
-          compact={narrow}
+          compact={narrow || headerFold >= 2}
           onChoose={
             rows.length
               ? () => {
@@ -1547,12 +1588,12 @@ export const SiteEditorApp: React.FC = () => {
         <button type="button" className="btn icon ghost" title="Undo (Ctrl/Cmd Z)" aria-label="Undo" disabled={!draft?.past.length} onClick={() => setDraft((d) => (d ? undo(d) : d))}>
           <Icon name="undo" />
         </button>
-        {width >= LEFT_FOLD_PX && (
+        {width >= LEFT_FOLD_PX && headerFold < 4 && (
           <button type="button" className="btn icon ghost" title="Redo (Ctrl/Cmd Shift Z)" aria-label="Redo" disabled={!draft?.future.length} onClick={() => setDraft((d) => (d ? redo(d) : d))}>
             <Icon name="redo" />
           </button>
         )}
-        {width >= 1200 && (
+        {width >= 1200 && headerFold < 1 && (
           <button type="button" className="btn ghost" title="What Save would write" disabled={unsaved === 0} onClick={() => setReviewing(true)}>
             Changes {unsaved > 0 && <span className="chg-n">{unsaved}</span>}
           </button>
@@ -1568,7 +1609,7 @@ export const SiteEditorApp: React.FC = () => {
           disabled={unsaved === 0}
           onClick={() => setReviewing(true)}
         >
-          Save{unsaved ? ` · ${unsaved}` : ""} {width >= 1200 && <span className="kbd">⌘S</span>}
+          Save{unsaved ? ` · ${unsaved}` : ""} {width >= 1200 && headerFold < 1 && <span className="kbd">⌘S</span>}
         </button>
         )}
         {live && editable && (
@@ -1581,14 +1622,14 @@ export const SiteEditorApp: React.FC = () => {
             onClick={() => servedRowNow && setServing(servedRowNow)}
           >
             <Icon name="served" />
-            {width >= 1200 || !push.on ? push.label : "Push"}
+            {headerFold < 2 && (width >= 1200 || !push.on) ? push.label : "Push"}
           </button>
         )}
-        {live && <EditorFleet onBots={setBots} onSite={setFleetSite} onSpin={setSpin} compact={narrow} />}
+        {live && <EditorFleet onBots={setBots} onSite={setFleetSite} onSpin={setSpin} compact={narrow || headerFold >= 2} />}
         {consoleHref && (
           <a className="btn ghost" href={consoleHref} target="dotbot-console" rel="noreferrer" title="The console, in its own tab">
             <Icon name="ext" />
-            {width >= 1200 && "Console"}
+            {width >= 1200 && headerFold < 1 && "Console"}
           </a>
         )}
         <button type="button" className="btn icon ghost" title="More" aria-label="More" aria-expanded={menu} onClick={() => setMenu((m) => !m)}>
@@ -1871,7 +1912,7 @@ export const SiteEditorApp: React.FC = () => {
               </button>
             </div>
           )}
-          <div className={`float kinds${centreW < KINDS_TIGHT_PX ? " tight" : centreW < KINDS_COMPACT_PX ? " compact" : ""}`} data-testid="editing-switch" role="tablist" aria-label="Editing">
+          <div ref={kindsEl} className={`float kinds${KINDS_FOLDS[kindsFold]}`} data-testid="editing-switch" role="tablist" aria-label="Editing">
             {stage === "edit" || stage === "toTop" ? (
               <button type="button" className="btn primary sm" data-testid="done-editing" title="Back to the 3D view; the draft stays (Esc)" onClick={() => leaveEdit()}>
                 Done
@@ -1881,18 +1922,19 @@ export const SiteEditorApp: React.FC = () => {
                 Edit
               </button>
             )}
-            <button type="button" role="tab" aria-selected={kind === "view"} className={kind === "view" ? "on" : undefined} title="View: nothing editable" onClick={() => pickKind("view")}>
+            <button type="button" role="tab" aria-selected={kind === "view"} aria-label="View" className={kind === "view" ? "on" : undefined} title="View: nothing editable" onClick={() => pickKind("view")}>
               <Icon name="view" />
               <span className="tx">View</span>
             </button>
             <span className="vsep" />
-            {!narrow && centreW >= 1180 && <span className="lbl2">Editing</span>}
+            {kindsFold === 0 && <span className="lbl2">Editing</span>}
             {KINDS.map((k) => (
               <button
                 key={k}
                 type="button"
                 role="tab"
                 aria-selected={kind === k}
+                aria-label={KIND_LABEL[k]}
                 className={kind === k ? "on" : undefined}
                 title={`${KIND_LABEL[k]} (${KIND_KEY[k]})`}
                 onClick={() => pickKind(k)}
@@ -1920,6 +1962,7 @@ export const SiteEditorApp: React.FC = () => {
           )}
           {draft && !presenting && (stage !== "edit" || view === "plan") && (
             <MapPresets
+              below={kindsFold === KINDS_LAST}
               cam={stage === "edit" ? null : roomCam}
               onPreset={onPreset}
               zoom={
@@ -1947,7 +1990,7 @@ export const SiteEditorApp: React.FC = () => {
             />
           )}
           {stage === "edit" && view !== "plan" && (
-            <button type="button" className="float btn sm mapback" data-testid="back-to-map" onClick={() => setView("plan")}>
+            <button type="button" className={`float btn sm mapback${kindsFold === KINDS_LAST ? " below" : ""}`} data-testid="back-to-map" onClick={() => setView("plan")}>
               <Icon name="plan" /> Back to the map
             </button>
           )}

@@ -118,7 +118,8 @@ body {
   border-radius: 8px;
   border: 1px solid var(--hairline);
   background: var(--canvas);
-  min-width: 0;
+  /* The title bar folds its other items before the line goes under this */
+  min-width: 150px;
   flex: 0 1 auto;
   font-size: 12px;
   overflow: hidden;
@@ -143,32 +144,20 @@ body {
   border-color: var(--muted);
 }
 .se .sline .st {
-  display: flex;
-  align-items: center;
-  gap: 0;
+  /* One line of text, cut with one ellipsis at its end: the details go
+     first, then the end of the name; the line's min-width keeps "Using" */
+  display: block;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
   flex: 0 1 auto;
 }
-/* The name is cut by its middle before it is drawn, never at its end: what
-   does not fit is the details after it */
-.se .sline .st b {
-  flex: none;
-}
-.se .sline .st .m {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 .se .sline .btn {
   flex: none;
 }
 .se .sline .st b {
   font-weight: 600;
-  margin-left: 4px;
 }
 .se .sline .m {
   color: var(--muted);
@@ -1007,7 +996,7 @@ body {
   align-items: center;
   gap: 2px;
   padding: 3px;
-  max-width: calc(100% - 215px);
+  max-width: calc(100% - 24px);
   overflow: hidden;
 }
 .se .kinds .lbl2 {
@@ -1121,6 +1110,11 @@ body {
   top: 12px;
   right: 12px;
   gap: 6px;
+}
+/* When the kinds bar needs the whole first row */
+.se .mapbar.below,
+.se .mapback.below {
+  top: 56px;
 }
 .se.present .mapbar {
   top: auto;
@@ -1261,6 +1255,10 @@ body {
   padding: 7px 11px 8px;
   font-size: 11.5px;
   max-width: calc(100% - 24px);
+}
+/* Over the same-rectangle chip, which holds the bottom-left corner */
+.se :has(> .chipc) > .legend {
+  bottom: 90px;
 }
 .se .legend .lh {
   display: flex;
@@ -2527,13 +2525,6 @@ body {
   .se [data-testid="title-bar"] button[aria-label="Undo"],
   .se [data-testid="title-bar"] button[aria-label="Redo"] {
     display: none;
-  }
-  .se .mapbar,
-  .se .mapback {
-    top: 56px;
-  }
-  .se .kinds {
-    max-width: calc(100% - 24px);
   }
   .se .shortbtn {
     display: none;
