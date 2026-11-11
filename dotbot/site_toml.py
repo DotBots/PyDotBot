@@ -515,7 +515,7 @@ def validate(text: str) -> SiteSection:
     try:
         return SiteSection.model_validate(tomllib.loads(text))
     except tomllib.TOMLDecodeError as exc:
-        raise SiteTomlError(f"not valid TOML: {exc}") from exc
+        raise SiteTomlError(f"does not parse as TOML: {exc}") from exc
     except ValidationError as exc:
         raise SiteTomlError(str(exc)) from exc
 
@@ -524,7 +524,7 @@ def parse(text: str) -> TOMLDocument:
     try:
         return tomlkit.parse(text)
     except tomlkit.exceptions.ParseError as exc:
-        raise SiteTomlError(f"not valid TOML: {exc}") from exc
+        raise SiteTomlError(f"does not parse as TOML: {exc}") from exc
 
 
 def patched_text(text: str, model: dict[str, Any]) -> str:

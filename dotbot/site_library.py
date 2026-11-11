@@ -69,7 +69,7 @@ def _row(path: Path) -> dict | None:
         "site": cal.site.name,
         "anchor": cal.site.anchor,
         "frame": cal.site.frame,
-        "fence": [int(v) for v in cal.coverage_mm],
+        "coverage_union": [int(v) for v in cal.coverage_mm],
         "spin": spin_fingerprint(cal),
         "tracks": len(cal.tracks),
         "stations": [

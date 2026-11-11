@@ -324,10 +324,10 @@ export function movedHandover(boxes: Boxes, at: number, overlap = 200): Record<n
 
 /** A coverage layout in a few words, from its rectangles. */
 export function layoutText(boxes: Boxes): string {
-  if (boxes.length === 0) return "no station covers the floor";
-  if (boxes.length === 1) return "one station covers the floor";
+  if (boxes.length === 0) return "no station covers the extent";
+  if (boxes.length === 1) return "one station covers the extent";
   if (boxes.length === 2) {
-    if (boxes[0].rect.join() === boxes[1].rect.join()) return "both cover the whole floor, no handover";
+    if (boxes[0].rect.join() === boxes[1].rect.join()) return "both cover the whole extent, no handover";
     const line = handover(boxes[0].rect, boxes[1].rect);
     if (line) return line.label.replace("handover ", "handover at ");
   }

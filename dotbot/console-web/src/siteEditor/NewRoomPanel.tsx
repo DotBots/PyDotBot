@@ -9,9 +9,10 @@ import { freshKey, type Doc, type Point } from "./model";
 import type { PlanPaint } from "./PlanCanvas";
 import { SPIN_ADVISED, SPIN_MIN } from "../SpinCard";
 import { aroundRobots, fromMarks, MARGIN_MM, moveBy, propose, spunRobots, type Proposal, type Rigid, type SpunRobot } from "./place";
+import { nameOf } from "./library";
 import type { LibraryRow } from "./types";
 
-// A new room, in three steps in the right pane: mount the stations, measure
+// A new site, in three steps in the right pane: mount the stations, measure
 // them by spinning robots in the console (followed here as it runs), and put
 // the spin into the room, in the draft. Save writes site.toml and the
 // calibration placed in it, then uses it.
@@ -75,7 +76,7 @@ export const NewRoomPanel: React.FC<{
   const [markA, setMarkA] = useState<Mark>({ robot: "", at: [null, null] });
   const [markB, setMarkB] = useState<Mark>({ robot: "", at: [null, null] });
   const [note, setNote] = useState(doc.anchor ?? "");
-  // A spin already put in this room (a reload keeps it so) is placed; so is a room
+  // A spin already placed in this site (a reload keeps it so) is placed; so is a site
   // served in its frame, unless a spin is picked to place again
   const placedAs = placeId ? (props.rows ?? []).filter((r) => r.in_frame && r.placed_from === placeId).sort((a, b) => b.created_at.localeCompare(a.created_at))[0] : undefined;
   const written =
@@ -86,6 +87,7 @@ export const NewRoomPanel: React.FC<{
         : !props.placeId && !justSpun && props.servedId
           ? { id: props.servedId, served: true }
           : null;
+  const writtenName = written ? nameOf((props.rows ?? []).find((r) => r.id === written.id) ?? { tag: null, created_at: null }) : "";
 
   useEffect(() => {
     setOverlay(null);
@@ -95,6 +97,7 @@ export const NewRoomPanel: React.FC<{
   }, [placeId]);
 
   const robots = useMemo(() => (overlay ? spunRobots(overlay.stations) : []), [overlay]);
+  const overlayName = overlay ? nameOf([...(props.rows ?? []), ...props.freeRows].find((r) => r.id === overlay.id) ?? overlay) : "";
   useEffect(() => {
     if (robots.length >= 2 && !markA.robot) {
       setMarkA((m) => ({ ...m, robot: robots[0].name }));
@@ -138,16 +141,16 @@ export const NewRoomPanel: React.FC<{
   return (
     <div data-testid="new-room">
       <div className="sec-h" style={{ marginTop: 0 }}>
-        A new room
+        A new site
         <span className="sp" style={{ flex: 1 }} />
-        <button type="button" className="btn icon ghost" aria-label="Close the new room steps" onClick={props.onClose} style={{ height: 22, width: 22 }}>
+        <button type="button" className="btn icon ghost" aria-label="Close the new site steps" onClick={props.onClose} style={{ height: 22, width: 22 }}>
           <Icon name="x" size={12} />
         </button>
       </div>
       <Step n={1} title="Mount the stations" state={mounted ? "done" : "on"}>
         <div className="note">
-          S0 · channel 1 and S1 · channel 2 at opposite corners, outside the floor, high enough to see all of it (about 2 m), each tilted toward the middle.{" "}
-          {extentKnown ? "The plan shows where." : "Once the floor's size is known, the plan shows where."}
+          S0 · channel 1 and S1 · channel 2 at opposite corners, outside the extent, high enough to see all of it (about 2 m), each tilted toward the middle.{" "}
+          {extentKnown ? "The plan shows where." : "Once the extent is known, the plan shows where."}
         </div>
       </Step>
       <Step n={2} title="Measure them: spin robots" state={overlay || justSpun ? "done" : mounted ? "on" : "todo"}>
@@ -177,7 +180,7 @@ export const NewRoomPanel: React.FC<{
         )}
         {justSpun && spin?.result && (
           <div className="note" style={{ marginTop: 4 }}>
-            <b className="mono">{spin.result.id8}</b>:{" "}
+            <b>The spin</b>:{" "}
             {(spin.result.stations ?? []).map((st) => `S${st.index} ${st.kept} circles, ${st.residual_mm.toFixed(2)} mm`).join(" · ")}
             {(spin.result.left_out ?? []).map((l, i) => (
               <span key={i} style={{ display: "block", color: "var(--warn)" }}>
@@ -196,14 +199,14 @@ export const NewRoomPanel: React.FC<{
       </Step>
       {written ? (
         <>
-          <Step n={3} title="Put it in the room" state="done">
+          <Step n={3} title="Place it in the site" state="done">
             <div className="note">
-              {written.id.slice(0, 8)} {written.served ? "is in use in this room" : "is placed in this room; choose it in Calibrations to use it"}. To put another spin in it, pick the spin in Calibrations and choose Put in this room.
+              {writtenName} {written.served ? "is in use in this site" : "is placed in this site; choose it in Calibrations to use it"}. To put another spin in it, pick the spin in Calibrations and choose Place in this site.
             </div>
           </Step>
-          <Step n={4} title="Push it, then tie the map to the floor" state="on">
+          <Step n={4} title="Push it, then anchor the frame" state="on">
             <div className="note">
-              Robots still use what they have: Push to robots, in the title bar, sends {written.id.slice(0, 8)} to them. Then put robots on spots measured with a tape, so the map lands on the room.
+              Robots still use what they have: Push to robots, in the title bar, sends {writtenName} to them. Then put robots on spots measured with a tape, so the frame matches the floor.
             </div>
             <div className="acts">
               {props.onCheck && written.served && (
@@ -215,25 +218,25 @@ export const NewRoomPanel: React.FC<{
           </Step>
         </>
       ) : (
-      <Step n={3} title="Put it in the room" state={overlay ? "on" : "todo"}>
+      <Step n={3} title="Place it in the site" state={overlay ? "on" : "todo"}>
         {props.freeRows.length > 1 && (
           <div className="fld" style={{ marginBottom: 6 }}>
             <select aria-label="Spin to place" value={placeId ?? ""} onChange={(e) => props.onPlaceId(e.target.value)}>
               {props.freeRows.map((r) => (
                 <option key={r.id} value={r.id}>
-                  {r.id8} {r.tag ? `"${r.tag}"` : ""} · {r.tracks} circles
+                  {nameOf(r)} · {r.tracks} circles
                 </option>
               ))}
             </select>
           </div>
         )}
-        {!placeId && <div className="note">A spin, once saved, is put in the room here: until then its origin is at its robots' top-left.</div>}
+        {!placeId && <div className="note">A spin, once saved, is placed in the site here: until then its origin is at its robots' top-left.</div>}
         {error && <div className="callout err">{error}</div>}
-        {overlay && !overlay.free && <div className="callout">{overlay.id8} is already in a room; this step is for a spin that is not yet.</div>}
+        {overlay && !overlay.free && <div className="callout">{overlayName} is already placed in a site; this step is for a spin that is not yet.</div>}
         {overlay?.free && (
           <>
             <div className="note">
-              <b className="mono">{overlay.id8}</b> saw {robots.length} robot(s). Where should the origin be?
+              <b>{overlayName}</b> saw {robots.length} robot(s). Where should the origin be?
             </div>
             <div className="seg" role="tablist" aria-label="How to place it" style={{ margin: "8px 0" }}>
               {(
@@ -250,7 +253,7 @@ export const NewRoomPanel: React.FC<{
             </div>
             {method === "around" && (
               <>
-                <div className="note">The origin is a margin above and left of the robots, x along the rows they stood in. Quick to start; the room's real origin can be set later.</div>
+                <div className="note">The origin is a margin above and left of the robots, x along the rows they stood in. Quick to start; the site's real origin can be set later.</div>
                 <NumField label="margin" prefix="margin" value={margin} onApply={(v) => setMargin(Math.max(0, v))} />
               </>
             )}
@@ -311,7 +314,7 @@ export const NewRoomPanel: React.FC<{
                 <KV
                   testid="place-proposal"
                   rows={[
-                    ["Floor", `${proposal.extent[0]} × ${proposal.extent[1]} mm${extentKnown ? ", as in site.toml" : ", proposed"}`],
+                    ["Extent", `${proposal.extent[0]} × ${proposal.extent[1]} mm${extentKnown ? ", as in site.toml" : ", proposed"}`],
                     ["Field", hasField ? "kept as in site.toml" : `${proposal.field[2]} × ${proposal.field[3]} mm at (${proposal.field[0]}, ${proposal.field[1]})`],
                     ...(move && method !== "around" ? ([["Move", `turn ${move.theta_deg.toFixed(1)}°, origin to (${move.dx.toFixed(0)}, ${move.dy.toFixed(0)})`]] as [string, string][]) : []),
                   ]}
@@ -320,7 +323,7 @@ export const NewRoomPanel: React.FC<{
             )}
             {proposal && proposal.outside.length > 0 && (
               <div className="callout warn" style={{ marginTop: 8 }}>
-                {proposal.outside.map((n) => `…${tail(n)}`).join(", ")} land outside the floor, where robots drop their positions.
+                {proposal.outside.map((n) => `…${tail(n)}`).join(", ")} land outside the extent, where robots drop their positions.
               </div>
             )}
             {blocked && proposal && <div className="callout err" style={{ marginTop: 8 }}>{blocked}</div>}
@@ -329,7 +332,7 @@ export const NewRoomPanel: React.FC<{
                 <div className="h">
                   <Icon name="check" size={14} /> In the draft
                 </div>
-                Save writes the room file and the spin placed in it (the spin's file is kept){props.live ? ", then this controller uses it" : ""}. Robots get it when you push.
+                Save writes site.toml and the spin placed in it (the spin's file is kept){props.live ? ", then this controller uses it" : ""}. Robots get it when you push.
                 <div className="acts">
                   <button type="button" className="btn sm" disabled={!props.editable || !!blocked} onClick={draft} data-testid="place-write">
                     Update the draft
@@ -348,7 +351,7 @@ export const NewRoomPanel: React.FC<{
                     Put in the draft
                   </button>
                 </div>
-                <div className="note">Nothing is written until Save, which writes the room file and the calibration placed in it, then uses it.</div>
+                <div className="note">Nothing is written until Save, which writes site.toml and the calibration placed in it, then uses it.</div>
               </>
             )}
           </>

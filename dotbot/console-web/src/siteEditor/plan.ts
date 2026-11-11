@@ -202,8 +202,8 @@ export function snapTargets(doc: Doc, skip: string[]): { x: SnapTarget[]; y: Sna
   const x: SnapTarget[] = [];
   const y: SnapTarget[] = [];
   if (doc.extent_mm) {
-    x.push({ value: 0, label: "the floor's left edge" }, { value: doc.extent_mm[0], label: "the floor's right edge" });
-    y.push({ value: 0, label: "the floor's top edge" }, { value: doc.extent_mm[1], label: "the floor's bottom edge" });
+    x.push({ value: 0, label: "the extent's left edge" }, { value: doc.extent_mm[0], label: "the extent's right edge" });
+    y.push({ value: 0, label: "the extent's top edge" }, { value: doc.extent_mm[1], label: "the extent's bottom edge" });
   }
   for (const a of doc.areas) {
     if (skip.includes(a.key)) continue;

@@ -76,10 +76,10 @@ export const OutlinePane: React.FC<{
   const barriers = [...doc.walls, ...doc.obstacles];
   return (
     <div data-testid="outline" style={{ paddingTop: 4 }}>
-      <Group title="Floor" icon="frame" count={1} kindKey={KIND_KEY.frame} active={kind === "frame"}>
+      <Group title="Extent" icon="frame" count={1} kindKey={KIND_KEY.frame} active={kind === "frame"}>
         <Row on={on("floor")} onPick={() => onPick("floor", "frame", false)}>
           <span className="sw" style={{ border: "1px solid var(--muted)" }} />
-          <span>floor</span>
+          <span>extent</span>
           <span className="meta">{doc.extent_mm ? `${doc.extent_mm[0]} × ${doc.extent_mm[1]}` : "not measured"}</span>
         </Row>
       </Group>
@@ -110,7 +110,7 @@ export const OutlinePane: React.FC<{
         ))}
       </Group>
       <Group title="Areas" icon="areas" count={doc.areas.length} kindKey={KIND_KEY.areas} active={kind === "areas"}>
-        {doc.areas.length === 0 && empty(`None yet. Press ${KIND_KEY.areas}, then A, and drag on the floor.`)}
+        {doc.areas.length === 0 && empty(`None yet. Press ${KIND_KEY.areas}, then A, and drag on the plan.`)}
         {doc.areas.map((a) => {
           const colour = areaColor({ ...a, role: a.role ?? undefined }, doc.areas.map((b) => ({ ...b, role: b.role ?? undefined })));
           return (

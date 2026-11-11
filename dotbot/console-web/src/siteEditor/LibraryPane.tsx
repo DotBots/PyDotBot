@@ -25,7 +25,7 @@ const Row: React.FC<{
   onRename: (row: LibraryRow, tag: string) => Promise<void>;
 }> = ({ row, extent, shown, picked, held, live, archived, dated, onPick, onAction, onRename }) => {
   const boxes = Object.fromEntries(row.stations.map((s) => [s.index, s.box])) as Record<number, Rect>;
-  const own: [number, number] = row.in_frame ? extent : [row.fence[2], row.fence[3]];
+  const own: [number, number] = row.in_frame ? extent : [row.coverage_union[2], row.coverage_union[3]];
   const [menu, setMenu] = useState<{ top?: number; bottom?: number; left: number } | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [problem, setProblem] = useState("");
@@ -135,7 +135,7 @@ const Row: React.FC<{
             <Icon name="more" size={13} />
           </button>
         </div>
-        <div className="b">{row.in_frame ? coverageText(row.reading) : `not in this room yet · ${row.fence[2]} × ${row.fence[3]} mm`}</div>
+        <div className="b">{row.in_frame ? coverageText(row.reading) : `not placed in this site yet · ${row.coverage_union[2]} × ${row.coverage_union[3]} mm`}</div>
         <div className="c">
           {meta}
           <span className="id">{row.id8}</span>
@@ -150,9 +150,9 @@ const Row: React.FC<{
               item("restore", "restore", "Bring back from the archive")
             ) : (
               <>
-                {row.free && !row.in_frame && item("place", "pin", "Put in this room…")}
+                {row.free && !row.in_frame && item("place", "pin", "Place in this site…")}
                 {item("preview", "view", "Look at it on the plan")}
-                {live && item("serve", "served", row.served ? "In use now" : "Use…", row.served || !row.in_frame, row.in_frame ? undefined : "Not in this room yet")}
+                {live && item("serve", "served", row.served ? "In use now" : "Use…", row.served || !row.in_frame, row.in_frame ? undefined : "Not placed in this site yet")}
                 {live && item("push", "ext", "Send to robots…", !row.in_frame)}
                 {item("compare", "compare", "Compare with the shown file")}
                 {item("rename", "tag", "Rename")}
@@ -223,8 +223,8 @@ export const LibraryPane: React.FC<{
   );
   const inRoom = view.groups.reduce((n, g) => n + g.rows.length, 0);
   const filters: { key: Filter; text: string }[] = [
-    { key: "room", text: `This room ${inRoom}` },
-    { key: "free", text: `Not in this room yet ${view.not_placed.length}` },
+    { key: "room", text: `This site ${inRoom}` },
+    { key: "free", text: `Not placed in this site yet ${view.not_placed.length}` },
     { key: "archived", text: `Archived ${library.archived?.length ?? 0}` },
   ];
   return (
@@ -247,7 +247,7 @@ export const LibraryPane: React.FC<{
       </div>
       {library.count === 0 && filter !== "archived" && (
         <div className="callout" style={{ marginTop: 12 }}>
-          <div className="h">{library.unreadable?.length ? `${library.unreadable.length} older file${library.unreadable.length === 1 ? "" : "s"}, none this build reads` : "No calibration for this room yet"}</div>
+          <div className="h">{library.unreadable?.length ? `${library.unreadable.length} older file${library.unreadable.length === 1 ? "" : "s"}, none this build reads` : "No calibration for this site yet"}</div>
           Spin robots in the console's Localization tab to measure the stations; the files it saves appear here.
         </div>
       )}
@@ -274,7 +274,7 @@ export const LibraryPane: React.FC<{
               {g.rows.filter((r) => query || !r.served).map((r) => row(r))}
             </React.Fragment>
           ))}
-          {view.groups.length === 0 && library.count > 0 && <div className="note" style={{ marginTop: 12 }}>{query ? `Nothing in this room matches "${query}".` : "No file in this room yet."}</div>}
+          {view.groups.length === 0 && library.count > 0 && <div className="note" style={{ marginTop: 12 }}>{query ? `Nothing in this site matches "${query}".` : "No file in this site yet."}</div>}
           {!query && (library.unreadable?.length ?? 0) > 0 && (
             <>
               <div className="grp" data-testid="library-unreadable">
@@ -297,9 +297,9 @@ export const LibraryPane: React.FC<{
       {filter === "free" && (
         <>
           <div data-testid="library-not-placed" className="grp">
-            Not in this room yet · {view.not_placed.length} spin{view.not_placed.length === 1 ? "" : "s"}
+            Not placed in this site yet · {view.not_placed.length} spin{view.not_placed.length === 1 ? "" : "s"}
           </div>
-          <div className="grpnote">Each was measured before this room's origin was set: put one in the room to use it.</div>
+          <div className="grpnote">Each was measured in its own frame: place one in this site to use it.</div>
           {view.not_placed.map((r) => row(r, false, true))}
         </>
       )}

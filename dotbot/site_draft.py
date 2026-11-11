@@ -221,7 +221,7 @@ def composed(
         warnings += site_turn.outside_warnings(result, new_site)
         if not solved_in_own_frame(source):
             warnings.append(
-                f"{source.id8} was collected at points of the room and has been "
+                f"{source.id8} was collected at spots on the floor and has been "
                 "re-anchored; check the note on where zero is"
             )
     elif frame is not None:

@@ -21,16 +21,16 @@ const context = (over: Partial<EditorContext> = {}): EditorContext => ({
 const row = (id8: string, tag = "", in_frame = true) => ({ id: `${id8}00000000`, id8, tag, created_at: "2026-11-09T08:12:50Z", in_frame }) as LibraryRow;
 
 describe("names", () => {
-  it("leads with the tag, else the spin's date, never the hash", () => {
+  it("leads with the tag, else the spin's date, never the id", () => {
     expect(nameOf({ tag: "inria-hil-handover", created_at: "2026-11-09T08:12:50Z", id8: "a1b41f12" })).toBe("inria-hil-handover");
     expect(nameOf({ tag: "", created_at: "2026-11-09T08:12:50Z", id8: "a1b41f12" })).toBe("spin of 9 Nov 08:12");
-    expect(nameOf({ tag: "", created_at: "", id8: "a1b41f12" })).toBe("a1b41f12");
+    expect(nameOf({ tag: "", created_at: "", id8: "a1b41f12" })).toBe("untagged");
     expect(shortWhen("not a date")).toBe("");
   });
 
   it("reads a coverage layout as a handover or its absence", () => {
     expect(coverageText("S0 x 0-630, y 0-1220 · S1 x 430-1060, y 0-1220 · S0/S1 handover x 530")).toBe("handover at x 530 mm");
-    expect(coverageText("S0 and S1 share one box: the boxes do not decide")).toBe("both cover the whole floor, no handover");
+    expect(coverageText("S0 and S1 share one coverage: the coverages do not decide")).toBe("both cover the whole extent, no handover");
     expect(coverageText("S0 only in a 1 mm strip · S1 x 0-1060, y 0-1220 · S0 wins where S0 and S1 overlap")).toBe("S1 only (S0 is a 1 mm strip)");
   });
 });

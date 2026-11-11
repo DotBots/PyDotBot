@@ -118,7 +118,7 @@ def test_a_corner_calibration_is_refused_unless_re_anchored(spun):
             dataclasses.replace(st, solved_from="direct") for st in spun.stations
         ],
     )
-    with pytest.raises(PlacementRefused, match="collected at points of the room"):
+    with pytest.raises(PlacementRefused, match="collected at spots on the floor"):
         place_calibration(corner, SITE, Rigid2D(100, 0, 0))
     placed = place_calibration(corner, SITE, Rigid2D(100, 0, 0), reanchor=True)
     assert placed.stations[0].solved_from == "direct"

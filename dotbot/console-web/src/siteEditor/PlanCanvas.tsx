@@ -526,7 +526,7 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
 
   const interactive = tool === "select";
   const outlines = coincident([
-    { label: "floor", rect: [0, 0, extent[0], extent[1]] },
+    { label: "extent", rect: [0, 0, extent[0], extent[1]] },
     ...shown.areas.map((a) => ({ label: a.name, rect: [a.x, a.y, a.x + a.w, a.y + a.h] as [number, number, number, number] })),
     ...(props.layers.boxes ? props.boxes.map((b) => ({ label: `S${b.index} coverage`, rect: b.rect })) : []),
   ]);
@@ -661,11 +661,11 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
             {kind === "stations" &&
               (b.index % 2 === 0 ? (
                 <text className="halo" x={x0 + inset + 5 * chrome} y={y1 - inset - 6 * chrome} fontSize={11 * label} fill={hue} fontWeight={600} strokeWidth={3 * chrome}>
-                  S{b.index} box
+                  S{b.index} coverage
                 </text>
               ) : (
                 <text className="halo" x={x1 - inset - 5 * chrome} y={y0 + inset + 14 * label} fontSize={11 * label} fill={hue} fontWeight={600} textAnchor="end" strokeWidth={3 * chrome}>
-                  S{b.index} box
+                  S{b.index} coverage
                 </text>
               ))}
           </g>
@@ -731,7 +731,7 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
               setDrag({ type: "box", index: selectedBox.index, handle: h, rect: selectedBox.rect });
             }}
           >
-            <title>Drag to move this edge of S{selectedBox.index}'s box; click, then the arrow keys nudge it</title>
+            <title>Drag to move this edge of S{selectedBox.index}'s coverage; click, then the arrow keys nudge it</title>
           </rect>
         );
       })
@@ -1031,7 +1031,7 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
                 style={{ pointerEvents: "none" }}
               />
               <text className="tl halo" x={fx + fw / 2} y={fy + fh + 16 * label} fontSize={10 * label} textAnchor="middle" strokeWidth={3 * chrome}>
-                {doc.extent_mm ? `floor ${extent[0]} × ${extent[1]} mm` : "floor not measured yet: a placeholder"}
+                {doc.extent_mm ? `extent ${extent[0]} × ${extent[1]} mm` : "extent not measured yet: a placeholder"}
               </text>
               {circleNodes}
               {boxNodes}
@@ -1139,7 +1139,7 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
           +
         </button>
       </div>
-      <button type="button" className="float fitbtn" title="Fit the floor" aria-label="Fit the floor" onClick={() => setCam(FRAME_CAMERA)}>
+      <button type="button" className="float fitbtn" title="Fit the extent" aria-label="Fit the extent" onClick={() => setCam(FRAME_CAMERA)}>
         <Icon name="fit" size={17} />
       </button>
       <div className="scale" data-testid="scale-bar" aria-hidden>

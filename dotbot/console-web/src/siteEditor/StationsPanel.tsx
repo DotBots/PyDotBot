@@ -44,7 +44,7 @@ export interface StationsPanelProps {
 }
 
 const boxText = (r: Rect, extent: [number, number]) =>
-  r[0] <= 0 && r[1] <= 0 && r[2] >= extent[0] && r[3] >= extent[1] ? "whole floor" : `x ${r[0]}-${r[2]}`;
+  r[0] <= 0 && r[1] <= 0 && r[2] >= extent[0] && r[3] >= extent[1] ? "whole extent" : `x ${r[0]}-${r[2]}`;
 
 /** How robots choose, kept for the reader who needs the mechanism. */
 const Rule: React.FC<{ boxes: Boxes; coverage: Coverage | null }> = ({ boxes, coverage }) => {
@@ -98,9 +98,9 @@ export const StationsPanel: React.FC<StationsPanelProps> = (props) => {
     return (
       <div className="callout warn" style={{ marginTop: 12 }}>
         <div className="h">
-          <Icon name="warn" size={14} /> {nameOf(shown)} is not in this room yet
+          <Icon name="warn" size={14} /> {nameOf(shown)} is not placed in this site yet
         </div>
-        It was measured before this room's origin was set, so its coverage means nothing on this floor. Put it in the room first.
+        It was measured in its own frame, so its coverage means nothing in this extent. Place it in the site first.
       </div>
     );
   }
@@ -152,11 +152,11 @@ export const StationsPanel: React.FC<StationsPanelProps> = (props) => {
         {editable && (
           <div className="acts">
             <button type="button" className="btn sm" onClick={() => props.onBoxes({ ...rectsNow, [sel.index]: [0, 0, extent[0], extent[1]] })}>
-              Cover the whole floor
+              Cover the whole extent
             </button>
             {other && (
               <button type="button" className="btn sm" onClick={props.onSplit} title={SPLIT_TIP}>
-                Split the floor at the best line
+                Split the extent at the best line
               </button>
             )}
           </div>
@@ -166,7 +166,7 @@ export const StationsPanel: React.FC<StationsPanelProps> = (props) => {
             rows={[
               ["Fit", st ? `${st.residual_mm.toFixed(2)} mm` : "unknown"],
               ["Stands at, estimated", pose ? `(${pose.x_mm}, ${pose.y_mm}) mm, ${(pose.height_mm / 1000).toFixed(1)} m up` : "unknown"],
-              ["Alone on", `${Math.round(share(boxes, extent, sel.index) * 100)}% of the floor`],
+              ["Alone on", `${Math.round(share(boxes, extent, sel.index) * 100)}% of the extent`],
             ]}
           />
         </Sec>
@@ -176,11 +176,11 @@ export const StationsPanel: React.FC<StationsPanelProps> = (props) => {
           </summary>
           <div className="infile" style={{ marginTop: 6 }}>
             <div className="ih">
-              <Icon name="file" size={12} /> IN {shown.id8}
+              <Icon name="file" size={12} /> IN {nameOf(shown)}
             </div>
             <pre>
               {`[[station]]\nindex = ${sel.index}\ncoverage_mm = [${sel.rect.join(", ")}]\nsolved_from = "${st?.solved_from ?? "unknown"}"`}
-              {fileRect && fileRect.join() !== sel.rect.join() && <span className="c">{`\n# in ${shown.id8}: [${fileRect.join(", ")}]; Save writes a new file`}</span>}
+              {fileRect && fileRect.join() !== sel.rect.join() && <span className="c">{`\n# in ${nameOf(shown)}: [${fileRect.join(", ")}]; Save writes a new file`}</span>}
             </pre>
           </div>
         </details>
@@ -252,7 +252,7 @@ export const StationsPanel: React.FC<StationsPanelProps> = (props) => {
       </table>
       <div className="note" style={{ marginTop: 8 }}>
         Fit and worst error in mm. Worst: the predicted error where that station is the one used. Moved?:
-        {m.spins > 1 ? ` the ${m.spins} spins of this room compared (${m.ranges.join(", ")}); a moved tripod would show, a nudge would not.` : " one spin only, nothing to compare."}
+        {m.spins > 1 ? ` the ${m.spins} spins of this site compared (${m.ranges.join(", ")}); a moved tripod would show, a nudge would not.` : " one spin only, nothing to compare."}
       </div>
       <div className={`callout ${shared ? "warn" : "ok"}`} style={{ marginTop: 12 }} data-testid="coverage-card">
         <div className="h">
@@ -264,7 +264,7 @@ export const StationsPanel: React.FC<StationsPanelProps> = (props) => {
             {editable && split && (
               <div className="acts">
                 <button type="button" className="btn sm primary" onClick={split} data-testid="split-floor" title={SPLIT_TIP}>
-                  Split the floor at the best line
+                  Split the extent at the best line
                 </button>
               </div>
             )}
@@ -288,7 +288,7 @@ export const StationsPanel: React.FC<StationsPanelProps> = (props) => {
             {h.worst_mm > limit ? `Up to ${h.worst_mm.toFixed(1)} mm, over the ${limit} mm limit` : `Within ${h.worst_mm.toFixed(1)} mm everywhere (limit ${limit} mm)`}
           </div>
           Worst near ({h.at[0]}, {h.at[1]}) mm, for the station a robot uses there
-          {h.cells_over_limit > 0 ? `; ${h.cells_over_limit} of ${h.cells} cells pass the limit` : ""}. The limit is a room setting.
+          {h.cells_over_limit > 0 ? `; ${h.cells_over_limit} of ${h.cells} cells pass the limit` : ""}. The limit is a site setting.
           {coverage && coverage.next.length > 0 && (
             <div className="acts">
               <button type="button" className="btn xs" onClick={() => props.onShowNext(!props.showNext)}>

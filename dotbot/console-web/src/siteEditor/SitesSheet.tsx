@@ -8,9 +8,9 @@ import { parseFloorSize, siteNameProblem, SITE_NAME_MAX } from "./sites";
 // so the page reloads on the new one once the controller has taken it.
 
 const STARTS: { value: NewSiteStart; title: string; detail: string }[] = [
-  { value: "empty", title: "An empty floor, measured later", detail: "The floor and the field come from the robots' spins once the stations are mounted." },
-  { value: "size", title: "A floor of a known size", detail: "You measured the room: its width and height, from the corner that will be the origin." },
-  { value: "spin", title: "Around a spin already done", detail: "A spin calibration in its own frame: the floor goes round the robots that spun." },
+  { value: "empty", title: "An empty extent, measured later", detail: "The extent and the field come from the robots' spins once the stations are mounted." },
+  { value: "size", title: "An extent of a known size", detail: "You measured the floor: its width and height, from the corner that will be the origin." },
+  { value: "spin", title: "Around a spin already done", detail: "A spin calibration in its own frame: the extent goes round the robots that spun." },
 ];
 
 const NewSiteForm: React.FC<{
@@ -57,7 +57,7 @@ const NewSiteForm: React.FC<{
       <div className="fld">
         <input aria-label="Where the origin is" placeholder="the corner by the door, at the tape cross" value={note} onChange={(e) => setNote(e.target.value)} />
       </div>
-      <div className="note">How someone else finds the origin in the room. It can be written later.</div>
+      <div className="note">How someone else finds the origin on the floor. It can be written later.</div>
       <span className="lbl" style={{ marginTop: 10 }}>
         Start from
       </span>
@@ -70,7 +70,7 @@ const NewSiteForm: React.FC<{
               <span className="s">{s.detail}</span>
               {start === "size" && s.value === "size" && (
                 <span className="fld" style={{ marginTop: 6 }}>
-                  <input aria-label="Floor size" placeholder="3000 x 2000 mm" value={size} onChange={(e) => setSize(e.target.value)} />
+                  <input aria-label="Extent" placeholder="3000 x 2000 mm" value={size} onChange={(e) => setSize(e.target.value)} />
                 </span>
               )}
               {start === "spin" && s.value === "spin" && (
@@ -127,7 +127,7 @@ const SiteSwitch: React.FC<{ list: SiteList | null; onDone: () => void }> = ({ l
           <span style={{ flex: 1, minWidth: 0 }}>
             <b className="mono">{s.name}</b>
             <span className="s" style={{ display: "block" }}>
-              {s.error ? s.error : `${s.extent_mm ? `${s.extent_mm[0]} × ${s.extent_mm[1]} mm` : "floor not measured"} · ${s.areas ?? 0} area(s)${s.anchor ? ` · origin: ${s.anchor}` : ""}`}
+              {s.error ? s.error : `${s.extent_mm ? `${s.extent_mm[0]} × ${s.extent_mm[1]} mm` : "extent not measured"} · ${s.areas ?? 0} area(s)${s.anchor ? ` · origin: ${s.anchor}` : ""}`}
             </span>
             <span className="s mono" style={{ display: "block" }}>
               {s.shown_path}
@@ -215,23 +215,23 @@ export const StartScreen: React.FC<{ siteName: string; spinId?: string | null; e
   return (
     <div className="start" data-testid="start-screen">
       <div className="card start-card">
-        <h1>A new room</h1>
+        <h1>A new site</h1>
         <p className="lead">
-          This controller runs {siteName ? <>with site <b className="mono">{siteName}</b>, which has no site pack</> : "with no site"}: there is no floor, field or station to edit yet. A site pack holds
-          them, one folder per room.
+          This controller runs {siteName ? <>with site <b className="mono">{siteName}</b>, which has no site pack</> : "with no site"}: there is no extent, area or station to edit yet. A site pack holds
+          them, one folder per site.
         </p>
         <ol className="steps-list">
           <li>
-            <b>Name the room</b> and say where the origin is.
+            <b>Name the site</b> and say where the origin is.
           </li>
           <li>
-            <b>Mount two stations</b> at opposite corners, outside the floor, high enough to see all of it.
+            <b>Mount two stations</b> at opposite corners, outside the extent, high enough to see all of it.
           </li>
           <li>
             <b>Spin robots in the console</b>: the circles they trace measure the stations.
           </li>
           <li>
-            <b>Put the spin in the room</b>, from two robots on measured spots or from typed numbers, then use it and send it to the robots.
+            <b>Place the spin in the site</b>, from two robots on measured spots or from typed numbers, then use it and send it to the robots.
           </li>
         </ol>
         {editable ? (

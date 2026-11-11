@@ -88,7 +88,7 @@ export function stationRows(
       index: s.index,
       label:
         (s.residual_mm === null ? "" : `residual ${s.residual_mm.toFixed(1)} mm · `) +
-        `box x ${s.box[0]}-${s.box[2]}, y ${s.box[1]}-${s.box[3]}`,
+        `coverage x ${s.box[0]}-${s.box[2]}, y ${s.box[1]}-${s.box[3]}`,
     }));
   }
   return session.stations.map((s) => ({

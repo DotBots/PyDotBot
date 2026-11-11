@@ -354,7 +354,7 @@ export const AnchorPanel: React.FC<AnchorPanelProps> = (props) => {
         <Icon name="select" size={12} /> Nudge with the arrows: 1 mm · Shift 10 mm · Alt turns 0.1° (Shift Alt 1°)
       </div>
       <div className="note" style={{ marginTop: 6 }}>
-        Or drag the plan: the room follows the pointer; hold Alt or Shift as you press to turn it about the spots. Zero need not sit on a robot.
+        Or drag the plan: the extent follows the pointer; hold Alt or Shift as you press to turn it about the spots. Zero need not sit on a robot.
       </div>
     </div>
   );
@@ -364,7 +364,7 @@ export const AnchorPanel: React.FC<AnchorPanelProps> = (props) => {
         <div className="h">
           <Icon name="check" size={14} /> In the draft
         </div>
-        The plan shows the room laid on these spots. Save writes it with the spots; Undo takes it back.
+        The plan shows the extent laid on these spots. Save writes it with the spots; Undo takes it back.
       </div>
     ) : !check ? (
       <div className="note" style={{ marginTop: 10 }}>
@@ -420,7 +420,7 @@ export const AnchorPanel: React.FC<AnchorPanelProps> = (props) => {
                 Recorded {work.recorded.length} spot{work.recorded.length === 1 ? "" : "s"}: worst {far.toFixed(1)} mm, {ok ? "agrees" : "off"}
                 {work.recorded.some((c) => c.assumed) ? " (unverified)" : ""}
               </div>
-              {far > REANCHOR_MM ? `More than ${REANCHOR_MM} mm off: the map has moved from the room, or a spot was misread.` : "The map stays where it is."} Kept in checks.toml beside the calibrations.
+              {far > REANCHOR_MM ? `More than ${REANCHOR_MM} mm off: the frame no longer matches the floor, or a spot was misread.` : "The map stays where it is."} Kept in checks.toml beside the calibrations.
               {far > REANCHOR_MM && (
                 <div className="acts">
                   <button type="button" className="btn sm primary" data-testid="anchor-reanchor" onClick={() => onWork((w) => ({ ...w, mode: "anchor" }))}>
@@ -446,7 +446,7 @@ export const AnchorPanel: React.FC<AnchorPanelProps> = (props) => {
       <div className="ins-h">
         <span className="kind">Anchor</span>
         <span className="name" style={{ fontFamily: "var(--font-ui)" }}>
-          {work.mode === "anchor" ? "Tie the map to the floor" : "Check the anchor again"}
+          {work.mode === "anchor" ? "Anchor the frame" : "Check the anchor again"}
         </span>
         <span className="sp" />
         <button type="button" className="btn icon ghost" aria-label="Close" onClick={props.onClose} style={{ height: 22, width: 22 }}>
@@ -455,12 +455,12 @@ export const AnchorPanel: React.FC<AnchorPanelProps> = (props) => {
       </div>
       <div className="ins-sub" style={{ marginTop: 4 }}>
         {work.mode === "anchor"
-          ? "Robots stand on spots measured with a tape; the map is turned and shifted, never scaled, so every spot lands where its robot reads. Everything on the floor stays put: only the numbers change."
+          ? "Robots stand on spots measured with a tape; the frame is turned and shifted, never scaled, so every spot lands where its robot reads. Everything on the floor stays put: only the numbers change."
           : "A robot on a measured spot, read against the map. This records how far off it is and moves nothing, unless you choose to re-anchor."}
       </div>
       {!props.live ? (
         <div className="callout" style={{ marginTop: 10 }}>
-          Open the editor from a controller to read its robots; or turn or shift zero by hand in Floor.
+          Open the editor from a controller to read its robots; or turn or shift the origin by hand in Extent.
         </div>
       ) : located.length === 0 ? (
         <div className="note" style={{ marginTop: 10 }}>

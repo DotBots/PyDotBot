@@ -111,7 +111,7 @@ export const ServeSheet: React.FC<{
           <Icon name="served" size={16} /> {inUse ? `Push ${name} to robots` : phase.kind === "done" && phase.used ? `Using ${name}` : `Use ${name}?`}
         </h2>
         <div className="sub">
-          {inUse ? "" : sameSpin ? `The same measurement as ${nowName}: the stations are where they were, only the coverage differs.` : row.in_frame ? "Another measurement of this room." : "Not in this room yet."}{" "}
+          {inUse ? "" : sameSpin ? `The same measurement as ${nowName}: the stations are where they were, only the coverage differs.` : row.in_frame ? "Another measurement of this site." : "Not placed in this site yet."}{" "}
           Coverage: {coverageText(row.reading)}
           {served && !inUse ? ` (now: ${coverageText(served.reading)})` : ""}.
         </div>

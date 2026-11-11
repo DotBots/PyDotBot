@@ -141,7 +141,7 @@ describe("checking the anchor again", () => {
     expect(screen.getByTestId("anchor-checked").textContent).toContain("worst 14.0 mm");
     fireEvent.click(screen.getByTestId("anchor-reanchor"));
     await act(async () => void vi.advanceTimersByTime(10));
-    expect(screen.getByText("Tie the map to the floor")).toBeTruthy();
+    expect(screen.getByText("Anchor the frame")).toBeTruthy();
     expect(fitBodies).toHaveLength(1);
   });
 });

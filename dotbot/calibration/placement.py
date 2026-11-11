@@ -163,7 +163,7 @@ def overlay(calibration: Calibration) -> dict:
         "id": calibration.id,
         "id8": calibration.id8,
         "free": solved_in_own_frame(calibration),
-        "fence": fence,
+        "coverage_union": fence,
         "stations": stations,
         "links": [
             {"a": link.a, "b": link.b, "shared": link.shared, "weak": _weak(link)}
@@ -222,7 +222,7 @@ def place_calibration(
     if not solved_in_own_frame(calibration) and not reanchor:
         kinds = sorted({st.solved_from for st in calibration.stations})
         raise PlacementRefused(
-            f"calibration {calibration.id8} was collected at points of the room "
+            f"calibration {calibration.id8} was collected at spots on the floor "
             f"(solved from {', '.join(kinds)}), so its frame is the site's "
             "anchor: moving it would misplace every robot. Re-anchor it only if "
             "the anchor itself moved."

@@ -93,16 +93,16 @@ function splitFixes(doc: Doc, field: DocArea, staging: DocArea): Fix[] {
       const y = field.y + field.h;
       const grow = Math.max(0, y + staging.h - ext[1]);
       fixes.push({
-        label: grow ? `Grow the floor by ${grow} mm, staging below` : "Move the staging below the field",
-        note: grow ? "Robots in the new strip have no fix until the station boxes grow too." : undefined,
+        label: grow ? `Grow the extent by ${grow} mm, staging below` : "Move the staging below the field",
+        note: grow ? "Robots in the new strip have no fix until the station coverage grows too." : undefined,
         doc: { ...withArea(doc, staging.key, { y }), extent_mm: [ext[0], ext[1] + grow] },
       });
     } else if (!vertical && nearRight) {
       const x = field.x + field.w;
       const grow = Math.max(0, x + staging.w - ext[0]);
       fixes.push({
-        label: grow ? `Grow the floor by ${grow} mm, staging to the right` : "Move the staging right of the field",
-        note: grow ? "Robots in the new strip have no fix until the station boxes grow too." : undefined,
+        label: grow ? `Grow the extent by ${grow} mm, staging to the right` : "Move the staging right of the field",
+        note: grow ? "Robots in the new strip have no fix until the station coverage grows too." : undefined,
         doc: { ...withArea(doc, staging.key, { x }), extent_mm: [ext[0] + grow, ext[1]] },
       });
     }
@@ -147,7 +147,7 @@ export function problems(doc: Doc): Problem[] {
       if (!o) continue;
       out.push({
         keys: [s.key, f.key],
-        title: "Field and staging split the floor",
+        title: "Field and staging split the extent",
         detail: `A point is in one or the other, and ${s.name} covers ${o.w} × ${o.h} mm of ${f.name}. Save stays off until they no longer overlap; your rectangle is kept as you drew it.`,
         blocking: true,
         fixes: splitFixes(doc, f, s),
@@ -165,10 +165,10 @@ export function problems(doc: Doc): Problem[] {
         const h = Math.min(a.y + a.h, ext[1]) - clipped.y;
         out.push({
           keys: [a.key],
-          title: `${a.name} runs off the floor`,
-          detail: "Robots report no position outside the floor, so that part of the area is never reached.",
+          title: `${a.name} runs off the extent`,
+          detail: "Robots report no position outside the extent, so that part of the area is never reached.",
           blocking: false,
-          fixes: w > 0 && h > 0 ? [{ label: `Clip it to the floor (${w} × ${h})`, doc: withArea(doc, a.key, { ...clipped, w, h }) }] : [],
+          fixes: w > 0 && h > 0 ? [{ label: `Clip it to the extent (${w} × ${h})`, doc: withArea(doc, a.key, { ...clipped, w, h }) }] : [],
         });
       }
     }

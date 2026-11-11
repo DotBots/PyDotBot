@@ -13,7 +13,7 @@ const SERVED = {
   spin: "s1",
   in_frame: true,
   served: true,
-  reading: "S0 and S1 share one box: the boxes do not decide",
+  reading: "S0 and S1 share one coverage: the coverages do not decide",
   stations: [
     { index: 0, residual_mm: 1.1, box: [0, 0, 1060, 1220], solved_from: "conics-joint" },
     { index: 1, residual_mm: 1.13, box: [0, 0, 1060, 1220], solved_from: "conics-joint" },
@@ -77,7 +77,7 @@ describe("the rows", () => {
 
   it("describes the drafted coverage when it differs from the file in use", () => {
     const drawn = HANDOVER.stations.map((s) => ({ index: s.index, rect: s.box }));
-    expect(sub(inputs([], { drawn }), "coverage")).toMatchObject({ state: "warn", text: "handover at x 530 mm · not in use yet (in use: both cover the whole floor)" });
+    expect(sub(inputs([], { drawn }), "coverage")).toMatchObject({ state: "warn", text: "handover at x 530 mm · not in use yet (in use: both cover the whole extent)" });
     expect(sub(inputs([], { drawn }), "coverage").action).toBeUndefined();
   });
 
@@ -98,7 +98,7 @@ describe("the rows", () => {
   });
 
   it("lists walls and objects, as optional when there are none", () => {
-    expect(goal(inputs([]), "walls")).toMatchObject({ state: "none", detail: "none drawn: robots may go anywhere on the floor" });
+    expect(goal(inputs([]), "walls")).toMatchObject({ state: "none", detail: "none drawn: robots may go anywhere in the extent" });
     expect(goal(inputs([]), "objects").state).toBe("none");
     expect(verdict(goals(inputs([bot("A1", SERVED.id)]))).needs).toBe(2);
   });
@@ -150,8 +150,8 @@ describe("with nothing in use", () => {
   const unserved = (rows: LibraryRow[]): GoalInputs => inputs([bot("A1")], { served: null, servedId: null, rows, coverage: null });
 
   it("the Stations row leads to choosing, placing or setting up the room", () => {
-    expect(goal(unserved([FREE, IN_FRAME]), "stations")).toMatchObject({ state: "warn", detail: "1 measured for this room, none in use", action: { label: "Choose one", go: { tab: "library" } } });
-    expect(goal(unserved([]), "stations").action).toEqual({ label: "Set up the room", go: { sheet: "newroom" } });
-    expect(goal(unserved([FREE]), "stations").action).toEqual({ label: "Put the spin in the room", go: { sheet: "newroom" } });
+    expect(goal(unserved([FREE, IN_FRAME]), "stations")).toMatchObject({ state: "warn", detail: "1 measured for this site, none in use", action: { label: "Choose one", go: { tab: "library" } } });
+    expect(goal(unserved([]), "stations").action).toEqual({ label: "Set up the site", go: { sheet: "newroom" } });
+    expect(goal(unserved([FREE]), "stations").action).toEqual({ label: "Place the spin in the site", go: { sheet: "newroom" } });
   });
 });

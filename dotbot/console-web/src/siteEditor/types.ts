@@ -49,7 +49,7 @@ export interface LibraryRow {
   created_at: string;
   path: string;
   site: string;
-  fence: Rect;
+  coverage_union: Rect;
   /** The measurement the file holds: files differing only in boxes share it. */
   spin: string;
   tracks: number;

@@ -865,7 +865,7 @@ def self_defined_site(
     x0, y0, _, _ = calibration.coverage_mm
     if (x0, y0) != (0, 0):
         raise ValueError(
-            f"a free-mode fence starts at (0, 0), got {list(calibration.coverage_mm)}"
+            f"a free-mode coverage starts at (0, 0), got {list(calibration.coverage_mm)}"
         )
     field_w, field_h = spin_field(calibration)
     extent, field_area, staging = starter_layout((field_w, field_h), size_mm)

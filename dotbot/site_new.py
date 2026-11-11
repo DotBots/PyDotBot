@@ -132,9 +132,9 @@ def write_new_site(
         )
     else:
         if start == "size" and size_mm is None:
-            raise NewSiteRefused("give the floor's size, width x height in mm")
+            raise NewSiteRefused("give the extent, width x height in mm")
         if size_mm is not None and (size_mm[0] <= 0 or size_mm[1] <= 0):
-            raise NewSiteRefused("the floor's width and height must be over 0 mm")
+            raise NewSiteRefused("the extent's width and height must be over 0 mm")
         site = Site(
             name=name, anchor=note, extent_mm=size_mm if start == "size" else None
         )

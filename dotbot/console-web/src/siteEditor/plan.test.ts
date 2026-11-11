@@ -49,9 +49,9 @@ describe("the plan's geometry", () => {
       coincident([
         { label: "floor", rect: r },
         { label: "field", rect: r },
-        { label: "S0 box", rect: r },
+        { label: "S0 coverage", rect: r },
         { label: "staging", rect: [0, 1000, 1060, 1220] },
       ]),
-    ).toEqual([["floor", "field", "S0 box"]]);
+    ).toEqual([["floor", "field", "S0 coverage"]]);
   });
 });

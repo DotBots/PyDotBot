@@ -144,7 +144,7 @@ def test_a_calibration_of_another_anchor_is_refused(placed):
 def test_floor_marks_are_named(placed):
     assert anchor_marks(ARENA, [placed]) == []
     marked = Site(name="arena", anchor="the door corner")
-    assert "names a mark in the room" in anchor_marks(marked, [])[0]
+    assert "names a mark on the floor" in anchor_marks(marked, [])[0]
     corner = dataclasses.replace(
         placed,
         stations=[
@@ -214,7 +214,7 @@ def test_site_turn_asks_when_the_anchor_is_a_floor_mark(tmp_path, home, placed):
     write_calibration(dataclasses.replace(placed, site=marked))
     result = _site_cmd(lab, "--rotate", "5", "--anchor", "moved", input="n\n")
     assert result.exit_code != 0
-    assert "names a mark in the room" in result.output
+    assert "names a mark on the floor" in result.output
     assert "the door corner" in path.read_text()
     result = _site_cmd(lab, "--rotate", "5", "--anchor", "moved", "-y")
     assert result.exit_code == 0, result.output

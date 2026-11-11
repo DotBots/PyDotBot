@@ -132,6 +132,6 @@ export function frameTwin(site: string, calibration: string, m: FrameMove): stri
 export function plainWarning(w: string): string {
   return w
     .replace(/^[0-9a-f]{8,}: /, "")
-    .replace(/(\d+) spin circle\(s\) \([^)]*\) land outside the site's extent/, (_, n) => `${n} measured spot${n === "1" ? "" : "s"} land${n === "1" ? "s" : ""} outside the floor`)
-    .replace(/(\d+) placement point\(s\) land outside the site's extent/, (_, n) => `${n} placement point${n === "1" ? "" : "s"} land${n === "1" ? "s" : ""} outside the floor`);
+    .replace(/(\d+) spin circle\(s\) \([^)]*\) land outside the site's extent/, (_, n) => `${n} measured spot${n === "1" ? "" : "s"} land${n === "1" ? "s" : ""} outside the extent`)
+    .replace(/(\d+) placement point\(s\) land outside the site's extent/, (_, n) => `${n} placement point${n === "1" ? "" : "s"} land${n === "1" ? "s" : ""} outside the extent`);
 }

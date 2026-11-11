@@ -61,9 +61,9 @@ describe("the Stations kind's drawing", () => {
       { index: 0, rect: [0, 0, 630, 1220] as [number, number, number, number] },
       { index: 1, rect: [430, 0, 1060, 1220] as [number, number, number, number] },
     ];
-    expect(layoutText(whole)).toBe("both cover the whole floor, no handover");
-    expect(coverageSay(whole, whole)).toEqual({ text: "both cover the whole floor, no handover", differs: false });
-    expect(coverageSay(split, whole)).toEqual({ text: "handover at x 530 mm · not in use yet (in use: both cover the whole floor)", differs: true });
+    expect(layoutText(whole)).toBe("both cover the whole extent, no handover");
+    expect(coverageSay(whole, whole)).toEqual({ text: "both cover the whole extent, no handover", differs: false });
+    expect(coverageSay(split, whole)).toEqual({ text: "handover at x 530 mm · not in use yet (in use: both cover the whole extent)", differs: true });
   });
 
   it("gives each station its share of the floor", () => {

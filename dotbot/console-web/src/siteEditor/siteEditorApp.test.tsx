@@ -23,7 +23,7 @@ const row = (id8: string, boxes: [Rect, Rect], extra: Partial<LibraryRow> = {}):
   created_at: "2026-11-09T08:12:50Z",
   path: `/cal/calibration-${id8}.toml`,
   site: "inria-2lh",
-  fence: WHOLE,
+  coverage_union: WHOLE,
   spin: "2bab9ec3",
   tracks: 18,
   stations: boxes.map((box, index) => ({ index, residual_mm: 1.1, box, solved_from: "conics-joint" })),
@@ -35,7 +35,7 @@ const row = (id8: string, boxes: [Rect, Rect], extra: Partial<LibraryRow> = {}):
 
 function index8Reading(boxes: [Rect, Rect]): string {
   return boxes[0].join() === boxes[1].join()
-    ? "S0 and S1 share one box: the boxes do not decide"
+    ? "S0 and S1 share one coverage: the coverages do not decide"
     : "S0 x 0-630, y 0-1220 · S1 x 430-1060, y 0-1220 · S0/S1 handover x 530";
 }
 
@@ -46,7 +46,7 @@ const handover = row("a1b41f12", [
 ]);
 const inFrame = [served, handover, ...["0ac36f3e", "991ec9c8", "b86304cc", "c9315b3f", "ff221900"].map((id) => row(id, [WHOLE, WHOLE]))];
 const free = ["e06610ac", "80188d29", "cc82d16d", "0bf50aee", "6e13c58f"].map((id, i) =>
-  row(id, [[0, 0, 619, 864], [0, 0, 619, 864]], { in_frame: false, spin: `free${i}`, fence: [0, 0, 619, 864] }),
+  row(id, [[0, 0, 619, 864], [0, 0, 619, 864]], { in_frame: false, spin: `free${i}`, coverage_union: [0, 0, 619, 864] }),
 );
 
 const LIBRARY: Library = {
@@ -135,7 +135,7 @@ describe("the editor page", () => {
     fireEvent.click(screen.getByRole("tab", { name: /Calibrations/ }));
     await waitFor(() => expect(screen.getAllByTestId("library-group")).toHaveLength(1));
     expect(screen.getByTestId("library-group").textContent).toBe("Measured 9 Nov 08:12 · 7 coverage layouts");
-    expect(screen.getByRole("tab", { name: "Not in this room yet 5" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Not placed in this site yet 5" })).toBeTruthy();
     expect(screen.getByTestId("status-line").textContent).toContain("Using inria-hil-r3-inria-2lh");
     expect(screen.getByTestId("serving-card").textContent).toContain("from its command line");
     fireEvent.click(screen.getByTestId("library-row-a1b41f12"));
@@ -143,7 +143,7 @@ describe("the editor page", () => {
     expect(screen.getByTestId("status-line").textContent).toContain("Using inria-hil-r3-inria-2lh");
     fireEvent.click(screen.getByLabelText("Back to the calibration in use"));
     expect(screen.queryByTestId("status-side")).toBeNull();
-    fireEvent.click(screen.getByRole("tab", { name: "Not in this room yet 5" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Not placed in this site yet 5" }));
     expect(screen.getByTestId("library-not-placed").textContent).toContain("5 spins");
   });
 });
@@ -263,7 +263,7 @@ describe("the anchor flow from the page", () => {
     stubFetch();
     render(<SiteEditorApp />);
     fireEvent.click(await screen.findByLabelText("More"));
-    fireEvent.click(screen.getByRole("menuitem", { name: /Set up a room/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Set up a site/ }));
     expect(screen.getByTestId("new-room")).toBeTruthy();
     fireEvent.click(await screen.findByTestId("act-anchor"));
     await waitFor(() => expect(screen.getByTestId("anchor-panel")).toBeTruthy());
@@ -413,11 +413,11 @@ describe("the one map", () => {
     expect(screen.getAllByTestId("room-ray-0")).toHaveLength(4);
     expect(screen.getAllByTestId(/room-cover-/)).toHaveLength(2);
     await waitFor(() => expect(screen.getAllByTestId("room-robot")).toHaveLength(1));
-    expect(screen.getByTestId("room-coverage-note").textContent).toBe("both cover the whole floor, no handover");
+    expect(screen.getByTestId("room-coverage-note").textContent).toBe("both cover the whole extent, no handover");
     expect(screen.queryByRole("tab", { name: "Plan" })).toBeNull();
   });
 
-  it("goes top-down to edit and back: Edit, a kind's number, Done editing and Esc", async () => {
+  it("goes top-down to edit and back: Edit, a kind's number, Done and Esc", async () => {
     stub();
     render(<SiteEditorApp />);
     await waitFor(() => expect(screen.getByTestId("room-view")).toBeTruthy());
@@ -498,7 +498,7 @@ describe("the one map", () => {
     fireEvent.click(screen.getByRole("button", { name: "Split at the best line" }));
     await waitFor(() => expect(screen.getByTestId("notice").textContent).toContain("Draft: split at x 530 mm. Drag the dashed line to move it, then Save."));
     await waitFor(() => expect(screen.getByTestId("plan")).toBeTruthy());
-    expect(screen.getByTestId("goal-stations-coverage").textContent).toContain("handover at x 530 mm · not in use yet (in use: both cover the whole floor)");
+    expect(screen.getByTestId("goal-stations-coverage").textContent).toContain("handover at x 530 mm · not in use yet (in use: both cover the whole extent)");
     expect(screen.getByTestId("coverage-card").textContent).toContain("Handover at x 530 mm · not in use yet");
     expect(screen.getByTestId("switch-label").textContent).toBe("switches here · x 530 mm");
     expect(screen.getByTestId("band-label").textContent).toBe("both allowed");
@@ -506,7 +506,7 @@ describe("the one map", () => {
     await waitFor(() => expect(screen.getByTestId("room-handover")).toBeTruthy());
     expect(screen.getByTestId("room-label-handover").textContent).toBe("switches here · x 530 mm");
     expect(screen.getByTestId("room-label-band").textContent).toBe("both allowed");
-    expect(screen.getByTestId("room-coverage-note").textContent).toBe("handover at x 530 mm · not in use yet (in use: both cover the whole floor)");
+    expect(screen.getByTestId("room-coverage-note").textContent).toBe("handover at x 530 mm · not in use yet (in use: both cover the whole extent)");
     fireEvent.click(screen.getByTestId("notice-act"));
     await waitFor(() => expect(screen.getByTestId("goal-stations-coverage").textContent).toContain("robots pick the closer fix"));
   });

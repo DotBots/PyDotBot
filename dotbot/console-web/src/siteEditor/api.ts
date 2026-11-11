@@ -234,7 +234,7 @@ export interface CalibrationOverlay {
   id8: string;
   /** Solved in its own frame: a spin not yet placed in a room */
   free: boolean;
-  fence: [number, number, number, number];
+  coverage_union: [number, number, number, number];
   stations: { index: number; rect: Rect; circles: { name: string; x: number; y: number; radius_mm: number }[] }[];
   tag: string;
   site: string;

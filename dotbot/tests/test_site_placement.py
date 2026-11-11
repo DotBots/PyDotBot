@@ -74,7 +74,7 @@ def test_a_calibration_is_drawn_by_id_in_its_own_frame(client, spun):
     (station,) = body["stations"]
     assert (station["index"], station["channel"]) == (0, 1)
     assert len(station["centres"]) == len(CENTRES)
-    assert body["fence"] == station["rect"] == list(spun.coverage_mm)
+    assert body["coverage_union"] == station["rect"] == list(spun.coverage_mm)
     assert body["links"] == []
 
 
@@ -116,7 +116,7 @@ def test_a_corner_calibration_is_refused_unless_re_anchored(client, spun):
     assert listed == {"spin": True, "corner": False}
     refused = save(client, source="corner", place={"dx_mm": 10})
     assert refused.status_code == 422
-    assert "collected at points of the room" in refused.json()["detail"]["message"]
+    assert "collected at spots on the floor" in refused.json()["detail"]["message"]
     moved = save(client, source="corner", place={"dx_mm": 10, "reanchor": True})
     assert moved.status_code == 200
     assert any("re-anchored" in w for w in moved.json()["calibration"]["warnings"])

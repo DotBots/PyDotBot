@@ -36,7 +36,7 @@ def test_shared_boxes_say_the_disagreement_decides():
     lines = fix_lines(calibration)
     assert (
         lines[0]
-        == "who gives the fix: S0 and S1 share one box: the boxes do not decide"
+        == "who gives the fix: S0 and S1 share one coverage: the coverages do not decide"
     )
     assert "mm disagreement on" in lines[1] and "decides" in lines[1]
 

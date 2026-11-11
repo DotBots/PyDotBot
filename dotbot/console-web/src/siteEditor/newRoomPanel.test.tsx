@@ -15,7 +15,7 @@ const row = (id: string, extra: Partial<LibraryRow>): LibraryRow => ({
   created_at: "2026-11-09T08:12:50Z",
   path: `/cal/${id}.toml`,
   site: "lab",
-  fence: [0, 0, 600, 800],
+  coverage_union: [0, 0, 600, 800],
   spin: "s",
   tracks: 8,
   stations: [],
@@ -25,7 +25,7 @@ const row = (id: string, extra: Partial<LibraryRow>): LibraryRow => ({
   ...extra,
 });
 
-const overlay = { id: SPIN, id8: SPIN.slice(0, 8), free: true, fence: [0, 0, 600, 800], tag: "", site: "lab", frame_refusal: null, stations: [] };
+const overlay = { id: SPIN, id8: SPIN.slice(0, 8), free: true, coverage_union: [0, 0, 600, 800], tag: "", site: "lab", frame_refusal: null, stations: [] };
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -52,10 +52,10 @@ const panel = (rows: LibraryRow[]) =>
   );
 
 describe("the new-room steps after a reload", () => {
-  it("goes on past Put it in the room for a spin already placed", async () => {
+  it("goes on past Place it in the site for a spin already placed", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(overlay), { status: 200 })));
-    panel([row(SPIN, { free: true }), row("9a9a9a9a11111111", { in_frame: true, placed_from: SPIN })]);
-    await waitFor(() => expect(screen.getByText(/9a9a9a9a is placed in this room/)).toBeTruthy());
+    panel([row(SPIN, { free: true }), row("9a9a9a9a11111111", { in_frame: true, placed_from: SPIN, tag: "lab-placed" })]);
+    await waitFor(() => expect(screen.getByText(/lab-placed is placed in this site/)).toBeTruthy());
     expect(screen.queryByTestId("place-write")).toBeNull();
   });
 

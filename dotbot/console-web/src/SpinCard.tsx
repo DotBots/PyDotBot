@@ -103,7 +103,7 @@ export const SpinCard: React.FC<{
           Saved <span style={mono}>{r.id8}</span>
         </div>
         <div style={muted}>
-          In its own frame, zero at the robots' top-left corner{r.field_mm ? `, ${r.field_mm[0]} × ${r.field_mm[1]} mm` : ""}. Place it in the room before it is served.
+          In its own frame, zero at the robots' top-left corner{r.field_mm ? `, ${r.field_mm[0]} × ${r.field_mm[1]} mm` : ""}. Place it in a site before it is served.
         </div>
         <div style={{ display: "grid", gap: 3, marginTop: 8 }}>
           {(r.stations ?? []).map((st) => (

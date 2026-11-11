@@ -18,13 +18,13 @@ import type { LibraryRow, Rect } from "./types";
 // the plan.
 
 const GLOSSARY: { term: string; means: string; swatch: React.ReactNode }[] = [
-  { term: "Floor", means: "the room's rectangle; robots' positions outside it are dropped", swatch: <span style={{ width: 14, height: 10, border: "1px solid var(--muted)", borderRadius: 2 }} /> },
-  { term: "Origin", means: "(0, 0), the floor's top-left corner; x right, y down, mm", swatch: <Icon name="fit" size={14} /> },
-  { term: "Field", means: "the area experiments run in (staging: where robots park)", swatch: <span style={{ width: 14, height: 10, border: "1.5px dashed var(--area-0)", borderRadius: 2 }} /> },
+  { term: "Extent", means: "the rectangle positions are measured in; robots' positions outside it are dropped", swatch: <span style={{ width: 14, height: 10, border: "1px solid var(--muted)", borderRadius: 2 }} /> },
+  { term: "Origin", means: "(0, 0), the extent's top-left corner; x right, y down, mm", swatch: <Icon name="fit" size={14} /> },
+  { term: "Area", means: "a named rectangle; field is where experiments run, staging where robots park", swatch: <span style={{ width: 14, height: 10, border: "1.5px dashed var(--area-0)", borderRadius: 2 }} /> },
   { term: "Station", means: "an LH2 base station, S0 to S15 (S0 is set to channel 1)", swatch: <span className="stpin" style={{ background: "var(--st-0)" }}>S0</span> },
-  { term: "Coverage", means: "where robots use that station", swatch: <span style={{ width: 14, height: 10, border: "1.5px solid var(--st-1)", borderRadius: 2 }} /> },
+  { term: "Coverage", means: "where robots may use that station", swatch: <span style={{ width: 14, height: 10, border: "1.5px solid var(--st-1)", borderRadius: 2 }} /> },
   { term: "Spin circle", means: "where a robot spun to measure the stations; its ring is the sensor's path", swatch: <span style={{ width: 12, height: 12, border: "1.5px solid var(--st-0)", borderRadius: "50%" }} /> },
-  { term: "Handover", means: "where robots switch from one station to the other", swatch: <span style={{ width: 14, height: 10, background: "color-mix(in srgb, var(--st-0) 45%, transparent)", borderRadius: 2 }} /> },
+  { term: "Handover", means: "where two coverages overlap: the band where both are allowed, the line where robots switch", swatch: <span style={{ width: 14, height: 10, background: "color-mix(in srgb, var(--st-0) 45%, transparent)", borderRadius: 2 }} /> },
   { term: "In use", means: "the calibration this controller uses now", swatch: <span className="dot" style={{ background: "var(--ok)" }} /> },
   { term: "Robot", means: "live, drawn as the console draws it; read only here", swatch: <span className="dot" style={{ background: "var(--s-Running)", borderRadius: 2 }} /> },
 ];
@@ -388,10 +388,10 @@ export const Inspector: React.FC<InspectorProps> = (props) => {
             <KV
               testid="robot-where"
               rows={[
-                ["Area", where.area ?? (where.inFloor ? "none" : "off the floor")],
+                ["Area", where.area ?? (where.inFloor ? "none" : "outside the extent")],
                 ["Covered by", where.boxes.length ? where.boxes.map((s) => `S${s}`).join(", ") : boxes.length ? "no station: no position" : "no calibration shown"],
                 ["Uses", where.fix.length === 0 ? "no station" : where.fix.length === 1 ? `S${where.fix[0]}` : `${where.fix.map((s) => `S${s}`).join(" or ")}: no handover here`],
-                ["Nearest edge", where.edge ? `${where.edge.mm} mm, ${where.edge.side}` : "no floor"],
+                ["Nearest edge", where.edge ? `${where.edge.mm} mm, ${where.edge.side}` : "no extent"],
               ]}
             />
             {where.fix.length > 1 && (
@@ -439,12 +439,12 @@ export const Inspector: React.FC<InspectorProps> = (props) => {
     );
   }
 
-  // --- the floor ---------------------------------------------------------------
+  // --- the extent --------------------------------------------------------------
   if (one === "floor" || (kind === "frame" && !one)) {
     return (
       <div data-testid="inspector-floor">
-        <Head kind="Floor" name={doc.extent_mm ? `${doc.extent_mm[0]} × ${doc.extent_mm[1]} mm` : "not measured"} swatch={<Icon name="frame" size={14} />} />
-        <div className="ins-sub">The rectangle robots report positions in. The origin is its top-left corner; x runs right, y down.</div>
+        <Head kind="Extent" name={doc.extent_mm ? `${doc.extent_mm[0]} × ${doc.extent_mm[1]} mm` : "not measured"} swatch={<Icon name="frame" size={14} />} />
+        <div className="ins-sub">The rectangle positions are measured in. The origin is its top-left corner; x runs right, y down.</div>
         <span className="lbl" style={{ marginTop: 8 }}>Size, mm</span>
         <div className="grid2">
           <NumField label="width" prefix="w" value={doc.extent_mm?.[0] ?? null} min={1} disabled={!editable} onApply={(w) => onEdit({ ...doc, extent_mm: [w, doc.extent_mm?.[1] ?? w] })} />
@@ -464,13 +464,13 @@ export const Inspector: React.FC<InspectorProps> = (props) => {
             onApply={(t) => onEdit({ ...doc, anchor: t.trim() || null })}
           />
         </div>
-        <KV rows={[["Frame id", props.frameId ? `${props.frameId}${doc.frame ? "" : " (from the name and note)"}` : "unknown"]]} />
-        <div className="note" style={{ marginTop: 6 }}>
-          A free note: calibrations match the frame id, not these words, so fixing a typo orphans nothing.
+        <div className="note" style={{ marginTop: 6 }} data-testid="extent-frame">
+          <span className="mono">Frame {props.frameId ?? "unknown"}</span>
+          {props.frameId && !doc.frame ? " (from the site name and note)" : ""}. A free note: calibrations match the frame, not these words, so fixing a typo orphans nothing.
         </div>
         {editable && props.onFrameTool && (
           <Sec title="Move the origin">
-            <div className="note">Turn the room or shift the origin by hand: one change, reviewed before anything is written. To lay the map on spots measured in the room, use Anchor.</div>
+            <div className="note">Turn the frame or shift the origin by hand: one change, reviewed before anything is written. To lay the frame on spots measured on the floor, use Anchor.</div>
             <div className="acts">
               <button type="button" className="btn sm" onClick={() => props.onFrameTool?.("turn")}>
                 <Icon name="turn" size={13} /> Turn or shift the origin (T)
@@ -493,7 +493,7 @@ export const Inspector: React.FC<InspectorProps> = (props) => {
     return (
       <div data-testid="inspector-anchor">
         <Head kind="Anchor" name={spots.length ? `${spots.length} spot${spots.length === 1 ? "" : "s"}` : "not anchored"} swatch={<Icon name="capture" size={14} />} />
-        <div className="ins-sub">{props.anchorText ?? "How the map is tied to the room: robots on spots measured with a tape."}</div>
+        <div className="ins-sub">{props.anchorText ?? "How the frame is tied to the floor: robots on spots measured with a tape."}</div>
         {spots.length > 0 && (
           <table className="strip" style={{ marginTop: 8 }} data-testid="anchor-kept">
             <thead>
@@ -572,7 +572,7 @@ export const Inspector: React.FC<InspectorProps> = (props) => {
         <KV
           testid="site-summary"
           rows={[
-            ["Floor", doc.extent_mm ? `${doc.extent_mm[0]} × ${doc.extent_mm[1]} mm` : "not measured"],
+            ["Extent", doc.extent_mm ? `${doc.extent_mm[0]} × ${doc.extent_mm[1]} mm` : "not measured"],
             ["Origin", "top-left corner"],
             ["Areas", doc.areas.length ? doc.areas.map((a) => a.name).join(", ") : "none"],
             ["Stations", boxes.length ? boxes.map((b) => `S${b.index}`).join(", ") : "none shown"],

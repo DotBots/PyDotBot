@@ -119,7 +119,7 @@ def reading(rects: Mapping[int, Sequence[int]]) -> str:
         same = len({rects[s] for s in group}) == 1
         names = " and ".join(f"S{s}" for s in group)
         parts.append(
-            f"{names} share {'one box' if same else 'a centre'}: the boxes do not decide"
+            f"{names} share {'one coverage' if same else 'a centre'}: the coverages do not decide"
         )
     for s, (x0, y0, x1, y1) in rects.items():
         if s in shared:

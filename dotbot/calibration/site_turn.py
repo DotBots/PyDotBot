@@ -72,12 +72,12 @@ def square_turn(theta_deg: float) -> bool:
 
 
 def widened_note(theta_deg: float) -> list[str]:
-    """One line when the turn widens the coverage boxes to stay rectangles."""
+    """One line when the turn widens each coverage to stay a rectangle."""
     if square_turn(theta_deg):
         return []
     return [
-        "the coverage boxes and the fence are widened to the rectangles round "
-        "them once turned"
+        "each station's coverage and their union are widened to the rectangles "
+        "round them once turned"
     ]
 
 
@@ -104,7 +104,7 @@ def anchor_marks(site: Site, calibrations: Iterable[Calibration]) -> list[str]:
     if not site.anchor.strip().lower().startswith(SELF_DEFINED):
         out.append(
             f"the anchor ({site.anchor or 'none'!s}) is not self-defined: it "
-            "names a mark in the room, and the turn takes zero and the axes "
+            "names a mark on the floor, and the turn takes zero and the axes "
             "off it"
         )
     for cal in calibrations:

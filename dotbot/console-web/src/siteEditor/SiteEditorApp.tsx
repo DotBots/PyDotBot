@@ -304,7 +304,7 @@ export const SiteEditorApp: React.FC = () => {
       setNotice({
         tone: kept.conflicts.length || kept.lostText ? "warn" : "info",
         text: kept.reapplied
-          ? `The room file changed since you last had this page open. Your ${n} unsaved change${n === 1 ? " was" : "s were"} re-applied on top${
+          ? `site.toml changed since you last had this page open. Your ${n} unsaved change${n === 1 ? " was" : "s were"} re-applied on top${
               kept.conflicts.length ? `; ${kept.conflicts.length} that the file also changed kept the file's version` : ""
             }${kept.lostText ? "; your edits to the file's text could not follow: copy them from here" : ""}.`
           : `Your ${n} unsaved change${n === 1 ? " was" : "s were"} restored from this browser.`,
@@ -365,7 +365,7 @@ export const SiteEditorApp: React.FC = () => {
     const n = pending(next);
     setNotice({
       tone: c.length || d.text !== null ? "warn" : "info",
-      text: `The room file changed on disk, so the page reloaded it${n ? ` and re-applied your ${n} change${n === 1 ? "" : "s"}` : ""}${
+      text: `site.toml changed on disk, so the page reloaded it${n ? ` and re-applied your ${n} change${n === 1 ? "" : "s"}` : ""}${
         c.length ? `; ${c.map((x) => x.label).join(", ")} kept the file's version` : ""
       }${d.text !== null ? "; your edits to the old text could not follow: copy them from here" : ""}.`,
       lost: d.text ?? undefined,
@@ -382,8 +382,8 @@ export const SiteEditorApp: React.FC = () => {
         if (!kept) return;
         setDraft(kept.draft);
         setConflicts(kept.conflicts);
-        setNotice({ tone: "info", text: "Another tab edited this room: its unsaved changes are shown here too." });
-      } else setNotice({ tone: "warn", text: "This room is being edited in another tab too. The last Save wins, and a reload re-applies your changes on top of it." });
+        setNotice({ tone: "info", text: "Another tab edited this site: its unsaved changes are shown here too." });
+      } else setNotice({ tone: "warn", text: "This site is being edited in another tab too. The last Save wins, and a reload re-applies your changes on top of it." });
     };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
@@ -1225,7 +1225,7 @@ export const SiteEditorApp: React.FC = () => {
               versions.length > 0 ? (
                 <details style={{ marginTop: 8 }} data-testid="versions">
                   <summary className="note" style={{ cursor: "pointer" }}>
-                    Kept versions of the room file · {versions.length}
+                    Kept versions of site.toml · {versions.length}
                   </summary>
                   {versions.map((v) => (
                     <div className="orow" key={v.id} style={{ marginLeft: 0 }}>
@@ -1244,7 +1244,7 @@ export const SiteEditorApp: React.FC = () => {
                                 forget(storage(), p.name);
                                 load(p);
                                 setChecksRefresh((n) => n + 1);
-                                setToast({ text: `The room file is back as kept at ${v.at.replace("T", " ").slice(0, 16)}; the version it replaced is kept too.` });
+                                setToast({ text: `site.toml is back as kept at ${v.at.replace("T", " ").slice(0, 16)}; the version it replaced is kept too.` });
                               },
                               (e: Error) => setNotice({ tone: "err", text: `Not restored: ${e.message.replace(/^\d+: /, "")}` }),
                             );
@@ -1255,7 +1255,7 @@ export const SiteEditorApp: React.FC = () => {
                       )}
                     </div>
                   ))}
-                  <div className="note" style={{ marginTop: 6 }}>The last 20 saves of the room file. Restoring writes one back; the file it replaces is kept too, so this can be undone.</div>
+                  <div className="note" style={{ marginTop: 6 }}>The last 20 saves of site.toml. Restoring writes one back; the file it replaces is kept too, so this can be undone.</div>
                 </details>
               ) : null
             }
@@ -1306,7 +1306,7 @@ export const SiteEditorApp: React.FC = () => {
             onRename={async (row, tag) => {
               await patchCalibration(row.id, { tag });
               loadLibrary();
-              setToast({ text: `Renamed ${row.id8} to "${tag || "no name"}": its id, file name and every robot holding it are unchanged.` });
+              setToast({ text: `Renamed ${nameOf(row)} to "${tag || "no name"}": its id, file name and every robot holding it are unchanged.` });
             }}
           />
         )}
@@ -1377,7 +1377,7 @@ export const SiteEditorApp: React.FC = () => {
         ) : rightTab === "inspect" && anchorOpen ? (
           <div className="callout" style={{ marginTop: 12 }} data-testid="anchor-unserved">
             <div className="h">No calibration in use</div>
-            Anchoring lays the map of the calibration in use on the room, so one has to be in use first.
+            Anchoring lays the frame of the calibration in use on the floor, so one has to be in use first.
             <div className="acts">
               <button type="button" className="btn sm primary" data-testid="anchor-serve-step" onClick={() => goalAction(serveStep(rows))}>
                 {serveStep(rows).label}
@@ -1495,7 +1495,7 @@ export const SiteEditorApp: React.FC = () => {
             data-testid="present"
             className={`btn primary presentbtn${presenting ? " on" : ""}`}
             aria-pressed={presenting}
-            title={presenting ? `Back to editing (${PRESENT_KEY} or Esc)` : `The room in 3D, full screen, for a projector (${PRESENT_KEY})`}
+            title={presenting ? `Back to editing (${PRESENT_KEY} or Esc)` : `The site in 3D, full screen, for a projector (${PRESENT_KEY})`}
             onClick={() => (presenting ? stopPresent() : startPresent())}
           >
             <Icon name="present" />
@@ -1590,7 +1590,7 @@ export const SiteEditorApp: React.FC = () => {
                   <Icon name="pin" /> Switch site…
                 </button>
                 <button type="button" className="mi" role="menuitem" onClick={() => (setNewRoom(true), setRightTab("inspect"), rightAsRail && setDrawer("right"), setMenu(false))}>
-                  <Icon name="mount" /> Set up a room, step by step
+                  <Icon name="mount" /> Set up a site, step by step
                 </button>
               </>
             )}
@@ -1603,10 +1603,10 @@ export const SiteEditorApp: React.FC = () => {
               <Icon name="restore" /> Snapshots and setup summary
             </button>
             <button type="button" className="mi" role="menuitem" onClick={() => (openSheet("table"), setMenu(false))}>
-              <Icon name="table" /> The room as tables
+              <Icon name="table" /> The site as tables
             </button>
             <button type="button" className="mi" role="menuitem" onClick={() => (openSheet("file"), setMenu(false))}>
-              <Icon name="file" /> The room file, as Save writes it
+              <Icon name="file" /> site.toml, as Save writes it
             </button>
             <button type="button" className="mi" role="menuitem" onClick={() => (setShortcuts(true), setMenu(false))}>
               <Icon name="key" /> Keyboard shortcuts <span className="s">?</span>
@@ -1816,7 +1816,7 @@ export const SiteEditorApp: React.FC = () => {
                 selected={selected}
                 editable={editable}
                 boxes={boxes}
-                shownId8={shown?.id8 ?? null}
+                shownName={shown ? nameOf(shown) : null}
                 robots={bots}
                 servedId={servedId}
                 onTab={setTableTab}

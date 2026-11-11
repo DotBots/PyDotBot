@@ -27,15 +27,15 @@ export function nameOf(c: { tag?: string | null; created_at?: string | null; id8
   if (!c) return "none";
   if (c.tag) return c.tag;
   const d = shortWhen(c.created_at ?? "");
-  return d ? `spin of ${d}` : (c.id8 ?? "unnamed");
+  return d ? `spin of ${d}` : "untagged";
 }
 
 /** A coverage layout in a few words: where the handover is, or that there is none. */
 export function coverageText(reading: string): string {
   const h = /S(\d+)\/S(\d+) handover ([xy]) ([\d.]+)/.exec(reading);
   if (h) return `handover at ${h[3]} ${Math.round(Number(h[4]))} mm`;
-  if (/share one box/.test(reading)) return "both cover the whole floor, no handover";
-  if (/share a centre/.test(reading)) return "boxes share a centre, no handover";
+  if (/share one coverage/.test(reading)) return "both cover the whole extent, no handover";
+  if (/share a centre/.test(reading)) return "coverages share a centre, no handover";
   const only = /S(\d+) only in a \d+ mm strip/.exec(reading);
   if (only) {
     const other = /S(\d+) x/.exec(reading);

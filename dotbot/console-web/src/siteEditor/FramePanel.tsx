@@ -134,7 +134,7 @@ export const FramePanel: React.FC<FramePanelProps> = (props) => {
         <div className="h">
           <Icon name="check" size={14} /> In the draft
         </div>
-        The plan shows the room with this origin. Save writes it with your other changes; Undo takes it back.
+        The plan shows the extent with this origin. Save writes it with your other changes; Undo takes it back.
         <div className="acts">
           <button type="button" className="btn sm" onClick={reset}>
             Back to the saved origin
@@ -168,7 +168,7 @@ export const FramePanel: React.FC<FramePanelProps> = (props) => {
       <div className="h">
         <Icon name="check" size={14} /> {moves(move) ? "The origin can move there" : "Back to the saved origin"}
       </div>
-      Areas, walls, objects and the coverage keep their place on the floor; only their numbers change, and the floor grows to hold them
+      Areas, walls, objects and the coverage keep their place on the floor; only their numbers change, and the extent grows to hold them
       {check.result.warnings.length ? `. ${check.result.warnings.map(plainWarning).join("; ")}` : ""}. Nothing is written until Save.
       <div className="acts">
         <button type="button" className="btn sm primary" onClick={() => props.onApply(move, check.result)} data-testid="frame-apply">
@@ -186,14 +186,14 @@ export const FramePanel: React.FC<FramePanelProps> = (props) => {
   return (
     <div data-testid="frame-turn">
       <div className="ins-h">
-        <span className="kind">Floor</span>
+        <span className="kind">Extent</span>
         <span className="name" style={{ fontFamily: "var(--font-ui)" }}>
           Turn or shift the origin
         </span>
       </div>
       <div className="ins-sub" style={{ marginTop: 8 }}>
-        To lay the map on spots measured in the room, use Anchor instead. Held in the draft with your other edits: areas, walls, objects and the coverage keep their place on the floor, with new numbers. The plan shows the new origin
-        dashed until it is in the draft. Save writes one new calibration and the room file; robots report in the old origin until you push.
+        To lay the frame on spots measured on the floor, use Anchor instead. Held in the draft with your other edits: areas, walls, objects and the coverage keep their place on the floor, with new numbers. The plan shows the new origin
+        dashed until it is in the draft. Save writes one new calibration and site.toml; robots report in the old origin until you push.
       </div>
       <span className="lbl" style={{ marginTop: 8 }}>Turn</span>
       <div className="grid2">
@@ -208,7 +208,7 @@ export const FramePanel: React.FC<FramePanelProps> = (props) => {
         <NumField label="shift y" prefix="y" value={move.dy} onApply={(v) => onMove({ ...move, dy: v })} />
       </div>
       <div style={{ marginTop: 8 }}>
-        <TextField label="New note on where the origin is (optional)" value={move.note ?? ""} placeholder={props.note || "where the origin is in the room"} onApply={(t) => onMove({ ...move, note: t.trim() || null })} />
+        <TextField label="New note on where the origin is (optional)" value={move.note ?? ""} placeholder={props.note || "where the origin is on the floor"} onApply={(t) => onMove({ ...move, note: t.trim() || null })} />
       </div>
       {status}
       <Sec title="Same from a terminal">

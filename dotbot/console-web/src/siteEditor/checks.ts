@@ -99,7 +99,7 @@ export const checkPasses = (c: CheckRecord, limitMm: number) => c.error_mm <= Ma
  * already in this room, else put a measured spin in it, else measure. */
 export function serveStep(rows: LibraryRow[]): GoalAction {
   if (rows.some((r) => r.in_frame)) return { label: "Choose one", go: { tab: "library" } };
-  return { label: rows.some((r) => r.free) ? "Put the spin in the room" : "Set up the room", go: { sheet: "newroom" } };
+  return { label: rows.some((r) => r.free) ? "Place the spin in the site" : "Set up the site", go: { sheet: "newroom" } };
 }
 
 const RANK: Record<GoalState, number> = { none: 0, unknown: 0, ok: 0, warn: 1, fail: 2 };
@@ -121,7 +121,7 @@ export function goals(i: GoalInputs): Goal[] {
   out.push({
     id: "floor",
     group: "room",
-    title: "Floor",
+    title: "Extent",
     state: ext ? "ok" : "fail",
     detail: ext ? `${ext[0]} × ${ext[1]} mm` : "not measured: robots' positions cannot be checked against it",
     action: ext ? undefined : { label: "Set the size", go: { kind: "frame", select: "floor" } },
@@ -138,9 +138,9 @@ export function goals(i: GoalInputs): Goal[] {
       detail: i.servedId
         ? "the calibration in use is not in this site's folders"
         : i.rows.some((r) => r.in_frame)
-          ? `${i.rows.filter((r) => r.in_frame).length} measured for this room, none in use`
+          ? `${i.rows.filter((r) => r.in_frame).length} measured for this site, none in use`
           : i.rows.some((r) => r.free)
-            ? "a spin is measured but not in this room yet"
+            ? "a spin is measured but not placed in this site yet"
             : "not measured yet: mount two stations and spin robots",
       action: i.servedId ? { label: "Choose one", go: { tab: "library" } } : serveStep(i.rows),
       subject: ["stations"],
@@ -156,7 +156,7 @@ export function goals(i: GoalInputs): Goal[] {
       {
         id: "coverage",
         state: shared || said.differs ? "warn" : "ok",
-        text: said.differs ? said.text : shared ? "both cover the whole floor, no handover: robots pick the closer fix, so the two can flicker" : said.text,
+        text: said.differs ? said.text : shared ? "both cover the whole extent, no handover: robots pick the closer fix, so the two can flicker" : said.text,
         action: shared && !said.differs ? { label: "Split at the best line", title: SPLIT_TIP, go: { kind: "stations", sheet: "split", mode: "fix" } } : undefined,
       },
       {
@@ -188,7 +188,7 @@ export function goals(i: GoalInputs): Goal[] {
   const last = myChecks[myChecks.length - 1];
   const canRead = i.live && !!i.servedId;
   if (!i.servedId) {
-    out.push({ id: "anchor", group: "room", title: "Anchor", state: "unknown", detail: "tie the map to the floor once a calibration is in use", subject: ["anchor"] });
+    out.push({ id: "anchor", group: "room", title: "Anchor", state: "unknown", detail: "anchor the frame once a calibration is in use", subject: ["anchor"] });
   } else if (i.anchorDrafted) {
     out.push({ id: "anchor", group: "room", title: "Anchor", state: "warn", detail: n ? `${anchoredText(i.doc)} · in the draft: Save writes it` : "the anchor is taken out in the draft: Save writes it", subject: ["anchor"] });
   } else if (!n) {
@@ -197,8 +197,8 @@ export function goals(i: GoalInputs): Goal[] {
       group: "room",
       title: "Anchor",
       state: "warn",
-      detail: `not tied to the floor: zero is where the spin put it${canRead ? "" : " · open the editor from a controller to read robots"}`,
-      action: canRead ? { label: "Anchor", title: "Put robots on spots measured with a tape, so the map lands on the room", go: { anchor: "anchor" } } : undefined,
+      detail: `not anchored: the origin is where the spin put it${canRead ? "" : " · open the editor from a controller to read robots"}`,
+      action: canRead ? { label: "Anchor", title: "Put robots on spots measured with a tape, so the frame matches the floor", go: { anchor: "anchor" } } : undefined,
       subject: ["anchor"],
     });
   } else {
@@ -244,7 +244,7 @@ export function goals(i: GoalInputs): Goal[] {
     group: "room",
     title: "Walls",
     state: walls + obstacles ? "ok" : "none",
-    detail: walls + obstacles ? [walls && plural(walls, "wall"), obstacles && plural(obstacles, "obstacle")].filter(Boolean).join(" · ") : "none drawn: robots may go anywhere on the floor",
+    detail: walls + obstacles ? [walls && plural(walls, "wall"), obstacles && plural(obstacles, "obstacle")].filter(Boolean).join(" · ") : "none drawn: robots may go anywhere in the extent",
     subject: ["walls"],
   });
   const kinds = ["charger", "dock", "landmark", "camera"] as const;

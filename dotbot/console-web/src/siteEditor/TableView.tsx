@@ -86,7 +86,7 @@ export interface TableViewProps {
   selected: string[];
   editable: boolean;
   boxes: { index: number; rect: Rect }[];
-  shownId8: string | null;
+  shownName: string | null;
   robots: UnifiedBot[];
   servedId: string | null;
   onTab: (t: TableTab) => void;
@@ -99,7 +99,7 @@ const TABS: { tab: TableTab; text: string }[] = [
   { tab: "areas", text: "Areas" },
   { tab: "objects", text: "Objects" },
   { tab: "walls", text: "Walls and obstacles" },
-  { tab: "boxes", text: "Station boxes" },
+  { tab: "boxes", text: "Station coverage" },
   { tab: "robots", text: "Robots (live)" },
 ];
 
@@ -171,7 +171,7 @@ export const TableView: React.FC<TableViewProps> = (props) => {
         {tab === "robots"
           ? "Live, read only: the console drives robots. Click a row to find the robot on the plan."
           : tab === "boxes"
-            ? `The station boxes of ${props.shownId8 ?? "the shown calibration"}. They belong to that file, so they are read here; edit them on the plan in Stations (5).`
+            ? `The station coverage of ${props.shownName ?? "the shown calibration"}. It belongs to that file, so it is read here; edit it on the plan in Stations (5).`
             : "Every cell writes the draft; the plan and the inspector follow the selected row. Type 1.2m, 43cm or +50."}
         {(tab === "areas" || tab === "objects") && editable && ` Paste rows from a spreadsheet: ${PASTE_COLUMNS[tab].join(", ")}.`}
       </div>

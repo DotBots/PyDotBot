@@ -284,7 +284,7 @@ def create_router(
                 ) from exc
             if any(len(r) != 4 or r[2] <= r[0] or r[3] <= r[1] for r in rects.values()):
                 raise HTTPException(
-                    422, "each box is [x0, y0, x1, y1] with x1 > x0, y1 > y0"
+                    422, "each coverage is [x0, y0, x1, y1] with x1 > x0, y1 > y0"
                 )
         out = site_coverage.coverage(cal, site, rects, max(0, min(robots, 8)))
         return {**out, "id": resolve(spec).id}

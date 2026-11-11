@@ -42,16 +42,16 @@ export interface PendingLine {
 export function pendingLines(d: Draft, rows: LibraryRow[], baseText = ""): PendingLine[] {
   const name = (id: string) => {
     const row = rows.find((r) => r.id === id);
-    return row ? nameOf(row) : id.slice(0, 8);
+    return row ? nameOf(row) : "a calibration not listed here";
   };
   const out: PendingLine[] = [];
   if (d.place) {
     const m = d.place.move;
-    out.push({ key: "place", text: `Puts the spin ${name(d.place.from)} in the room: turned ${m.theta_deg.toFixed(1)}°, its origin at (${Math.round(m.dx)}, ${Math.round(m.dy)}) mm` });
+    out.push({ key: "place", text: `Places the spin ${name(d.place.from)} in the site: turned ${m.theta_deg.toFixed(1)}°, its origin at (${Math.round(m.dx)}, ${Math.round(m.dy)}) mm` });
   }
   if (d.frame) {
     const m = d.frame.move;
-    const what = [m.theta_deg ? `turns the room ${m.theta_deg}° about (${Math.round(m.pivot[0])}, ${Math.round(m.pivot[1])}) mm` : "", m.dx || m.dy ? `moves the origin by (${m.dx}, ${m.dy}) mm` : ""]
+    const what = [m.theta_deg ? `turns the frame ${m.theta_deg}° about (${Math.round(m.pivot[0])}, ${Math.round(m.pivot[1])}) mm` : "", m.dx || m.dy ? `moves the origin by (${m.dx}, ${m.dy}) mm` : ""]
       .filter(Boolean)
       .join(" and ");
     out.push({ key: "frame", text: `${what.charAt(0).toUpperCase()}${what.slice(1)}: areas, walls, objects and coverage keep their place on the floor, with new numbers` });

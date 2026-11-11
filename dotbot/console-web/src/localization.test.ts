@@ -193,8 +193,8 @@ describe("the station rows", () => {
     };
     expect(stationsSummary(null, served)).toBe("serving 4640cfde · 2 stations");
     expect(stationRows(null, served)).toEqual([
-      { index: 0, label: "residual 1.1 mm · box x 0-1060, y 0-1220" },
-      { index: 1, label: "box x 0-1060, y 0-1220" },
+      { index: 0, label: "residual 1.1 mm · coverage x 0-1060, y 0-1220" },
+      { index: 1, label: "coverage x 0-1060, y 0-1220" },
     ]);
   });
 });

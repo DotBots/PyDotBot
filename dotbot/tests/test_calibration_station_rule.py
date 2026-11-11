@@ -50,7 +50,7 @@ def test_an_infinite_solve_is_dropped():
 
 def test_the_reading_names_shared_boxes_and_handovers():
     assert rule.reading({0: WHOLE, 1: WHOLE}) == (
-        "S0 and S1 share one box: the boxes do not decide"
+        "S0 and S1 share one coverage: the coverages do not decide"
     )
     assert rule.reading({0: (0, 0, 630, 1220), 1: (430, 0, 1060, 1220)}) == (
         "S0 x 0-630, y 0-1220 · S1 x 430-1060, y 0-1220 · S0/S1 handover x 530"

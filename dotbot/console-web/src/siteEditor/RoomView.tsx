@@ -431,7 +431,7 @@ export const RoomView: React.FC<{
           height={H}
           viewBox={`0 0 ${W} ${H}`}
           role="img"
-          aria-label={`The room: ${w} by ${h} mm, ${stations.length} station${stations.length === 1 ? "" : "s"}, ${bots.length} robot${bots.length === 1 ? "" : "s"}`}
+          aria-label={`The site: extent ${w} by ${h} mm, ${stations.length} station${stations.length === 1 ? "" : "s"}, ${bots.length} robot${bots.length === 1 ? "" : "s"}`}
           onPointerDown={onDown}
           onPointerMove={onMove}
           onPointerUp={onUp}
@@ -631,7 +631,7 @@ export const RoomView: React.FC<{
         )}
         <span className="row muted">
           {shownName ? `${shownName} · ` : ""}
-          floor {(w / 1000).toFixed(2)} × {(h / 1000).toFixed(2)} m · {stations.length ? "stations estimated, about ±10 cm" : "no station geometry for this calibration"}
+          extent {(w / 1000).toFixed(2)} × {(h / 1000).toFixed(2)} m · {stations.length ? "stations estimated, about ±10 cm" : "no station geometry for this calibration"}
         </span>
       </div>
     </div>
@@ -657,7 +657,7 @@ export const MapPresets: React.FC<{
             className={on === p.key ? "on" : undefined}
             aria-pressed={on === p.key}
             onClick={() => onPreset(p.cam)}
-            title={`${p.label === "3/4" ? "The corner view, three quarters up (or double-click the room)" : `From the ${p.label.toLowerCase()}`}; drag to orbit, Shift-drag or right-drag to pan, wheel or pinch to zoom`}
+            title={`${p.label === "3/4" ? "The corner view, three quarters up (or double-click the map)" : `From the ${p.label.toLowerCase()}`}; drag to orbit, Shift-drag or right-drag to pan, wheel or pinch to zoom`}
           >
             {p.label}
           </button>
@@ -671,7 +671,7 @@ export const MapPresets: React.FC<{
           <button type="button" onClick={zoom.onIn} aria-label="Zoom in" title="Zoom in (or the wheel)">
             +
           </button>
-          <button type="button" className={zoom.fit ? "on" : undefined} onClick={zoom.onFit} title="Fit the floor and the stations" data-testid="room-fit">
+          <button type="button" className={zoom.fit ? "on" : undefined} onClick={zoom.onFit} title="Fit the extent and the stations" data-testid="room-fit">
             Fit
           </button>
         </span>

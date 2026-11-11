@@ -133,7 +133,7 @@ export const ReviewSheet: React.FC<ReviewSheetProps> = (props) => {
         <div className="sub">
           {phase.kind === "done"
             ? "Each step below ran in order."
-            : `${lines.length} change${lines.length === 1 ? "" : "s"}, written as one: at most one new calibration and the room file${live ? ", then this controller uses it" : ""}. Nothing here moves a robot.`}
+            : `${lines.length} change${lines.length === 1 ? "" : "s"}, written as one: at most one new calibration and site.toml${live ? ", then this controller uses it" : ""}. Nothing here moves a robot.`}
         </div>
         {conflicts.length > 0 && phase.kind !== "done" && (
           <div className="callout warn" data-testid="review-conflicts">

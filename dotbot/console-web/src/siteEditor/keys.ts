@@ -70,7 +70,7 @@ export function editorKeys(): Set<string> {
 
 export const KIND_LABEL: Record<EditKind, string> = {
   view: "View",
-  frame: "Floor",
+  frame: "Extent",
   stations: "Stations",
   anchor: "Anchor",
   areas: "Areas",
@@ -89,7 +89,7 @@ export const TOOL_LABEL: Record<Tool, string> = {
   camera: "Camera position",
   probe: "Point inspector",
   turn: "Turn or shift the origin",
-  anchor: "Tie the map to the floor",
+  anchor: "Anchor the frame",
   measure: "Measure",
 };
 
@@ -132,7 +132,7 @@ export const EDITOR_SHORTCUTS: ShortcutGroup[] = [
       { keys: ["arrows"], does: "Nudge the selection or a picked edge 10 mm (Alt 1, Shift 100)" },
       { keys: ["Escape"], does: "Back to View; cancels a drawing, never commits it" },
       { keys: ["1 to 6"], does: KINDS.map((k) => KIND_LABEL[k]).join(", ") },
-      { keys: [PRESENT_KEY], does: "Present the room in 3D, and back (Esc leaves too)" },
+      { keys: [PRESENT_KEY], does: "Present the site in 3D, and back (Esc leaves too)" },
       { keys: ["Delete"], does: "Delete the selection" },
     ],
   },

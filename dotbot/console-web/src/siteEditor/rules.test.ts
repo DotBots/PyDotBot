@@ -18,8 +18,8 @@ describe("the field and staging rule", () => {
     const doc = ROOM({ x: 0, y: 1000, w: 1060, h: 220 });
     const [p] = problems(doc);
     expect(p.blocking).toBe(true);
-    expect(p.title).toBe("Field and staging split the floor");
-    expect(p.fixes.map((f) => f.label)).toEqual(["Shrink the field to 1060 × 1000", "Grow the floor by 220 mm, staging below"]);
+    expect(p.title).toBe("Field and staging split the extent");
+    expect(p.fixes.map((f) => f.label)).toEqual(["Shrink the field to 1060 × 1000", "Grow the extent by 220 mm, staging below"]);
     expect(doc.areas[0].h).toBe(1220);
     const grown = p.fixes[1].doc;
     expect(grown.extent_mm).toEqual([1060, 1440]);
@@ -39,8 +39,8 @@ describe("the field and staging rule", () => {
     const doc = ROOM({ x: 0, y: 1220, w: 1060, h: 200 });
     doc.areas[1] = { ...doc.areas[1], role: "corner", x: 1000, y: 1100, w: 100, h: 200 };
     const [p] = problems(doc);
-    expect(p).toMatchObject({ blocking: false, title: "staging runs off the floor" });
-    expect(p.fixes[0].label).toBe("Clip it to the floor (60 × 120)");
+    expect(p).toMatchObject({ blocking: false, title: "staging runs off the extent" });
+    expect(p.fixes[0].label).toBe("Clip it to the extent (60 × 120)");
   });
 });
 

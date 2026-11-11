@@ -94,7 +94,7 @@ describe("turning a move about a point", () => {
 describe("a move's warnings", () => {
   it("drop ids and say floor", () => {
     expect(plainWarning("340088da: 2 spin circle(s) (222A34F9458E8AAD, 901B4217EE67C999) land outside the site's extent, where robots drop their positions")).toBe(
-      "2 measured spots land outside the floor, where robots drop their positions",
+      "2 measured spots land outside the extent, where robots drop their positions",
     );
   });
 });

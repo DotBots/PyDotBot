@@ -123,7 +123,7 @@ export const ChecksPane: React.FC<{
   return (
     <div data-testid="checks">
       <div className="sec-h" style={{ marginTop: 10 }}>
-        This room
+        This site
       </div>
       {room.map((g) => (
         <GoalRow key={g.id} g={g} on={on(g)} onSelect={props.onSelect} onAction={props.onAction} editable={props.editable} />
@@ -208,7 +208,7 @@ export const ChecksPane: React.FC<{
                   savePoint(naming).then((p) => {
                     setNaming(null);
                     setPoints((ps) => [p, ...(ps ?? [])]);
-                    props.onToast(`Snapshot "${p.name}" kept: the room file as it is now${p.served ? ` and the calibration in use` : ""}.`);
+                    props.onToast(`Snapshot "${p.name}" kept: site.toml as it is now${p.served ? ` and the calibration in use` : ""}.`);
                   });
               }}
             />
@@ -218,7 +218,7 @@ export const ChecksPane: React.FC<{
           </button>
         </div>
       )}
-      {points?.length === 0 && naming === null && <div className="note">None yet. A snapshot keeps the room file and the calibration in use together, to put the room back as it was.</div>}
+      {points?.length === 0 && naming === null && <div className="note">None yet. A snapshot keeps site.toml and the calibration in use together, to put the site back as it was.</div>}
       {points?.map((p) => (
         <div className="orow" key={p.id} style={{ marginLeft: 0 }}>
           <Icon name="restore" size={13} />

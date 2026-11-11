@@ -31,7 +31,7 @@ export const CompareSheet: React.FC<{ a: LibraryRow; b: LibraryRow; extent: [num
   const stations = [...new Set([...a.stations, ...b.stations].map((s) => s.index))].sort();
   const verdict = moved(a, [b]);
   const thumb = (r: LibraryRow) => (
-    <FixThumb boxes={Object.fromEntries(r.stations.map((s) => [s.index, s.box])) as Record<number, Rect>} extent={r.in_frame ? extent : [r.fence[2], r.fence[3]]} size={90} />
+    <FixThumb boxes={Object.fromEntries(r.stations.map((s) => [s.index, s.box])) as Record<number, Rect>} extent={r.in_frame ? extent : [r.coverage_union[2], r.coverage_union[3]]} size={90} />
   );
   return (
     <>
@@ -67,8 +67,8 @@ export const CompareSheet: React.FC<{ a: LibraryRow; b: LibraryRow; extent: [num
             </tr>
             <tr>
               <td>Coverage</td>
-              <td>{a.in_frame ? coverageText(a.reading) : "not in this room yet"}</td>
-              <td>{b.in_frame ? coverageText(b.reading) : "not in this room yet"}</td>
+              <td>{a.in_frame ? coverageText(a.reading) : "not placed in this site yet"}</td>
+              <td>{b.in_frame ? coverageText(b.reading) : "not placed in this site yet"}</td>
             </tr>
             <tr>
               <td>Measured</td>
