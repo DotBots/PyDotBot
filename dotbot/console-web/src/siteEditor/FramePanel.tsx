@@ -46,18 +46,19 @@ export interface FramePanelProps {
   onAction?: (a: GoalAction) => void;
 }
 
-/** What the plan draws while the origin is set from robots: each spot where
- * the move puts it, a line to its robot, and the hatched region where the
- * origin may not go. */
+/** What the plan draws while the map is laid on spots: each spot where the
+ * move puts it, a line to its robot, and, once zero strays there, the hatched
+ * region where it may not go. */
 export function anchorsOverlay(m: FrameMove, anchors: Anchor[], points: Point[]) {
   const forb = forbidden(m, points);
   return (p: PlanPaint) => (
     <g data-testid="anchors-overlay" style={{ pointerEvents: "none" }}>
       {forb &&
+        !forb.originOk &&
         forb.beyond.map((poly, i) => (
           <polygon key={i} points={poly.map((q) => p.px(q).join(",")).join(" ")} fill="url(#forbidden-hatch)" stroke="none" />
         ))}
-      {forb && (
+      {forb && !forb.originOk && (
         <circle cx={p.px(forb.corner)[0]} cy={p.px(forb.corner)[1]} r={3 * p.chrome} fill="none" stroke="var(--muted)" strokeWidth={p.chrome} />
       )}
       <defs>

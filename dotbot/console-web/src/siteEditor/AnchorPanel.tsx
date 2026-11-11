@@ -293,18 +293,18 @@ export const AnchorPanel: React.FC<AnchorPanelProps> = (props) => {
         const err = work.mode === "anchor" ? (k >= 0 ? errors[k] : null) : s.read && typed(s.at) ? Math.hypot(s.read[0] - s.at[0], s.read[1] - s.at[1]) : null;
         const still = s.since !== null ? stillness((tracks.current.get(s.robot) ?? []).filter((x) => x.t >= s.since!), now) : null;
         return (
-          <div className="orow" key={s.id} style={{ marginLeft: 0 }} data-testid="anchor-spot">
-            <span className="mono" style={{ whiteSpace: "nowrap" }}>
-              {i + 1} · …{tail(s.robot)}
-            </span>
-            <span style={{ whiteSpace: "nowrap" }}>
-              ({s.at[0]}, {s.at[1]})
-            </span>
-            <span className="meta" data-testid="anchor-spot-state">
-              {s.since !== null ? (still?.measuring ? "reading…" : "waiting for it to stay still") : !s.read ? "not read" : err !== null ? `${err.toFixed(1)} mm off` : "read"}
+          <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 0", borderTop: "1px solid var(--hairline)" }} data-testid="anchor-spot">
+            <span style={{ flex: 1, minWidth: 0, fontSize: 12 }}>
+              <span className="mono">
+                {i + 1} · …{tail(s.robot)}
+              </span>{" "}
+              at ({s.at[0]}, {s.at[1]})
+              <span className="meta" data-testid="anchor-spot-state" style={{ display: "block" }}>
+                {s.since !== null ? (still?.measuring ? "reading…" : "waiting for it to stay still") : !s.read ? "not read" : err !== null ? `${err.toFixed(1)} mm off` : "read"}
+              </span>
             </span>
             <button type="button" className="btn xs" disabled={anyReading} onClick={() => typed(s.at) && startReading(s.robot, s.at, s.id)} title="Read it again where it stands now">
-              Read again
+              Re-read
             </button>
             <button type="button" className="btn xs ghost" aria-label={`Remove spot ${i + 1}`} onClick={() => remove(s.id)}>
               <Icon name="x" size={11} />
