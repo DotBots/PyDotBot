@@ -30,7 +30,6 @@ from dotbot.calibration.lighthouse2 import (
     Placement,
     StationSolution,
     TrackSample,
-    union_rect,
 )
 from dotbot.robots import ROBOT_DEFAULT, robot_geometry
 from dotbot.site import Site, starter_layout
@@ -764,13 +763,12 @@ def solve_calibration(
     )
     solved_from = "conics-joint" if joint.joint else "conics-free"
     anchor = FREE_FRAME_ANCHOR
-    rectangles, valid_mm = dict(joint.rectangles), joint.valid_mm
+    rectangles = dict(joint.rectangles)
     if joint.anchored:
         solved_from, anchor = "conics-anchored", site.anchor
         # In the site's frame, every station's rectangle is the site extent
-        if site.valid_mm is not None:
-            valid_mm = site.valid_mm
-            rectangles = {station: valid_mm for station in rectangles}
+        if site.extent_rect_mm is not None:
+            rectangles = {station: site.extent_rect_mm for station in rectangles}
     stations = [
         StationSolution(
             index=station,
@@ -778,7 +776,7 @@ def solve_calibration(
             points=sum(t.points for t in joint.solutions[station].tracks),
             residual_mm=joint.station_rms_mm[station],
             solved_from=solved_from,
-            valid_mm=rectangles[station],
+            coverage_mm=rectangles[station],
         )
         for station, H in sorted(joint.homographies.items())
     ]
@@ -787,7 +785,6 @@ def solve_calibration(
         site=Site(
             name=site.name, anchor=anchor, frame=site.frame if joint.anchored else None
         ),
-        valid_mm=valid_mm,
         stations=stations,
         tracks=list(samples),
         links=sorted(joint.graph.links, key=lambda k: (k.a, k.b)),
@@ -820,7 +817,7 @@ def spin_field(calibration: Calibration) -> tuple[int, int]:
             _circle_fit(apply(st.matrix, t.points))[0] for t in tracks if t not in gate
         ]
     if not centres:
-        return calibration.valid_mm[2], calibration.valid_mm[3]
+        return calibration.coverage_mm[2], calibration.coverage_mm[3]
     hi = np.ceil(np.max(centres, axis=0) + margin_mm)
     return int(hi[0]), int(hi[1])
 
@@ -865,10 +862,10 @@ def self_defined_site(
             f"calibration {calibration.id8} is not a free-mode spin calibration; "
             "a site can only be defined from one"
         )
-    x0, y0, _, _ = calibration.valid_mm
+    x0, y0, _, _ = calibration.coverage_mm
     if (x0, y0) != (0, 0):
         raise ValueError(
-            f"a free-mode fence starts at (0, 0), got {list(calibration.valid_mm)}"
+            f"a free-mode fence starts at (0, 0), got {list(calibration.coverage_mm)}"
         )
     field_w, field_h = spin_field(calibration)
     extent, field_area, staging = starter_layout((field_w, field_h), size_mm)
@@ -886,7 +883,7 @@ def self_defined_site(
                 points=st.points,
                 residual_mm=st.residual_mm,
                 solved_from=st.solved_from,
-                valid_mm=(0, 0, int(extent[0]), int(extent[1])),
+                coverage_mm=(0, 0, int(extent[0]), int(extent[1])),
             )
         )
     site = Site(
@@ -898,7 +895,6 @@ def self_defined_site(
     )
     placed = Calibration(
         site=Site(name=name, anchor=anchor),
-        valid_mm=union_rect(st.valid_mm for st in stations),
         placements=calibration.placements,
         stations=stations,
         tracks=calibration.tracks,
@@ -958,7 +954,7 @@ def align_to_calibration(
     points in the two frames is one correspondence, and the turn and shift
     are their least-squares fit. Scale is kept: both frames are metric
     through the spin radius, so the two must share it. Every station's
-    rectangle and the fence become `target`'s fence. `stations` picks the
+    coverage becomes `target`'s whole coverage. `stations` picks the
     shared stations to align through, and is needed when they share more
     than one.
     """
@@ -1020,7 +1016,7 @@ def align_to_calibration(
     turn = float(np.degrees(np.arctan2(R[1, 0], R[0, 0])))
     c, s = np.cos(np.radians(turn)), np.sin(np.radians(turn))
     T = np.array([[c, -s, t[0]], [s, c, t[1]], [0.0, 0.0, 1.0]])
-    fence = tuple(int(v) for v in target.valid_mm)
+    fence = tuple(int(v) for v in target.coverage_mm)
     moved = []
     for st in source.stations:
         H = T @ st.matrix
@@ -1032,7 +1028,7 @@ def align_to_calibration(
                 points=st.points,
                 residual_mm=st.residual_mm,
                 solved_from=st.solved_from,
-                valid_mm=fence,
+                coverage_mm=fence,
             )
         )
     site = target.site
@@ -1051,7 +1047,6 @@ def align_to_calibration(
     ]
     placed = Calibration(
         site=Site(name=site.name, anchor=site.anchor, frame=site.frame),
-        valid_mm=fence,
         placements=placements,
         stations=moved,
         tracks=source.tracks,

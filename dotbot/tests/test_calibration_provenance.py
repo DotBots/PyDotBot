@@ -19,7 +19,7 @@ def _calibration(shared_box: bool):
     )
     if shared_box:
         for station in calibration.stations:
-            station.valid_mm = calibration.valid_mm
+            station.coverage_mm = calibration.coverage_mm
     return calibration
 
 

@@ -714,13 +714,13 @@ def _collect_spin(
             if joint.anchored:
                 click.echo(
                     f"\nThe anchors put the calibration in site {site.name}'s own "
-                    f"frame. Robots take fixes inside {list(calibration.valid_mm)}."
+                    f"frame. Robots take fixes inside {list(calibration.coverage_mm)}."
                 )
             else:
                 click.echo(
                     f"\nThe robots' field is {width} x {height} mm: the calibration's "
                     "frame is aligned to it, zero at its top-left, not at the site's "
-                    f"anchor. Robots take fixes inside {list(calibration.valid_mm)}."
+                    f"anchor. Robots take fixes inside {list(calibration.coverage_mm)}."
                 )
             click.echo(f"Calibration saved to {path}")
             click.echo(
@@ -846,7 +846,7 @@ def _print_messages(calibration):
     )
     for station, message in zip(stations, messages):
         click.echo(
-            f"  {station_label(station.index)}, rectangle {list(station.valid_mm)}: "
+            f"  {station_label(station.index)}, rectangle {list(station.coverage_mm)}: "
             f"{message.hex()}"
         )
 
@@ -990,7 +990,7 @@ def _show(ctx, calibration, site_name, next_robots):
             if loaded.tracks
             else ""
         )
-        + f", fence {list(loaded.valid_mm)}"
+        + f", fence {list(loaded.coverage_mm)}"
     )
     for line in multi_station_report(loaded) + fix_lines(loaded):
         click.echo(line)
@@ -1008,7 +1008,7 @@ def _show(ctx, calibration, site_name, next_robots):
             )
         targets = next_round(
             error_map,
-            {s.index: s.valid_mm for s in loaded.stations},
+            {s.index: s.coverage_mm for s in loaded.stations},
             loaded.links,
             robots=next_robots,
         )
@@ -1115,7 +1115,7 @@ def _reframe(ctx, calibration, site_name, shift, rotate):
             f"station {station.index}: {station.points} points, "
             f"residual {station.residual_mm:.6f} mm{was_text}"
         )
-    x0, y0, x1, y1 = reframed.valid_mm
+    x0, y0, x1, y1 = reframed.coverage_mm
     outside = [
         (x, y)
         for placement in reframed.placements
@@ -1125,7 +1125,7 @@ def _reframe(ctx, calibration, site_name, shift, rotate):
     if outside:
         click.echo(
             f"warning: {len(outside)} point(s) fall outside the site's "
-            f"valid_mm {list(reframed.valid_mm)}; robots there would drop "
+            f"coverage_mm {list(reframed.coverage_mm)}; robots there would drop "
             "their positions",
             err=True,
         )
@@ -1291,14 +1291,14 @@ def _rebox(ctx, calibration, stations, tag, site_name):
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
     click.echo(f"Reboxed {source.id8} (site {source.site.name}):")
-    before = {s.index: s.valid_mm for s in source.stations}
+    before = {s.index: s.coverage_mm for s in source.stations}
     for station in sorted(boxed.stations, key=lambda s: s.index):
-        x0, y0, x1, y1 = station.valid_mm
+        x0, y0, x1, y1 = station.coverage_mm
         was = before[station.index]
-        change = "" if was != station.valid_mm else ", unchanged"
+        change = "" if was != station.coverage_mm else ", unchanged"
         click.echo(
             f"  {station_label(station.index)}: {x0},{y0},{x1 - x0},{y1 - y0} "
-            f"(x,y,w,h; valid_mm {list(station.valid_mm)}, was {list(was)}{change})"
+            f"(x,y,w,h; coverage_mm {list(station.coverage_mm)}, was {list(was)}{change})"
         )
     for line in coverage_warnings(boxed):
         click.echo(f"warning: {line}", err=True)

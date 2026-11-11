@@ -95,7 +95,7 @@ def test_a_placement_is_a_new_calibration_in_the_site(spun):
     assert placed.id != spun.id
     assert placed.site.name == "hand"
     assert placed.site.anchor == SITE.anchor
-    assert placed.valid_mm == (0, 0, 5000, 5000)
+    assert placed.coverage_mm == (0, 0, 5000, 5000)
     assert placed.tracks == spun.tracks
     assert placed.tag == "spin-hand"
     assert spun.site.name == "lab" and spun.stations[0].matrix.tolist() != (
@@ -185,7 +185,7 @@ def test_every_station_moves_as_one_body_with_its_own_rectangle():
     calibration = dataclasses.replace(
         calibration,
         stations=[
-            dataclasses.replace(st, valid_mm=rects[st.index])
+            dataclasses.replace(st, coverage_mm=rects[st.index])
             for st in calibration.stations
         ],
     )
@@ -196,7 +196,7 @@ def test_every_station_moves_as_one_body_with_its_own_rectangle():
     before, after = _centres(calibration), _centres(placed)
     for key, (x, y) in before.items():
         assert after[key] == pytest.approx(move.apply([(x, y)])[0], abs=0.1)
-    assert {st.index: st.valid_mm for st in placed.stations} == {
+    assert {st.index: st.coverage_mm for st in placed.stations} == {
         0: (2000, 100, 3500, 1600),
         1: (700, 600, 3300, 2100),
     }
@@ -205,7 +205,7 @@ def test_every_station_moves_as_one_body_with_its_own_rectangle():
         [2000, 100, 3500, 1600],
         [700, 600, 3300, 2100],
     ]
-    assert placed.valid_mm == (700, 100, 3500, 2100)
+    assert placed.coverage_mm == (700, 100, 3500, 2100)
     assert all(len(s["circles"]) for s in drawn)
     with pytest.raises(PlacementRefused, match=r"S1's rectangle"):
         place_calibration(calibration, unbounded, Rigid2D(2700, 100, 90))

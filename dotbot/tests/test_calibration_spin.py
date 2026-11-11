@@ -1198,8 +1198,8 @@ def test_place_moves_a_spin_calibration_onto_another_through_a_station(
     placed = lighthouse2.read_calibration_file(_saved(result))
     assert placed.site.name == "spun" and placed.site.anchor == target.site.anchor
     assert placed.placed_from == source.id and placed.tag == "second-spun"
-    assert placed.valid_mm == target.valid_mm
-    assert {s.valid_mm for s in placed.stations} == {target.valid_mm}
+    assert placed.coverage_mm == target.coverage_mm
+    assert {s.coverage_mm for s in placed.stations} == {target.coverage_mm}
     # both put any floor point either station sees at the same place
     floor = np.array([c for c in grid if a.sees(c) and b.sees(c)], dtype=float)
     for st in (a, b):

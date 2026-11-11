@@ -2648,6 +2648,6 @@ def test_a_served_spin_calibration_carries_its_stations_and_circles():
     )
     model = DotBotCalibrationSpanModel.from_calibration(calibration)
     (station,) = model.stations
-    assert station.index == 0 and station.box == list(calibration.valid_mm)
+    assert station.index == 0 and station.box == list(calibration.coverage_mm)
     assert len(model.circles) == len(CENTRES)
     assert {c.station for c in model.circles} == {0}

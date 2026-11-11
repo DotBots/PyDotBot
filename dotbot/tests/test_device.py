@@ -551,7 +551,7 @@ def test_the_sandbox_page_with_a_calibration_is_pinned(tmp_path):
     assert len(page) == 872
     assert page[:16].hex() == "50525357010000003412000004010000"
     assert hashlib.sha256(page).hexdigest() == (
-        "c96414cbab5c61fc2bd78d0559dad586d2270c57ea87f10054c1e79f62d1b791"
+        "b0775428af397823d841749f986b30ee3d7e06687b305d916fced4585cee9924"
     )
     # Stations 2 and 8 in their slots, every other slot erased; each
     # station's rectangle in its slot; then the site name and id exactly as

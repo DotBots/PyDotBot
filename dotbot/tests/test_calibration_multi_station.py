@@ -87,7 +87,7 @@ def test_each_station_gets_its_own_rectangle_and_the_fence_is_their_union():
         assert rect[0] == max(0, int(np.floor(centres[:, 0].min() - 300)))
         assert rect[2] == int(np.ceil(centres[:, 0].max() + 300))
         assert rect[1] == max(0, int(np.floor(centres[:, 1].min() - 300)))
-    assert joint.valid_mm == (
+    assert joint.coverage_mm == (
         min(ra[0], rb[0]),
         min(ra[1], rb[1]),
         max(ra[2], rb[2]),
@@ -295,7 +295,7 @@ def test_where_the_boxes_share_a_centre_the_error_is_a_bound():
     samples = F.samples(F.spins([a, b], floor_grid([a, b]), noise=1.0, seed=4))
     calibration, _, _ = conics.solve_calibration(samples, Site(name="arena"))
     for station in calibration.stations:
-        station.valid_mm = calibration.valid_mm
+        station.coverage_mm = calibration.coverage_mm
     em = ms.error_map_from_calibration(calibration)
     seen = ~np.isnan(em.sigma_mm)
     assert em.undecided[seen].all() and em.worst_is_bound
@@ -436,7 +436,7 @@ def test_a_real_single_station_calibration_solves_as_before():
     moved = np.linalg.norm(apply(expected, cams) - apply(station.matrix, cams), axis=1)
     assert moved.max() < 0.1
     assert list(joint.field_mm) == data["expected_field_mm"]
-    assert calibration.valid_mm == station.valid_mm
+    assert calibration.coverage_mm == station.coverage_mm
     assert joint.error_map.worst_mm < 10
 
 
@@ -463,7 +463,7 @@ def test_a_real_robot_spinning_too_wide_is_left_out():
     assert f"{bad}  " in report and "dropped: radius" in report
 
 
-def test_stations_2_and_8_are_written_as_schema_4(tmp_path):
+def test_stations_2_and_8_are_written_as_schema_5(tmp_path):
     two = F.station(2)
     eight = F.station(8, F.rigid(2200, 0, 0), aspect=0.9)
     samples = F.samples(F.spins([two, eight], floor_grid([two, eight])))
@@ -477,11 +477,11 @@ def test_stations_2_and_8_are_written_as_schema_4(tmp_path):
     back = read_calibration_file(path)
     assert back.id == calibration.id == back.stored_id
     assert back.links == calibration.links
-    assert [s.valid_mm for s in back.stations] == [
+    assert [s.coverage_mm for s in back.stations] == [
         joint.rectangles[2],
         joint.rectangles[8],
     ]
-    assert back.valid_mm == joint.valid_mm
+    assert back.coverage_mm == joint.coverage_mm
 
 
 def test_circles_are_keyed_by_robot_and_round():
@@ -516,6 +516,22 @@ def test_a_schema_3_file_is_refused(tmp_path):
         read_calibration_file(path)
 
 
+def test_a_schema_4_file_is_refused_not_read_by_its_valid_mm(tmp_path):
+    a, b = two_stations()
+    samples = F.samples(F.spins([a, b], floor_grid([a, b])))
+    calibration, _, _ = conics.solve_calibration(samples, Site(name="arena"))
+    text = render_calibration(calibration)
+    path = tmp_path / "cal.toml"
+    path.write_text(
+        text.replace("schema_version = 5", "schema_version = 4").replace(
+            "coverage_mm", "valid_mm"
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="unsupported calibration schema_version 4"):
+        read_calibration_file(path)
+
+
 def test_the_report_names_stations_links_and_the_error_map(tmp_path):
     a, b = two_stations()
     samples = F.samples(F.spins([a, b], floor_grid([a, b]), noise=0.5, seed=5))
@@ -539,15 +555,10 @@ def test_the_file_rules_are_enforced(tmp_path):
     text = render_calibration(calibration)
     path = tmp_path / "cal.toml"
     cases = {
-        "not the union": text.replace(
-            f"valid_mm = [{', '.join(map(str, calibration.valid_mm))}]",
-            "valid_mm = [0, 0, 10, 10]",
-            1,
-        ),
         "no \\[\\[link\\]\\]": text[: text.index("[[link]]")],
-        "has no valid_mm": text.replace(
-            "valid_mm = ["
-            + ", ".join(map(str, calibration.stations[1].valid_mm))
+        "has no coverage_mm": text.replace(
+            "coverage_mm = ["
+            + ", ".join(map(str, calibration.stations[1].coverage_mm))
             + "]\n",
             "",
         ),
@@ -578,7 +589,7 @@ def test_stations_2_and_8_reach_the_wire_and_the_page_by_slot(tmp_path):
     for message, station in zip(messages, back.stations):
         mask, index = struct.unpack_from("<II", message, 0)
         assert (mask, index) == (0x0104, station.index)
-        assert struct.unpack_from("<4I", message, 44) == station.valid_mm
+        assert struct.unpack_from("<4I", message, 44) == station.coverage_mm
         H = np.array(struct.unpack_from("<9f", message, 8)).reshape(3, 3)
         assert np.allclose(H, station.matrix, rtol=1e-6)
 
@@ -593,7 +604,7 @@ def test_stations_2_and_8_reach_the_wire_and_the_page_by_slot(tmp_path):
             assert matrix == b"\xff" * 36 and rect == b"\xff" * 16
             continue
         assert matrix == messages[[2, 8].index(slot)][8:44]
-        assert struct.unpack("<4I", rect) == station.valid_mm
+        assert struct.unpack("<4I", rect) == station.coverage_mm
     assert page[848:864] == b"arena".ljust(16, b"\x00")
     assert page[864:872] == bytes.fromhex(back.id[:16])
 
@@ -783,10 +794,10 @@ def test_anchored_calibration_rectangles_are_the_site_extent():
         F.samples(tracks), site, anchors=anchors
     )
     assert joint.rectangles[a.index] != (0, 0, 6000, 4000)
-    assert {s.valid_mm for s in calibration.stations} == {(0, 0, 6000, 4000)}
-    assert calibration.valid_mm == (0, 0, 6000, 4000)
+    assert {s.coverage_mm for s in calibration.stations} == {(0, 0, 6000, 4000)}
+    assert calibration.coverage_mm == (0, 0, 6000, 4000)
     # a free solve has no site frame, so it keeps the box around its spins
     free, free_joint, _ = conics.solve_calibration(F.samples(tracks), site)
-    assert [s.valid_mm for s in free.stations] == [
+    assert [s.coverage_mm for s in free.stations] == [
         free_joint.rectangles[s.index] for s in free.stations
     ]

@@ -307,7 +307,7 @@ class DotBotCalibrationSpanModel(BaseModel):
                         if math.isfinite(st.residual_mm)
                         else None
                     ),
-                    box=[int(v) for v in st.valid_mm],
+                    box=[int(v) for v in st.coverage_mm],
                 )
                 for st in sorted(calibration.stations, key=lambda s: s.index)
             ],

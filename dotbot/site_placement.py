@@ -506,7 +506,7 @@ def create_router(
                         else {k: same[k] for k in ("id", "id8", "tag", "path")}
                     ),
                     "reading": station_rule.reading(
-                        {st.index: st.valid_mm for st in boxed.stations}
+                        {st.index: st.coverage_mm for st in boxed.stations}
                     ),
                 }
             boxed, path = save_new(boxed)

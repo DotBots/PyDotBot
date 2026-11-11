@@ -169,15 +169,15 @@ def turned(
         moved = place_calibration(source, site, move, reanchor=True)
     except PlacementRefused as exc:
         raise TurnRefused(f"calibration {source.id8}: {exc}") from exc
-    rects = {st.index: _kept(move, st.valid_mm) for st in source.stations}
+    rects = {st.index: _kept(move, st.coverage_mm) for st in source.stations}
     turns = abs(((move.theta_deg + 180) % 360) - 180) > 1e-9
     suffix = TAG_SUFFIX if turns else SHIFT_SUFFIX
     return dataclasses.replace(
         moved,
         site=Site(name=site.name, anchor=anchor, frame=frame),
-        valid_mm=_kept(move, source.valid_mm),
         stations=[
-            dataclasses.replace(st, valid_mm=rects[st.index]) for st in moved.stations
+            dataclasses.replace(st, coverage_mm=rects[st.index])
+            for st in moved.stations
         ],
         tag=suffixed_tag(source.tag, suffix, taken_tags),
         placed_from=source.placed_from,

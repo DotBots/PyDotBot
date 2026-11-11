@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from typing import Any, Sequence
 
 from dotbot.calibration.lighthouse2 import (
-    VALID_MM_DEFAULT,
+    COVERAGE_MM_DEFAULT,
     Calibration,
     LighthouseManager,
     Placement,
@@ -228,7 +228,7 @@ class CalibrationSession:
         return LighthouseManager(
             placements=[placement or self.placement()],
             site=self.site,
-            valid_mm=self.site.valid_mm or VALID_MM_DEFAULT,
+            coverage_mm=self.site.extent_rect_mm or COVERAGE_MM_DEFAULT,
             robot=self.robot,
         )
 

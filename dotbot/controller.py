@@ -1370,7 +1370,7 @@ class Controller:
                 self.logger.warning(
                     "Site reloaded against its calibration", error=str(exc)
                 )
-            if site.valid_mm != self.site.valid_mm:
+            if site.extent_rect_mm != self.site.extent_rect_mm:
                 self.logger.warning(
                     "Site extent changed; robots keep the fence of the calibration "
                     "they hold until a new one is pushed",

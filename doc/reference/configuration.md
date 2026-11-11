@@ -353,8 +353,8 @@ looked up in the site's pack `calibrations/` folder first, then in
 `~/.dotbot/calibrations/<site>/`, where `collect` writes; the first folder with
 a match wins.
 
-LH2 calibration files are schema 4; an older one is refused, and the
-[LH2 guide](../guides/lh2-calibration.md#upgrading-from-schema-3) says what to
+LH2 calibration files are schema 5; an older one is refused, and the
+[LH2 guide](../guides/lh2-calibration.md#upgrading-from-schema-4) says what to
 do instead.
 
 At load, the controller refuses an LH2 or camera calibration made in another

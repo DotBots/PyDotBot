@@ -165,7 +165,7 @@ async def test_the_panel_reboxes_a_calibration_of_its_site(scenario, monkeypatch
     )
     assert response.status_code == 200, response.text
     boxed = read_calibration_file(response.json()["path"])
-    assert boxed.station(0).valid_mm == (0, 0, 1000, 2000)
+    assert boxed.station(0).coverage_mm == (0, 0, 1000, 2000)
     assert boxed.edited_from == placed.id
 
 

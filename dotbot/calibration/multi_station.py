@@ -177,7 +177,7 @@ class JointSolution:
     homographies: dict[int, np.ndarray]
     centres: dict[CircleKey, np.ndarray]
     rectangles: dict[int, tuple[int, int, int, int]]
-    valid_mm: tuple[int, int, int, int]
+    coverage_mm: tuple[int, int, int, int]
     field_mm: tuple[int, int]
     graph: StationGraph
     loops: list[tuple[list[int], float]]
@@ -799,7 +799,7 @@ def _single(
         homographies={station: H},
         centres=centres,
         rectangles={station: rect},
-        valid_mm=rect,
+        coverage_mm=rect,
         field_mm=solution.field_mm,
         graph=graph,
         loops=[],
@@ -984,7 +984,7 @@ def _solve_free(
         homographies=H,
         centres=centres_out,
         rectangles=rectangles,
-        valid_mm=union_rect(rectangles.values()),
+        coverage_mm=union_rect(rectangles.values()),
         field_mm=field,
         graph=final_graph,
         loops=loops,
@@ -1042,10 +1042,10 @@ def _anchored(
                 f"site's zero, leaving the rectangle {list(rect)}; check the "
                 "anchors' points"
             )
-    valid = union_rect(rectangles.values())
+    coverage = union_rect(rectangles.values())
     warnings = list(joint.warnings)
     span = _spread(want)
-    diagonal = math.hypot(valid[2] - valid[0], valid[3] - valid[1])
+    diagonal = math.hypot(coverage[2] - coverage[0], coverage[3] - coverage[1])
     if span < ANCHOR_SPAN_SHARE * diagonal:
         warnings.append(
             f"the anchors span {span:.0f} mm, under half the fence's "
@@ -1061,7 +1061,7 @@ def _anchored(
         homographies=H,
         centres=centres,
         rectangles=rectangles,
-        valid_mm=valid,
+        coverage_mm=coverage,
         field_mm=joint.field_mm,
         graph=joint.graph,
         loops=joint.loops,
@@ -1261,7 +1261,7 @@ def error_map_from_calibration(
     if not kept:
         return None
     H = {s: stations[s].matrix for s in kept}
-    rectangles = {s: stations[s].valid_mm for s in kept}
+    rectangles = {s: stations[s].coverage_mm for s in kept}
     return _map_from(H, kept, rectangles, cell_mm)
 
 
@@ -1475,7 +1475,7 @@ def multi_station_report(
     for track in calibration.tracks:
         circles[track.station] = circles.get(track.station, 0) + 1
     for st in sorted(calibration.stations, key=lambda s: s.index):
-        rect = list(st.valid_mm)
+        rect = list(st.coverage_mm)
         if joint is not None and st.index in joint.solutions:
             sol = joint.solutions[st.index]
             kept = f"{len(sol.tracks)} kept, {len(sol.dropped)} dropped circles"

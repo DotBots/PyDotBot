@@ -58,7 +58,7 @@ def test_a_calibration_is_drawn_by_id_in_its_own_frame(client, spun):
     (station,) = body["stations"]
     assert (station["index"], station["channel"]) == (0, 1)
     assert len(station["centres"]) == len(CENTRES)
-    assert body["fence"] == station["rect"] == list(spun.valid_mm)
+    assert body["fence"] == station["rect"] == list(spun.coverage_mm)
     assert body["links"] == []
 
 
@@ -79,7 +79,7 @@ def test_a_placement_writes_a_new_calibration_and_keeps_the_original(
     assert placed.id == body["id"] != spun.id
     assert placed.site.name == "arena"
     assert placed.site.anchor == "the corner where the top wall meets the door wall"
-    assert placed.valid_mm == (0, 0, 2000, 4000)
+    assert placed.coverage_mm == (0, 0, 2000, 4000)
     assert body["push"] == (
         f"dotbot swarm calibrate-lh2 push {placed.id8} --site arena --site-changed"
     )
@@ -174,8 +174,8 @@ def test_boxes_write_a_new_calibration_with_only_the_rectangles_changed(client, 
     assert placed.path.read_bytes() == source
     boxed = read_calibration_file(body["path"])
     assert boxed.id == body["id"] != placed.id
-    assert boxed.station(0).valid_mm == (0, 0, 1000, 2000)
-    assert boxed.valid_mm == (0, 0, 1000, 2000)
+    assert boxed.station(0).coverage_mm == (0, 0, 1000, 2000)
+    assert boxed.coverage_mm == (0, 0, 1000, 2000)
     assert boxed.station(0).homography == placed.station(0).homography
     assert boxed.edited_from == placed.id
     assert boxed.tag == f"{placed.tag}-boxes"
@@ -320,7 +320,7 @@ def test_coverage_prints_the_show_headline_and_follows_new_boxes(
     assert len(fog["sigma"]) == fog["rows"] * fog["cols"]
     assert set(fog["own"]) == {"0", "1"}
     assert set(body["geometry"]["stations"]) == {"0", "1"}
-    x0, y0, x1, y1 = calibration.valid_mm
+    x0, y0, x1, y1 = calibration.coverage_mm
     mid = (x0 + x1) // 2
     split = {"0": [x0, y0, mid + 100, y1], "1": [mid - 100, y0, x1, y1]}
     import json

@@ -9,6 +9,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- LH2 calibration files are schema 5: a station's rectangle is
+  `[[station]] coverage_mm` (was `valid_mm`), and the `[validity]` table, the
+  stations' union, is gone. A schema 4 file is refused; collect it again. The
+  wire bytes are unchanged, but every calibration id is new, so push once.
+
 - Depend on `pygame-ce` instead of `pygame`, which publishes no wheels for
   Python 3.14 and fails to build from source there. `pygame-ce` is a drop-in
   replacement imported as `pygame`; uninstall `pygame` before upgrading, as

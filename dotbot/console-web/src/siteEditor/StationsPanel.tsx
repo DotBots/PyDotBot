@@ -178,7 +178,7 @@ export const StationsPanel: React.FC<StationsPanelProps> = (props) => {
               <Icon name="file" size={12} /> IN {shown.id8}
             </div>
             <pre>
-              {`[[station]]\nindex = ${sel.index}\nvalid_mm = [${sel.rect.join(", ")}]\nsolved_from = "${st?.solved_from ?? "unknown"}"`}
+              {`[[station]]\nindex = ${sel.index}\ncoverage_mm = [${sel.rect.join(", ")}]\nsolved_from = "${st?.solved_from ?? "unknown"}"`}
               {fileRect && fileRect.join() !== sel.rect.join() && <span className="c">{`\n# in ${shown.id8}: [${fileRect.join(", ")}]; Save writes a new file`}</span>}
             </pre>
           </div>

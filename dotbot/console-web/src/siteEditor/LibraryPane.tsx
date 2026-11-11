@@ -280,7 +280,7 @@ export const LibraryPane: React.FC<{
               <div className="grp" data-testid="library-unreadable">
                 Older files · {library.unreadable!.length}
               </div>
-              <div className="grpnote">Written by an older version: this build reads schema 4 only. They stay on disk; spin the robots again to measure the stations.</div>
+              <div className="grpnote">Written by an older version: this build reads schema 5 only. They stay on disk; spin the robots again to measure the stations.</div>
               {library.unreadable!.map((u) => (
                 <div className="orow" key={u.path} title={u.error} style={{ marginLeft: 0, opacity: 0.75 }}>
                   <Icon name="file" size={13} />

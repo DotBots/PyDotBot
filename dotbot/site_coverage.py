@@ -81,7 +81,7 @@ def coverage(
     rects = {
         int(k): tuple(int(v) for v in r)
         for k, r in (
-            boxes or {st.index: st.valid_mm for st in calibration.stations}
+            boxes or {st.index: st.coverage_mm for st in calibration.stations}
         ).items()
     }
     limit = site.error_limit_mm

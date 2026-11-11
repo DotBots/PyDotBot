@@ -30,7 +30,7 @@ def spin_fingerprint(calibration: lighthouse2.Calibration) -> str:
     """8 hex digits naming the measurement a file holds: its content id
     without its boxes, so files differing only in boxes share it."""
     text = lighthouse2.canonical_serialisation(calibration)
-    kept = "\n".join(line for line in text.split("\n") if "valid_mm" not in line)
+    kept = "\n".join(line for line in text.split("\n") if "coverage_mm" not in line)
     return hashlib.sha256(kept.encode("utf-8")).hexdigest()[:8]
 
 
@@ -59,7 +59,7 @@ def _row(path: Path) -> dict | None:
         cal = lighthouse2.read_calibration_file(path)
     except (OSError, ValueError):
         return None
-    boxes = {st.index: tuple(int(v) for v in st.valid_mm) for st in cal.stations}
+    boxes = {st.index: tuple(int(v) for v in st.coverage_mm) for st in cal.stations}
     row = {
         "id": cal.id,
         "id8": cal.id8,
@@ -69,7 +69,7 @@ def _row(path: Path) -> dict | None:
         "site": cal.site.name,
         "anchor": cal.site.anchor,
         "frame": cal.site.frame,
-        "fence": [int(v) for v in cal.valid_mm],
+        "fence": [int(v) for v in cal.coverage_mm],
         "spin": spin_fingerprint(cal),
         "tracks": len(cal.tracks),
         "stations": [

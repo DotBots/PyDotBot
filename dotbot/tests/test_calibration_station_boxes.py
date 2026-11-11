@@ -47,12 +47,12 @@ def placed(free):
 
 def test_only_the_named_rectangle_and_the_fence_change(placed):
     boxed = reboxed(placed, ARENA, {0: (0, 0, 1500, 4000)})
-    assert placed.stations[0].valid_mm == (0, 0, 3000, 4000)
-    assert [st.valid_mm for st in boxed.stations] == [
+    assert placed.stations[0].coverage_mm == (0, 0, 3000, 4000)
+    assert [st.coverage_mm for st in boxed.stations] == [
         (0, 0, 1500, 4000),
         (0, 0, 3000, 4000),
     ]
-    assert boxed.valid_mm == (0, 0, 3000, 4000)
+    assert boxed.coverage_mm == (0, 0, 3000, 4000)
     assert [st.homography for st in boxed.stations] == [
         st.homography for st in placed.stations
     ]
@@ -69,7 +69,7 @@ def test_only_the_named_rectangle_and_the_fence_change(placed):
 
 def test_the_fence_shrinks_to_the_union(placed):
     boxed = reboxed(placed, ARENA, {0: (0, 0, 1500, 2000), 1: (1000, 500, 2500, 3000)})
-    assert boxed.valid_mm == (0, 0, 2500, 3000)
+    assert boxed.coverage_mm == (0, 0, 2500, 3000)
 
 
 def test_a_reboxed_calibration_reads_back_with_its_lineage(
@@ -80,7 +80,7 @@ def test_a_reboxed_calibration_reads_back_with_its_lineage(
     back = read_calibration_file(path)
     assert back.id == boxed.id
     assert back.edited_from == placed.id
-    assert back.station(1).valid_mm == (500, 0, 3000, 4000)
+    assert back.station(1).coverage_mm == (500, 0, 3000, 4000)
     # Saving the same rectangles again finds the file instead of a second one
     again, same = save_new(reboxed(placed, ARENA, {1: (500, 0, 3000, 4000)}))
     assert same == path and again.id == boxed.id
@@ -182,11 +182,11 @@ def test_rebox_writes_a_new_calibration_from_literals_and_areas(
     assert source.read_bytes() == before
     (written,) = set(source.parent.glob("*.toml")) - {source}
     boxed = read_calibration_file(written)
-    assert boxed.station(0).valid_mm == (0, 0, 1500, 4000)
-    assert boxed.station(1).valid_mm == (0, 0, 3000, 2000)
+    assert boxed.station(0).coverage_mm == (0, 0, 1500, 4000)
+    assert boxed.station(1).coverage_mm == (0, 0, 3000, 2000)
     assert boxed.edited_from == placed.id
     assert f"dotbot swarm calibrate-lh2 push {boxed.id8} --site arena" in result.output
-    assert "0,0,1500,4000 (x,y,w,h; valid_mm [0, 0, 1500, 4000]" in result.output
+    assert "0,0,1500,4000 (x,y,w,h; coverage_mm [0, 0, 1500, 4000]" in result.output
 
 
 def test_rebox_refuses_a_rectangle_outside_the_site(placed, tmp_path, monkeypatch):

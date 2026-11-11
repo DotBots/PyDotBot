@@ -102,8 +102,8 @@ def solved_in_own_frame(calibration: Calibration) -> bool:
 
 
 def station_rect(station: StationSolution) -> tuple[int, int, int, int] | None:
-    """The station's own validity rectangle, for files that carry one."""
-    rect = getattr(station, "valid_mm", None)
+    """The station's own coverage, for files that carry one."""
+    rect = getattr(station, "coverage_mm", None)
     return tuple(int(v) for v in rect) if rect else None
 
 
@@ -144,7 +144,7 @@ def overlay(calibration: Calibration) -> dict:
     fence, each station's rectangle (its own, else the fence) and spin
     centres, and the links between stations."""
     centres = spin_centres(calibration)
-    fence = [int(v) for v in calibration.valid_mm]
+    fence = [int(v) for v in calibration.coverage_mm]
     stations = []
     for st in sorted(calibration.stations, key=lambda s: s.index):
         rect = station_rect(st)
@@ -228,7 +228,7 @@ def place_calibration(
             "the anchor itself moved."
         )
     T = transform.matrix()
-    extent = site.valid_mm
+    extent = site.extent_rect_mm
     stations = []
     for st in calibration.stations:
         H = T @ st.matrix
@@ -236,12 +236,12 @@ def place_calibration(
         changes = {"homography": [[float(v) for v in row] for row in H]}
         rect = station_rect(st)
         if extent is not None:
-            changes["valid_mm"] = extent
+            changes["coverage_mm"] = extent
         elif rect is not None:
-            changes["valid_mm"] = transform.box(rect)
+            changes["coverage_mm"] = transform.box(rect)
         stations.append(dataclasses.replace(st, **changes))
 
-    fence = transform.box(calibration.valid_mm)
+    fence = transform.box(calibration.coverage_mm)
     below = [
         f"S{st.index}'s rectangle " f"{list(station_rect(st) or fence)}"
         for st in stations
@@ -270,22 +270,13 @@ def place_calibration(
             + " below zero, where a robot cannot report a position"
         )
 
-    rects = [station_rect(st) for st in stations]
-    if rects and all(r is not None for r in rects):
-        valid_mm = (
-            min(r[0] for r in rects),
-            min(r[1] for r in rects),
-            max(r[2] for r in rects),
-            max(r[3] for r in rects),
-        )
-    elif site.valid_mm is not None:
-        valid_mm = site.valid_mm
-    else:
-        valid_mm = fence
     try:
-        lighthouse2.valid_mm_as_bytes(valid_mm)
+        for st in stations:
+            lighthouse2.coverage_mm_as_bytes(st.coverage_mm)
     except ValueError as exc:
-        raise PlacementRefused(f"the moved calibration's fence: {exc}") from exc
+        raise PlacementRefused(
+            f"the moved calibration's {lighthouse2.station_label(st.index)} coverage: {exc}"
+        ) from exc
     placements = [
         dataclasses.replace(
             placement,
@@ -300,7 +291,6 @@ def place_calibration(
     return Calibration(
         **extra,
         site=Site(name=site.name, anchor=site.anchor, frame=site.frame),
-        valid_mm=tuple(int(v) for v in valid_mm),
         placements=placements,
         stations=stations,
         tracks=list(calibration.tracks),

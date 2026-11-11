@@ -128,7 +128,7 @@ class Site:
         return Area(0, 0, int(self.extent_mm[0]), int(self.extent_mm[1]), self.name)
 
     @property
-    def valid_mm(self) -> tuple[int, int, int, int] | None:
+    def extent_rect_mm(self) -> tuple[int, int, int, int] | None:
         """The plausibility fence a bot applies, when the extent is known.
 
         `[x_min, y_min, x_max, y_max]`: a position outside the site cannot be

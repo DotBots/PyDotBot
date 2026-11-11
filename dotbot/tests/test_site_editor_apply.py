@@ -56,7 +56,7 @@ def test_both_steps_write_in_order(client, placed):  # noqa: F811
     site_step, cal_step = body["steps"]
     assert site_step["status"] == "written"
     boxed = read_calibration_file(cal_step["detail"])
-    assert boxed.id == cal_step["id"] and boxed.station(0).valid_mm == (
+    assert boxed.id == cal_step["id"] and boxed.station(0).coverage_mm == (
         0,
         0,
         1000,

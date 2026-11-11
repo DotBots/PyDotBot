@@ -17,7 +17,7 @@ from dotbot.site import Site
 
 def fix_lines(calibration: Calibration) -> list[str]:
     """Who gives the fix, by the robots' station rule, where the boxes meet."""
-    rects = {st.index: st.valid_mm for st in calibration.stations}
+    rects = {st.index: st.coverage_mm for st in calibration.stations}
     if len(rects) < 2:
         return []
     links = {(k.a, k.b): k for k in calibration.links}
@@ -64,7 +64,7 @@ def provenance_lines(
         for st in sorted(calibration.stations, key=lambda s: s.index)
     )
     lines.append(f"  residuals {residuals or 'none'}")
-    rects = {st.index: st.valid_mm for st in calibration.stations}
+    rects = {st.index: st.coverage_mm for st in calibration.stations}
     lines.append(f"  boxes {station_rule.reading(rects)}")
     limit = site.error_limit_mm
     if error_map is None or math.isnan(error_map.worst_mm):
