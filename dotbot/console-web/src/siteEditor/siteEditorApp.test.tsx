@@ -530,6 +530,92 @@ describe("the one map", () => {
   });
 });
 
+describe("picking a coverage to resize", () => {
+  const geometry = { stations: { "0": { x_mm: -542, y_mm: 1268, height_mm: 2423, off_square_deg: 5.4 }, "1": { x_mm: 1387, y_mm: -245, height_mm: 1606, off_square_deg: -3.1 } }, apart_mm: { "0-1": 2583 } };
+  const stub = () =>
+    stubFetch({
+      "api/calibrations?": () =>
+        new Response(JSON.stringify({ ...LIBRARY, serving: { ...served, geometry }, groups: [{ ...LIBRARY.groups[0], rows: inFrame.map((r) => (r.id === served.id ? { ...r, geometry } : r)) }] }), { status: 200 }),
+    });
+  /** Where frame mm `p` lands on the plan, as a pointer event's client point. */
+  const at = (p: [number, number]) => {
+    const floor = screen.getByTestId("floor");
+    const boxW = Number(floor.closest("svg")!.getAttribute("width"));
+    const [fx, fy, fw, fh] = ["x", "y", "width", "height"].map((k) => Number(floor.getAttribute(k)));
+    const m = /translate\((-?[\d.]+)px, (-?[\d.]+)px\) scale\(([\d.]+)\)/.exec((floor.closest("svg")!.parentElement!.parentElement as HTMLElement).style.transform)!;
+    const [tx, ty, sc] = [Number(m[1]), Number(m[2]), Number(m[3])];
+    const boxH = Number(floor.closest("svg")!.getAttribute("height"));
+    const bx = fx + (p[0] / 1060) * fw;
+    const by = fy + (p[1] / 1220) * fh;
+    return { clientX: (bx - boxW / 2) * sc + 400 + tx, clientY: (by - boxH / 2) * sc + 300 + ty };
+  };
+  const click = (el: Element, p: [number, number]) => {
+    fireEvent.pointerDown(el, { button: 0, pointerId: 1, ...at(p) });
+    fireEvent.pointerUp(screen.getByTestId("plan"), { button: 0, pointerId: 1, ...at(p) });
+  };
+  const toStations = async () => {
+    await toPlan();
+    keyDown("2");
+    await waitFor(() => expect(screen.getByTestId("station-pos-0")).toBeTruthy());
+  };
+  const picked = () => screen.queryByTestId("inspector-box")?.querySelector(".name")?.textContent ?? null;
+
+  it("selects a coverage by a click inside it, over the field area, the nearest station's where they overlap", async () => {
+    stub();
+    render(<SiteEditorApp />);
+    await toStations();
+    // Both cover the whole extent: S0 stands off the bottom-left corner, S1 off the top-right
+    click(screen.getByTestId("area-field").querySelector("rect")!, [100, 1100]);
+    expect(picked()).toBe("S0");
+    expect(screen.getAllByTestId(/^box-handle-/)).toHaveLength(8);
+    expect(screen.getByRole("tab", { name: /^Stations/ }).getAttribute("aria-selected")).toBe("true");
+    click(screen.getByTestId("plan"), [1000, 100]);
+    expect(picked()).toBe("S1");
+    // Outside every coverage, a click clears the selection
+    click(screen.getByTestId("plan"), [1500, 600]);
+    expect(screen.queryAllByTestId(/^box-handle-/)).toHaveLength(0);
+  });
+
+  it("selects a station's coverage from its marker and from its Resize coverage button", async () => {
+    stub();
+    render(<SiteEditorApp />);
+    await toStations();
+    fireEvent.pointerDown(screen.getByTestId("station-pos-1"), { button: 0, pointerId: 1 });
+    expect(picked()).toBe("S1");
+    expect(screen.getAllByTestId(/^box-handle-/)).toHaveLength(8);
+    fireEvent.click(screen.getByRole("button", { name: "All stations" }));
+    fireEvent.click(screen.getByTestId("resize-coverage-0"));
+    expect(picked()).toBe("S0");
+    expect(screen.getAllByTestId(/^box-handle-/)).toHaveLength(8);
+  });
+
+  it("lets the handover line take a drag before the coverage under it", async () => {
+    stub();
+    render(<SiteEditorApp />);
+    await waitFor(() => expect(screen.getByTestId("goal-stations-coverage")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Split at the best line" }));
+    await waitFor(() => expect(screen.getByTestId("handover-grip")).toBeTruthy());
+    click(screen.getByTestId("handover-grip"), [530, 600]);
+    expect(picked()).toBeNull();
+    expect(screen.queryAllByTestId(/^box-handle-/)).toHaveLength(0);
+  });
+
+  it("leaves areas out of a Stations edit, and coverages out of an Areas edit", async () => {
+    stub();
+    render(<SiteEditorApp />);
+    await toStations();
+    click(screen.getByTestId("area-field").querySelector("rect")!, [500, 600]);
+    expect(screen.queryByTestId("handle-n")).toBeNull();
+    expect(screen.getByRole("tab", { name: /^Stations/ }).getAttribute("aria-selected")).toBe("true");
+    keyDown("4");
+    click(screen.getByTestId("box-0").querySelector("rect")!, [0, 0]);
+    expect(screen.queryAllByTestId(/^box-handle-/)).toHaveLength(0);
+    expect(screen.getByRole("tab", { name: /^Areas/ }).getAttribute("aria-selected")).toBe("true");
+    click(screen.getByTestId("area-field").querySelector("rect")!, [500, 600]);
+    expect(screen.getByTestId("handle-n")).toBeTruthy();
+  });
+});
+
 describe("the Use sheet", () => {
   it("switches with the id it believes is in use, and shows the controller's answer when that is stale", async () => {
     let attempts = 0;

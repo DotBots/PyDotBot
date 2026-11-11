@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { bestSplit, contours, coverageSay, fixtureAgreement, handover, layoutText, moved, movedHandover, overlapBand, share, splitFloor, switchLabel, type Coverage } from "./coverage";
+import { bestSplit, contours, coverageAt, coverageSay, fixtureAgreement, handover, layoutText, moved, movedHandover, overlapBand, share, splitFloor, switchLabel, type Coverage } from "./coverage";
 import type { LibraryRow } from "./types";
 
 const GEOMETRY = {
@@ -20,6 +20,30 @@ describe("the Stations kind's drawing", () => {
     expect(switchLabel(handover([0, 0, 630, 1220], [430, 0, 1060, 1220])!)).toBe("switches here · x 530 mm");
     expect(overlapBand([0, 0, 630, 1220], [430, 0, 1060, 1220])).toEqual([430, 0, 630, 1220]);
     expect(overlapBand([0, 0, 300, 1220], [500, 0, 1060, 1220])).toBeNull();
+  });
+
+  it("picks the coverage a click falls in: the nearest station's where they overlap, else the smaller", () => {
+    const boxes = [
+      { index: 0, rect: [0, 0, 630, 1220] as [number, number, number, number] },
+      { index: 1, rect: [430, 0, 1060, 1220] as [number, number, number, number] },
+    ];
+    const poses = [
+      { index: 0, x: -542, y: 1268 },
+      { index: 1, x: 1387, y: -245 },
+    ];
+    expect(coverageAt(boxes, poses, [100, 600])).toBe(0);
+    expect(coverageAt(boxes, poses, [900, 600])).toBe(1);
+    expect(coverageAt(boxes, poses, [2000, 600])).toBeNull();
+    // In the overlap: S0 stands nearer the top-left, S1 nearer the bottom-right
+    expect(coverageAt(boxes, poses, [500, 1200])).toBe(0);
+    expect(coverageAt(boxes, poses, [600, 10])).toBe(1);
+    // No positions known: the smaller rectangle wins
+    const nested = [
+      { index: 0, rect: [0, 0, 1060, 1220] as [number, number, number, number] },
+      { index: 1, rect: [400, 400, 700, 800] as [number, number, number, number] },
+    ];
+    expect(coverageAt(nested, [], [500, 500])).toBe(1);
+    expect(coverageAt(nested, [], [100, 100])).toBe(0);
   });
 
   it("splits the floor with S0 on its own side and 200 mm of overlap", () => {

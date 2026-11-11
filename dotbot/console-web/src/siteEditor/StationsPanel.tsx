@@ -33,6 +33,8 @@ export interface StationsPanelProps {
   /** New coverage for the shown calibration, as one draft step. */
   onBoxes: (boxes: Record<number, Rect>) => void;
   onSelectBox: (index: number | null) => void;
+  /** Picks a station's coverage on the plan, its handles shown. */
+  onResize: (index: number) => void;
   showNext: boolean;
   onShowNext: (on: boolean) => void;
   /** The coverage of the calibration in use, to say a draft against; null with none. */
@@ -140,7 +142,7 @@ export const StationsPanel: React.FC<StationsPanelProps> = (props) => {
           </span>
         </div>
         <div className="ins-sub">
-          Where robots use S{sel.index} (channel {sel.index + 1} on the station). Drag an edge on the plan, or type it; arrows nudge a picked edge (Alt 1 mm, Shift 100 mm).
+          Where robots use S{sel.index} (channel {sel.index + 1} on the station). Drag a handle on the plan, or type it; arrows nudge a picked edge (Alt 1 mm, Shift 100 mm).
         </div>
         <span className="lbl" style={{ marginTop: 8 }}>Covers, mm</span>
         <div className="grid2">
@@ -195,6 +197,7 @@ export const StationsPanel: React.FC<StationsPanelProps> = (props) => {
   const limit = coverage?.limit_mm ?? 2;
   const shared = boxes.length === 2 && boxes[0].rect.join() === boxes[1].rect.join();
   const said = coverageSay(boxes, props.inUse);
+  const resizeWhy = shown.in_frame ? null : "Not placed in this site yet: its coverage is in its own frame";
   return (
     <div data-testid="stations-panel">
       <div className="ins-h">
@@ -232,7 +235,8 @@ export const StationsPanel: React.FC<StationsPanelProps> = (props) => {
             const sh = share(boxes, extent, b.index);
             const w = worstOf(b.index);
             return (
-              <tr key={b.index} className="click" onClick={() => props.onSelectBox(b.index)} title={`Edit where robots use S${b.index}`}>
+              <React.Fragment key={b.index}>
+              <tr className="click" onClick={() => props.onSelectBox(b.index)} title={`Edit where robots use S${b.index}`}>
                 <td className="l">
                   <span className="stpin" style={{ background: `var(--st-${b.index % 2})` }}>
                     S{b.index}
@@ -246,6 +250,22 @@ export const StationsPanel: React.FC<StationsPanelProps> = (props) => {
                   {m.verdict}
                 </td>
               </tr>
+              <tr className="acts">
+                <td colSpan={6}>
+                  <button
+                    type="button"
+                    className="btn xs"
+                    data-testid={`resize-coverage-${b.index}`}
+                    aria-label={`Resize S${b.index} coverage`}
+                    disabled={!!resizeWhy}
+                    title={resizeWhy ?? `Shows S${b.index}'s coverage on the plan with its handles: drag one to resize it`}
+                    onClick={() => props.onResize(b.index)}
+                  >
+                    <Icon name="rect" size={12} /> Resize coverage
+                  </button>
+                </td>
+              </tr>
+              </React.Fragment>
             );
           })}
         </tbody>
@@ -270,7 +290,7 @@ export const StationsPanel: React.FC<StationsPanelProps> = (props) => {
             )}
           </>
         ) : (
-          "Drag the handover line on the plan, or a station's coverage edge, to change it. Save writes it as a new calibration."
+          "Drag the handover line on the plan, or click a station's coverage (or Resize coverage) and drag its handles. Save writes it as a new calibration."
         )}
       </div>
       {props.coverageError && (

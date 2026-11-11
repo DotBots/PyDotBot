@@ -24,7 +24,7 @@ import {
   type Camera,
   type ViewGeom,
 } from "../zoom";
-import { movedHandover, handover as handoverOf } from "./coverage";
+import { coverageAt, movedHandover, handover as handoverOf } from "./coverage";
 import { contextBounds, contextStep, FLOOR_FILL, floorStep, planViewport, stationLabel } from "./mapView";
 import { Icon } from "./icons";
 import type { EditKind, Tool } from "./keys";
@@ -270,6 +270,9 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
   const px = (p: Point) => toBox(p, viewport, geom);
   const pxLen = (mm: number) => (mm / viewport.w) * geom.boxW;
   const paint: PlanPaint = { px, pxLen, chrome, label };
+  // In Stations, a click inside a coverage picks it
+  const coverageHit = (p: Point): number | null =>
+    kind === "stations" && tool === "select" && props.layers.boxes ? coverageAt(props.boxes, props.stations ?? [], p) : null;
 
   // Ctrl or Cmd with the wheel zooms about the pointer; the wheel alone pans
   const wheelRef = useRef<(e: WheelEvent) => void>(() => {});
@@ -359,6 +362,8 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
 
   const onEntityDown = (e: React.PointerEvent, key: string) => {
     if (e.button !== 0 || tool !== "select") return;
+    // Stations takes clicks only on coverages; elsewhere a coverage takes none
+    if ((kind === "stations") !== key.startsWith("box:")) return;
     e.stopPropagation();
     capture(e);
     // Shift-drag over a thing of another kind still selects a rectangle
@@ -446,7 +451,8 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
     if (drag?.type === "handover" && pairPreview) props.onBoxesEdit?.(pairPreview);
     setPairPreview(null);
     if (drag?.type === "pan" && !drag.moved && tool === "select") {
-      props.onSelect([]);
+      const hit = e ? coverageHit(rawMm(e)) : null;
+      props.onSelect(hit !== null ? [`box:${hit}`] : []);
       props.onEdge(null);
     }
     if (drag?.type === "area") {
@@ -525,6 +531,8 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
   }
 
   const interactive = tool === "select";
+  // Stations edits stations, coverages and the handover only; the rest leaves clicks to them
+  const roomInteractive = interactive && kind !== "stations";
   const outlines = coincident([
     { label: "extent", rect: [0, 0, extent[0], extent[1]] },
     ...shown.areas.map((a) => ({ label: a.name, rect: [a.x, a.y, a.x + a.w, a.y + a.h] as [number, number, number, number] })),
@@ -547,7 +555,7 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
           stroke={colour}
           strokeWidth={(on ? 2 : 1.25) * chrome}
           strokeDasharray={`${6 * chrome} ${4 * chrome}`}
-          style={{ cursor: interactive ? (kind === "areas" ? "move" : "pointer") : undefined, pointerEvents: interactive ? "all" : "none" }}
+          style={{ cursor: roomInteractive ? (kind === "areas" ? "move" : "pointer") : undefined, pointerEvents: roomInteractive ? "all" : "none" }}
           onPointerDown={(e) => onEntityDown(e, a.key)}
         />
         <text className="halo" x={x + 8 * chrome} y={y + 14 * label} fontSize={11 * label} fill={colour} strokeWidth={3 * chrome} style={{ pointerEvents: "none" }}>
@@ -568,7 +576,7 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
       strokeLinecap: "round" as const,
       strokeLinejoin: "round" as const,
       fill: closed ? "color-mix(in srgb, var(--text) 18%, transparent)" : "none",
-      style: { cursor: interactive ? "pointer" : undefined, pointerEvents: (interactive ? "all" : "none") as React.CSSProperties["pointerEvents"] },
+      style: { cursor: roomInteractive ? "pointer" : undefined, pointerEvents: (roomInteractive ? "all" : "none") as React.CSSProperties["pointerEvents"] },
       onPointerDown: (e: React.PointerEvent) => onEntityDown(e, b.key),
     };
     return closed ? <polygon key={b.key} data-testid={b.key} {...common} /> : <polyline key={b.key} data-testid={b.key} {...common} />;
@@ -583,7 +591,7 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
       <g
         key={o.key}
         data-testid={`object-${o.name}`}
-        style={{ cursor: interactive ? "pointer" : undefined, pointerEvents: interactive ? "all" : "none" }}
+        style={{ cursor: roomInteractive ? "pointer" : undefined, pointerEvents: roomInteractive ? "all" : "none" }}
         onPointerDown={(e) => onEntityDown(e, o.key)}
       >
         <line x1={x} y1={y} x2={x + hx * s} y2={y + hy * s} stroke={on ? "var(--accent)" : "var(--muted)"} strokeWidth={1.5 * chrome} />
@@ -899,7 +907,7 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
   const selectedRobot = selected.find((k) => k.startsWith("robot:"))?.slice(6);
 
   const cursor =
-    tool === "select" ? (drag?.type === "pan" && drag.moved ? "grabbing" : "default") : tool === "measure" || tool === "probe" ? "crosshair" : "copy";
+    tool === "select" ? (drag?.type === "pan" && drag.moved ? "grabbing" : !drag && hover && coverageHit(hover) !== null ? "pointer" : "default") : tool === "measure" || tool === "probe" ? "crosshair" : "copy";
   const bar = scaleBar(perMm);
   const frac = zoomFraction(cam.scale, maxScale, PLAN_ZOOM_MIN);
 
@@ -911,13 +919,24 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
     return [size.w / 2 + cam.tx + cam.scale * (bx - geom.boxW / 2), size.h / 2 + cam.ty + cam.scale * (by - geom.boxH / 2)];
   };
 
+  const hasBox = (i: number) => props.layers.boxes && props.boxes.some((b) => b.index === i);
   const poseNodes = poses.map((s) => {
     const [x, y] = px([s.x, s.y]);
     const hue = `var(--st-${s.index % 2})`;
     const r = 8 * chrome;
     const tip = `S${s.index} stands about (${Math.round(s.x)}, ${Math.round(s.y)}) mm, ${(s.height / 1000).toFixed(1)} m up: estimated, not to tape`;
     return (
-      <g key={`pose-${s.index}`} data-testid={`station-pos-${s.index}`} style={{ pointerEvents: "visiblePainted" }}>
+      <g
+        key={`pose-${s.index}`}
+        data-testid={`station-pos-${s.index}`}
+        style={{ pointerEvents: "visiblePainted", cursor: hasBox(s.index) && tool === "select" ? "pointer" : undefined }}
+        onPointerDown={(e) => {
+          if (e.button !== 0 || tool !== "select" || !hasBox(s.index)) return;
+          e.stopPropagation();
+          props.onEdge(null);
+          props.onSelect([`box:${s.index}`]);
+        }}
+      >
         <title>{tip}</title>
         <circle cx={x} cy={y} r={r} fill={`color-mix(in srgb, ${hue} 28%, transparent)`} stroke={hue} strokeWidth={1.8 * chrome} />
         <line x1={x - r * 1.6} y1={y} x2={x + r * 1.6} y2={y} stroke={hue} strokeWidth={1.3 * chrome} />

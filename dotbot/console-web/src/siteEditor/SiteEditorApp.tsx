@@ -1427,6 +1427,14 @@ export const SiteEditorApp: React.FC = () => {
             editable={editable}
             onBoxes={editBoxes}
             onSelectBox={(i) => setSelected(i === null ? [] : [`box:${i}`])}
+            onResize={(i) => {
+              if (!closeFlows()) return;
+              setSelected([`box:${i}`]);
+              setKind("stations");
+              setTool("select");
+              setEdge(null);
+              setView("plan");
+            }}
             showNext={showNext}
             onShowNext={setShowNext}
             inUse={inUseBoxes}

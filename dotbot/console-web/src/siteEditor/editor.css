@@ -979,6 +979,10 @@ body {
 .se .strip tr.click {
   cursor: pointer;
 }
+.se .strip tr.acts td {
+  border-top: none;
+  padding: 0 4px 6px;
+}
 
 /* ---------------------------------------------------------------- canvas -- */
 .se .center {

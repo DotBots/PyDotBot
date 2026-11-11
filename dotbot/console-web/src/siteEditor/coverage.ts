@@ -191,6 +191,19 @@ export function overlapBand(a: Rect, b: Rect): Rect | null {
   return r[2] > r[0] && r[3] > r[1] ? r : null;
 }
 
+/** The coverage a click at `p` picks, or null outside them all: where several
+ * hold it, the one whose station stands nearest, else the smallest. */
+export function coverageAt(boxes: Boxes, stations: { index: number; x: number; y: number }[], p: [number, number]): number | null {
+  const inside = boxes.filter((b) => p[0] >= b.rect[0] && p[0] <= b.rect[2] && p[1] >= b.rect[1] && p[1] <= b.rect[3]);
+  if (inside.length <= 1) return inside[0]?.index ?? null;
+  const area = (r: Rect) => (r[2] - r[0]) * (r[3] - r[1]);
+  const pose = (i: number) => stations.find((s) => s.index === i);
+  const posed = inside.every((b) => pose(b.index));
+  const away = (i: number) => Math.hypot(pose(i)!.x - p[0], pose(i)!.y - p[1]);
+  const score = (b: Boxes[number]) => (posed ? away(b.index) : area(b.rect));
+  return [...inside].sort((a, b) => score(a) - score(b) || area(a.rect) - area(b.rect) || a.index - b.index)[0].index;
+}
+
 /** The share of `extent` where `station` alone gives the fix. */
 export function share(boxes: Boxes, extent: [number, number], station: number, cells = 40): number {
   const rects = asRects(boxes);
