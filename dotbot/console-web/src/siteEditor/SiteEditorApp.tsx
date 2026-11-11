@@ -1819,7 +1819,7 @@ export const SiteEditorApp: React.FC = () => {
                 stations={stationPoses}
                 camRequest={planCam}
                 onView={(cam, size) => (planView.current = { cam, size })}
-                onBoxEdit={shown?.in_frame ? (index, rect) => editBoxes({ [index]: rect }) : undefined}
+                onBoxEdit={shown?.in_frame && editable ? (index, rect) => editBoxes({ [index]: rect }) : undefined}
                 onBoxesEdit={shown?.in_frame && editable ? (rects) => editBoxes(rects) : undefined}
                 underlay={
                   kind === "stations"

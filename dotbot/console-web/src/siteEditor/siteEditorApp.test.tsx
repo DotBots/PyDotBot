@@ -589,6 +589,19 @@ describe("picking a coverage to resize", () => {
     expect(screen.getAllByTestId(/^box-handle-/)).toHaveLength(8);
   });
 
+  it("shows no coverage handles on a page that cannot write", async () => {
+    stubFetch({
+      "api/context": () => new Response(JSON.stringify({ ...CONTEXT, can_write: false }), { status: 200 }),
+      "api/calibrations?": () =>
+        new Response(JSON.stringify({ ...LIBRARY, serving: { ...served, geometry }, groups: [{ ...LIBRARY.groups[0], rows: inFrame.map((r) => (r.id === served.id ? { ...r, geometry } : r)) }] }), { status: 200 }),
+    });
+    render(<SiteEditorApp />);
+    await toStations();
+    fireEvent.pointerDown(screen.getByTestId("station-pos-1"), { button: 0, pointerId: 1 });
+    expect(picked()).toBe("S1");
+    expect(screen.queryAllByTestId(/^box-handle-/)).toHaveLength(0);
+  });
+
   it("lets the handover line take a drag before the coverage under it", async () => {
     stub();
     render(<SiteEditorApp />);
