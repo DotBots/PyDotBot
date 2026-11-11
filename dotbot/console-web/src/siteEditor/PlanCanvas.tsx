@@ -121,7 +121,8 @@ type Drag =
   | { type: "area"; from: Point; to: Point }
   | { type: "marquee"; from: Point; to: Point; base: string[] }
   | { type: "measure"; from: Point; to: Point }
-  | { type: "floor"; from: Point; turn: boolean };
+  | { type: "floor"; from: Point; turn: boolean }
+  | { type: "frame"; what: "shift" | "turn"; from: Point };
 
 /** What an overlay drawn on the plan needs: frame mm to the box's pixels. */
 export interface PlanPaint {
@@ -178,6 +179,13 @@ interface PlanCanvasProps {
    * from the press to each pointer position, `turn` when Alt or Shift was held
    * at the press, `done` on release. */
   onFloorDrag?: (from: Point, to: Point, turn: boolean, done: boolean) => void;
+  /** In Extent edit: where the origin is, as the move being made would put it,
+   * and which way its x axis points (degrees, clockwise), to draw the handles
+   * that shift and turn it; `readout` labels it during a drag. */
+  frameHandles?: { at: Point; deg: number; readout: string | null };
+  /** The origin ("shift") or the turn handle ("turn") dragged: from the press
+   * to each pointer position, plan mm, `done` on release. */
+  onFrameDrag?: (what: "shift" | "turn", from: Point, to: Point, keys: { alt: boolean; shift: boolean }, done: boolean) => void;
   onShortcuts?: () => void;
   /** Bumped by the page to fit the floor again. */
   fitSignal?: number;
@@ -411,6 +419,10 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
       props.onFloorDrag?.(drag.from, rawMm(e), drag.turn, false);
       return;
     }
+    if (drag.type === "frame") {
+      props.onFrameDrag?.(drag.what, drag.from, rawMm(e), { alt: e.altKey, shift: e.shiftKey }, false);
+      return;
+    }
     if (drag.type === "handover") {
       const s = snapped(e);
       setPairPreview(movedHandover(props.boxes, Math.round(s.point[drag.axis])));
@@ -448,6 +460,7 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
 
   const onUp = (e?: React.PointerEvent) => {
     if (drag?.type === "floor" && e) props.onFloorDrag?.(drag.from, rawMm(e), drag.turn, true);
+    if (drag?.type === "frame") props.onFrameDrag?.(drag.what, drag.from, e ? rawMm(e) : drag.from, { alt: !!e?.altKey, shift: !!e?.shiftKey }, true);
     if (drag?.type === "box" && boxPreview) props.onBoxEdit?.(boxPreview.index, boxPreview.rect);
     setBoxPreview(null);
     if (drag?.type === "handover" && pairPreview) props.onBoxesEdit?.(pairPreview);
@@ -883,6 +896,61 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
     </g>
   );
 
+  // The origin's handles in Extent edit: the origin itself shifts it, the
+  // knob at the end of its x axis turns the frame about it
+  const frameGrips = (() => {
+    const fh = props.frameHandles;
+    if (!fh || !props.onFrameDrag) return null;
+    const [ox, oy] = px(fh.at);
+    const r = (fh.deg * Math.PI) / 180;
+    const [kx, ky] = [ox + Math.cos(r) * axis, oy + Math.sin(r) * axis];
+    const dragging = drag?.type === "frame" ? drag.what : null;
+    const grab = (what: "shift" | "turn") => (e: React.PointerEvent) => {
+      if (e.button !== 0) return;
+      e.stopPropagation();
+      capture(e);
+      setDrag({ type: "frame", what, from: rawMm(e) });
+    };
+    return (
+      <g data-testid="frame-grips">
+        {dragging !== "shift" && (
+          <line x1={ox} y1={oy} x2={kx} y2={ky} stroke="var(--accent)" strokeWidth={1.2 * chrome} strokeDasharray={`${3 * chrome} ${3 * chrome}`} style={{ pointerEvents: "none" }} />
+        )}
+        <circle
+          data-testid="origin-grip"
+          cx={ox}
+          cy={oy}
+          r={11 * chrome}
+          fill="color-mix(in srgb, var(--accent) 14%, transparent)"
+          stroke="var(--accent)"
+          strokeWidth={1.4 * chrome}
+          style={{ cursor: "move", pointerEvents: "all" }}
+          onPointerDown={grab("shift")}
+        >
+          <title>Drag to shift the origin: snaps to 10 mm, Alt for free. Arrow keys nudge 10 mm, Alt 1 mm.</title>
+        </circle>
+        <circle
+          data-testid="turn-grip"
+          cx={kx}
+          cy={ky}
+          r={7 * chrome}
+          fill="var(--surface)"
+          stroke="var(--accent)"
+          strokeWidth={1.8 * chrome}
+          style={{ cursor: dragging === "turn" ? "grabbing" : "grab", pointerEvents: "all" }}
+          onPointerDown={grab("turn")}
+        >
+          <title>Drag to turn the frame about the origin: 0.5° steps, Shift for 15°.</title>
+        </circle>
+        {dragging && fh.readout && (
+          <text data-testid="frame-readout" className="halo" x={ox + 14 * chrome} y={oy + 26 * chrome} fontSize={12 * label} fill="var(--accent)" fontFamily="var(--font-mono)" strokeWidth={3 * chrome} style={{ pointerEvents: "none" }}>
+            {fh.readout}
+          </text>
+        )}
+      </g>
+    );
+  })();
+
   // Robots, positioned as the console's animator places them
   const markers = useRef(new Map<string, HTMLElement>());
   const attach = useCallback((id: string, el: HTMLElement | null) => {
@@ -909,7 +977,7 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
   const selectedRobot = selected.find((k) => k.startsWith("robot:"))?.slice(6);
 
   const cursor =
-    tool === "select" ? (drag?.type === "pan" && drag.moved ? "grabbing" : !drag && hover && coverageHit(hover) !== null ? "pointer" : "default") : tool === "measure" || tool === "probe" ? "crosshair" : "copy";
+    drag?.type === "frame" ? (drag.what === "shift" ? "move" : "grabbing") : tool === "select" ? (drag?.type === "pan" && drag.moved ? "grabbing" : !drag && hover && coverageHit(hover) !== null ? "pointer" : "default") : tool === "measure" || tool === "probe" ? "crosshair" : "copy";
   const bar = scaleBar(perMm);
   const frac = zoomFraction(cam.scale, maxScale, PLAN_ZOOM_MIN);
 
@@ -1095,6 +1163,7 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
                 })}
               {props.overlay?.(paint, shownBoxes)}
               {handoverGrip}
+              {frameGrips}
               {handles}
               {boxHandles}
               {boxPill}

@@ -33,7 +33,7 @@ import { anchoredText, goals as goalsOf, serveStep, verdict as verdictOf, type C
 import { ChecksPane } from "./ChecksPane";
 import { CompareSheet } from "./CompareSheet";
 import { anchorsOverlay, FramePanel } from "./FramePanel";
-import { moveBody, moves, NO_MOVE, onPlan, sameMove, toNew, toOld, turnedAbout, withOrigin, type FrameMove } from "./frameMove";
+import { moveBody, moves, NO_MOVE, onPlan, originDragged, originOnPlan, sameMove, toNew, toOld, turnDragged, turnedAbout, withOrigin, type FrameMove } from "./frameMove";
 import { ServeSheet } from "./ServeSheet";
 import { heldCalibrationId } from "../botFacts";
 import { bestSplit, coverageSay, type Coverage, type Geometry } from "./coverage";
@@ -171,6 +171,9 @@ function frameGhost(m: FrameMove, saved: [number, number], drawn: FrameMove | nu
     const xEnd = p.px(at([Math.min(250, extent[0] / 3), 0]));
     const yEnd = p.px(at([0, Math.min(250, extent[1] / 3)]));
     const pivot = p.px(drawn ? toNew(drawn, m.pivot) : m.pivot);
+    // A turn about the new origin itself needs no second marker
+    const savedZero = toOld(m, [0, 0]);
+    const aboutZero = Math.hypot(savedZero[0] - m.pivot[0], savedZero[1] - m.pivot[1]) < 0.5;
     return (
       <g data-testid="frame-ghost" style={{ pointerEvents: "none" }}>
         <polygon points={corners.map((c) => c.join(",")).join(" ")} fill="color-mix(in srgb, var(--accent) 5%, transparent)" stroke="var(--accent)" strokeWidth={1.5 * p.chrome} strokeDasharray={`${6 * p.chrome} ${4 * p.chrome}`} />
@@ -180,7 +183,7 @@ function frameGhost(m: FrameMove, saved: [number, number], drawn: FrameMove | nu
         <text className="halo" x={zero[0] + 9 * p.chrome} y={zero[1] - 8 * p.chrome} fontSize={10.5 * p.label} fill="var(--accent)" strokeWidth={3 * p.chrome}>
           new origin
         </text>
-        {m.theta_deg !== 0 && (
+        {m.theta_deg !== 0 && !aboutZero && (
           <g>
             <circle cx={pivot[0]} cy={pivot[1]} r={4 * p.chrome} fill="none" stroke="var(--text)" strokeWidth={1.2 * p.chrome} />
             <text className="tl halo" x={pivot[0] + 7 * p.chrome} y={pivot[1] + 4 * p.chrome} fontSize={9.5 * p.label} strokeWidth={3 * p.chrome}>
@@ -657,10 +660,16 @@ export const SiteEditorApp: React.FC = () => {
   // about the middle of the floor
   // A move typed but not put in the draft is kept for its tool while it is closed
   const parkedMoves = useRef<Partial<Record<Tool, FrameMove>>>({});
+  const frameDrag = useRef<{ what: "shift" | "turn"; base: FrameMove } | null>(null);
   const lastTool = useRef<Tool>(tool);
   const frameMoveRef = useRef(frameMove);
   frameMoveRef.current = frameMove;
   useEffect(() => {
+    // A drag of the origin opens the turn tool on the move it is making
+    if (frameDrag.current) {
+      lastTool.current = tool;
+      return;
+    }
     const was = lastTool.current;
     if ((was === "turn" || was === "anchor") && was !== tool) parkedMoves.current[was] = frameMoveRef.current;
     lastTool.current = tool;
@@ -712,6 +721,48 @@ export const SiteEditorApp: React.FC = () => {
       setFrameMove(withOrigin(base, [o[0] + to[0] - from[0], o[1] + to[1] - from[1]]));
     }
   };
+
+  /** A move of the origin made on the plan put in the draft once the server
+   * agrees, as one step; a refusal stays in the turn panel to read. */
+  const commitFrame = (m: FrameMove) => {
+    if (sameMove(m, draft?.frame?.move ?? null)) return;
+    checkFrame(m).then(
+      (a) => a.ok && sameMove(frameMoveRef.current, m) && applyFrame(m, a.result),
+      () => {},
+    );
+  };
+  const frameGrabbable = kind === "frame" && editable && stage === "edit" && view === "plan" && !presenting && !!frameSource && tool !== "measure";
+  // The origin dragged on the plan shifts it, its turn handle turns the frame
+  // about it: the turn panel opens on the move and follows it
+  const onFrameDrag = (what: "shift" | "turn", from: Point, to: Point, keys: { alt: boolean; shift: boolean }, done: boolean) => {
+    if (!draft) return;
+    if (!frameDrag.current) {
+      frameDrag.current = { what, base: tool === "turn" ? frameMove : (draft.frame?.move ?? NO_MOVE) };
+      if (tool !== "turn") setTool("turn");
+      setRightTab("inspect");
+    }
+    const { base } = frameDrag.current;
+    const drawn = draft.frame?.move ?? null;
+    const m = what === "shift" ? originDragged(base, drawn, from, to, keys.alt ? 1 : 10) : turnDragged(base, drawn, from, to, keys.shift ? 15 : keys.alt ? 0 : 0.5);
+    const moved = Math.hypot(to[0] - from[0], to[1] - from[1]) > 0;
+    if (moved) setFrameMove(m);
+    if (done) {
+      frameDrag.current = null;
+      if (moved) commitFrame(m);
+    }
+  };
+  // Arrow keys nudge the origin while the turn panel is open; a run of presses
+  // goes in the draft as one step once they stop
+  const nudgeTimer = useRef<number | undefined>(undefined);
+  const nudgeOrigin = (dx: number, dy: number) => {
+    if (!draft) return;
+    const m = originDragged(frameMoveRef.current, draft.frame?.move ?? null, [0, 0], [dx, dy], 0);
+    frameMoveRef.current = m;
+    setFrameMove(m);
+    window.clearTimeout(nudgeTimer.current);
+    nudgeTimer.current = window.setTimeout(() => commitFrame(frameMoveRef.current), 500);
+  };
+  useEffect(() => () => window.clearTimeout(nudgeTimer.current), []);
 
   // The frame tools draw in the inspector, so a sheet open there gives way
   useEffect(() => {
@@ -1115,7 +1166,10 @@ export const SiteEditorApp: React.FC = () => {
         const dx = e.key === "ArrowLeft" ? -d : e.key === "ArrowRight" ? d : 0;
         const dy = e.key === "ArrowUp" ? -d : e.key === "ArrowDown" ? d : 0;
         const movable = selected.filter((k) => kindOfKey(k) === kind && !isWhole(k) && !k.startsWith("box:") && !k.startsWith("robot:"));
-        if (edge && edge.key.startsWith("box:") && kind === "stations") {
+        if (frameGrabbable && tool === "turn") {
+          e.preventDefault();
+          nudgeOrigin(dx, dy);
+        } else if (edge && edge.key.startsWith("box:") && kind === "stations") {
           e.preventDefault();
           const index = Number(edge.key.slice(4));
           const b = boxes.find((x) => x.index === index);
@@ -1849,6 +1903,15 @@ export const SiteEditorApp: React.FC = () => {
                 onProbe={(at, px) => setProbe(at && px ? { at, px } : null)}
                 onPoint={(p) => setFrameMove((m) => ({ ...m, pivot: draft.frame ? toOld(draft.frame.move, p) : p }))}
                 onFloorDrag={anchorOpen && anchors.length > 0 ? onFloorDrag : undefined}
+                frameHandles={
+                  frameGrabbable
+                    ? {
+                        ...originOnPlan(tool === "turn" ? frameMove : (draft.frame?.move ?? NO_MOVE), draft.frame?.move ?? null),
+                        readout: frameDrag.current?.what === "turn" ? `turn ${frameMove.theta_deg}°` : `dx ${Math.round(frameMove.dx)}, dy ${Math.round(frameMove.dy)} mm`,
+                      }
+                    : undefined
+                }
+                onFrameDrag={frameGrabbable ? onFrameDrag : undefined}
                 onSelect={select}
                 onEdge={setEdge}
                 onEdit={onEdit}

@@ -3,7 +3,7 @@ import React, { useEffect, useState } from "react";
 import type { FrameAnswer, FrameMoved } from "./api";
 import type { GoalAction } from "./checks";
 import { KV, NumField, Sec, TextField } from "./fields";
-import { forbidden, frameTwin, moves, plainWarning, sameMove, toOld as toOldPoint, type Anchor, type FrameMove } from "./frameMove";
+import { forbidden, frameTwin, moves, plainWarning, sameMove, toOld as toOldPoint, turnedBy, type Anchor, type FrameMove } from "./frameMove";
 import { Icon } from "./icons";
 import type { Point } from "./model";
 import type { PlanPaint } from "./PlanCanvas";
@@ -143,7 +143,7 @@ export const FramePanel: React.FC<FramePanelProps> = (props) => {
       </div>
     ) : (
       <div className="note" style={{ marginTop: 10 }}>
-        Nothing moves yet. Type a turn or a shift, or click the plan to set the point it turns about.
+        Nothing moves yet. Drag the origin on the plan, or its handle to turn it; or type a turn or a shift, and click the plan to set the point it turns about.
       </div>
     )
   ) : checking && !check ? (
@@ -198,7 +198,14 @@ export const FramePanel: React.FC<FramePanelProps> = (props) => {
       <span className="lbl" style={{ marginTop: 8 }}>Turn</span>
       <div className="grid2">
         <NumField label="turn" prefix="turn" unit="°" value={move.theta_deg} onApply={(v) => onMove({ ...move, theta_deg: v })} />
-        <span />
+        <div className="acts" style={{ marginTop: 0 }}>
+          <button type="button" className="btn sm" data-testid="turn-minus-90" title="Turn the frame a quarter turn anticlockwise" onClick={() => onMove(turnedBy(move, -90))}>
+            −90°
+          </button>
+          <button type="button" className="btn sm" data-testid="turn-plus-90" title="Turn the frame a quarter turn clockwise" onClick={() => onMove(turnedBy(move, 90))}>
+            +90°
+          </button>
+        </div>
         <NumField label="about x" prefix="about x" value={move.pivot[0]} onApply={(v) => onMove({ ...move, pivot: [v, move.pivot[1]] })} />
         <NumField label="about y" prefix="about y" value={move.pivot[1]} onApply={(v) => onMove({ ...move, pivot: [move.pivot[0], v] })} />
       </div>

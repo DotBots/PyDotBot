@@ -772,3 +772,89 @@ describe("a move of the origin in the draft", () => {
     expect((screen.getByLabelText("x") as HTMLInputElement).value).toBe("500");
   });
 });
+
+/** Where frame mm `p` lands on the plan, as a pointer event's client point. */
+function planAt(p: [number, number]) {
+  const floor = screen.getByTestId("floor");
+  const svg = floor.closest("svg")!;
+  const [boxW, boxH] = [Number(svg.getAttribute("width")), Number(svg.getAttribute("height"))];
+  const [fx, fy, fw, fh] = ["x", "y", "width", "height"].map((k) => Number(floor.getAttribute(k)));
+  const m = /translate\(([-\d.e+]+)px, ([-\d.e+]+)px\) scale\(([-\d.e+]+)\)/.exec((svg.parentElement!.parentElement as HTMLElement).style.transform)!;
+  const [tx, ty, sc] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  return { clientX: (fx + (p[0] / 1060) * fw - boxW / 2) * sc + 400 + tx, clientY: (fy + (p[1] / 1220) * fh - boxH / 2) * sc + 300 + ty };
+}
+
+describe("the origin moved on the plan", () => {
+  const moved = { frame: "0badf00d", from_frame: "f0237ffd", site: SITE.site, base: SITE.site, stations: null, coverage: { 0: [0, 0, 1060, 1220], 1: [0, 0, 1060, 1220] }, warnings: [] };
+  const lastMove = (calls: { url: string; init?: RequestInit }[]) => JSON.parse(calls.filter((c) => c.url === "api/frame").slice(-1)[0].init!.body as string).move;
+
+  it("drags the origin to a shift snapped to 10 mm, put in the draft as one change", async () => {
+    const calls = stubFetch({ "api/frame": () => new Response(JSON.stringify(moved), { status: 200 }) });
+    render(<SiteEditorApp />);
+    await toPlan();
+    keyDown("1");
+    fireEvent.pointerDown(await screen.findByTestId("origin-grip"), { button: 0, pointerId: 1, ...planAt([0, 0]) });
+    fireEvent.pointerMove(screen.getByTestId("plan"), { pointerId: 1, ...planAt([123, 77]) });
+    expect(screen.getByTestId("frame-readout").textContent).toBe("dx 120, dy 80 mm");
+    expect(screen.getByTestId("frame-ghost")).toBeTruthy();
+    expect(screen.getByTestId("frame-turn")).toBeTruthy();
+    fireEvent.pointerUp(screen.getByTestId("plan"), { pointerId: 1, ...planAt([123, 77]) });
+    await waitFor(() => expect(screen.getByTestId("status-unsaved").textContent).toContain("1 unsaved change"));
+    expect(lastMove(calls)).toEqual({ theta_deg: 0, pivot: [120, 80], dx_mm: 120, dy_mm: 80 });
+    expect((screen.getByLabelText("shift x") as HTMLInputElement).value).toBe("120");
+    expect(screen.queryByTestId("frame-readout")).toBeNull();
+    keyDown("z", { ctrlKey: true });
+    await waitFor(() => expect(screen.queryByTestId("status-unsaved")).toBeNull());
+  });
+
+  it("turns the frame about the origin from the handle, in 0.5 degree steps or 15 with Shift", async () => {
+    const calls = stubFetch({ "api/frame": () => new Response(JSON.stringify(moved), { status: 200 }) });
+    render(<SiteEditorApp />);
+    await toPlan();
+    keyDown("1");
+    const along = (deg: number): [number, number] => [300, 300 * Math.tan((deg * Math.PI) / 180)];
+    fireEvent.pointerDown(await screen.findByTestId("turn-grip"), { button: 0, pointerId: 1, ...planAt([300, 0]) });
+    fireEvent.pointerMove(screen.getByTestId("plan"), { pointerId: 1, ...planAt(along(12.3)) });
+    expect(screen.getByTestId("frame-readout").textContent).toBe("turn 12.5°");
+    fireEvent.pointerMove(screen.getByTestId("plan"), { pointerId: 1, shiftKey: true, ...planAt(along(12.3)) });
+    expect(screen.getByTestId("frame-readout").textContent).toBe("turn 15°");
+    fireEvent.pointerUp(screen.getByTestId("plan"), { pointerId: 1, shiftKey: true, ...planAt(along(12.3)) });
+    await waitFor(() => expect(screen.getByTestId("status-unsaved").textContent).toContain("1 unsaved change"));
+    expect(lastMove(calls)).toEqual({ theta_deg: 15, pivot: [0, 0], dx_mm: 0, dy_mm: 0 });
+  });
+
+  it("nudges the origin with the arrow keys while it is picked, 10 mm or 1 with Alt", async () => {
+    const calls = stubFetch({ "api/frame": () => new Response(JSON.stringify(moved), { status: 200 }) });
+    render(<SiteEditorApp />);
+    await toPlan();
+    keyDown("1");
+    fireEvent.pointerDown(await screen.findByTestId("origin-grip"), { button: 0, pointerId: 1, ...planAt([0, 0]) });
+    fireEvent.pointerUp(screen.getByTestId("plan"), { pointerId: 1, ...planAt([0, 0]) });
+    expect(screen.getByTestId("frame-turn")).toBeTruthy();
+    keyDown("ArrowRight");
+    keyDown("ArrowRight");
+    keyDown("ArrowDown", { altKey: true });
+    await waitFor(() => expect(screen.getByTestId("status-unsaved").textContent).toContain("1 unsaved change"));
+    expect(lastMove(calls)).toEqual({ theta_deg: 0, pivot: [20, 1], dx_mm: 20, dy_mm: 1 });
+  });
+
+  it("shows its handles only in an Extent edit, with a tool that is not Measure, on a page that can write", async () => {
+    stubFetch();
+    const first = render(<SiteEditorApp />);
+    await toPlan();
+    keyDown("4");
+    expect(screen.queryByTestId("origin-grip")).toBeNull();
+    keyDown("1");
+    expect(screen.getByTestId("origin-grip")).toBeTruthy();
+    expect(screen.getByTestId("turn-grip")).toBeTruthy();
+    keyDown("m");
+    expect(screen.queryByTestId("origin-grip")).toBeNull();
+    first.unmount();
+    stubFetch({ "api/context": () => new Response(JSON.stringify({ ...CONTEXT, can_write: false }), { status: 200 }) });
+    render(<SiteEditorApp />);
+    await toPlan();
+    keyDown("1");
+    expect(screen.queryByTestId("origin-grip")).toBeNull();
+    expect(screen.queryByTestId("turn-grip")).toBeNull();
+  });
+});

@@ -86,6 +86,54 @@ export function turnedAbout(m: FrameMove, c: Point, deg: number): FrameMove {
   return { ...m, theta_deg: theta, dx: round(m.dx + back[0]), dy: round(m.dy + back[1]) };
 }
 
+/** `v` to the nearest multiple of `step`, to 0.01; a step of 0 only rounds. */
+function snapTo(v: number, step: number): number {
+  const s = step > 0 ? Math.round(v / step) * step : v;
+  return Math.round(s * 100) / 100 || 0;
+}
+
+/** An angle in (-180, 180]. */
+function wrapped(deg: number): number {
+  const w = ((((deg + 180) % 360) + 360) % 360) - 180;
+  return w === -180 ? 180 : w;
+}
+
+/** The move with its origin at `o` (saved frame's mm) and the frame turned by
+ * `deg` about that origin: pivot and shift are both `o`. */
+function aboutOrigin(o: Point, deg: number, note: string | null): FrameMove {
+  return { theta_deg: deg, pivot: [o[0], o[1]], dx: o[0], dy: o[1], note };
+}
+
+/** Where `m` puts the origin on a plan drawn in the frame `drawn` makes, and
+ * which way its x axis points there, degrees clockwise. */
+export function originOnPlan(m: FrameMove, drawn: FrameMove | null): { at: Point; deg: number } {
+  return { at: onPlan(m, drawn, [0, 0]), deg: m.theta_deg - (drawn?.theta_deg ?? 0) };
+}
+
+/** `base` with its origin dragged on the plan from `from` to `to` (plan mm,
+ * in the frame `drawn` makes), the turn kept; the origin snaps to `step` mm
+ * of the saved frame. */
+export function originDragged(base: FrameMove, drawn: FrameMove | null, from: Point, to: Point, step: number): FrameMove {
+  const saved = (p: Point) => (drawn ? toOld(drawn, p) : p);
+  const a = saved(from);
+  const b = saved(to);
+  const o = toOld(base, [0, 0]);
+  return aboutOrigin([snapTo(o[0] + b[0] - a[0], step), snapTo(o[1] + b[1] - a[1], step)], base.theta_deg, base.note);
+}
+
+/** `base` turned about its own origin by the angle the pointer swept from
+ * `from` to `to` around it (plan mm, in the frame `drawn` makes); the turn
+ * snaps to `step` degrees. */
+export function turnDragged(base: FrameMove, drawn: FrameMove | null, from: Point, to: Point, step: number): FrameMove {
+  const o = toOld(base, [0, 0]);
+  const c = drawn ? toNew(drawn, o) : o;
+  const swept = ((Math.atan2(to[1] - c[1], to[0] - c[0]) - Math.atan2(from[1] - c[1], from[0] - c[0])) * 180) / Math.PI;
+  return aboutOrigin([round(o[0]), round(o[1])], wrapped(snapTo(base.theta_deg + swept, step)), base.note);
+}
+
+/** `m` with its typed turn changed by `deg`, kept in (-180, 180]. */
+export const turnedBy = (m: FrameMove, deg: number): FrameMove => ({ ...m, theta_deg: wrapped(Math.round((m.theta_deg + deg) * 100) / 100) });
+
 /** Each anchor's robot against its spot under `m`, mm. */
 export function anchorErrors(m: FrameMove, anchors: Anchor[]): number[] {
   return anchors.map((a) => {
