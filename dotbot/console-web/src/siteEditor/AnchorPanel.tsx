@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Badge } from "../shared/Badge";
 import type { UnifiedBot } from "../types";
 import { postAnchor, postCheck, type FrameAnswer, type FrameMoved } from "./api";
-import { checkPasses, REANCHOR_MM, type CheckRecord } from "./checks";
+import { ANCHOR_NEEDS, checkPasses, NO_ROBOT_POSITION, REANCHOR_MM, type CheckRecord } from "./checks";
 import { sample, type Coverage } from "./coverage";
 import { NumField, TextField } from "./fields";
 import { STILL_MM, STILL_MS, stillness } from "./FramePanel";
@@ -455,7 +455,7 @@ export const AnchorPanel: React.FC<AnchorPanelProps> = (props) => {
       </div>
       <div className="ins-sub" style={{ marginTop: 4 }}>
         {work.mode === "anchor"
-          ? "Robots stand on spots measured with a tape; the frame is turned and shifted, never scaled, so every spot lands where its robot reads. Everything on the floor stays put: only the numbers change."
+          ? `${ANCHOR_NEEDS} The frame is turned and shifted, never scaled. Everything on the floor stays put: only the numbers change.`
           : "A robot on a measured spot, read against the map. This records how far off it is and moves nothing, unless you choose to re-anchor."}
       </div>
       {!props.live ? (
@@ -463,8 +463,8 @@ export const AnchorPanel: React.FC<AnchorPanelProps> = (props) => {
           Open the editor from a controller to read its robots; or turn or shift the origin by hand in Extent.
         </div>
       ) : located.length === 0 ? (
-        <div className="note" style={{ marginTop: 10 }}>
-          No robot has a position right now.
+        <div className="note" style={{ marginTop: 10 }} data-testid="anchor-no-robot">
+          {NO_ROBOT_POSITION}
         </div>
       ) : (
         <>

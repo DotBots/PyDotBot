@@ -105,6 +105,14 @@ export function serveStep(rows: LibraryRow[]): GoalAction {
 const RANK: Record<GoalState, number> = { none: 0, unknown: 0, ok: 0, warn: 1, fail: 2 };
 const worst = (own: GoalState, subs: GoalSub[]): GoalState => subs.reduce<GoalState>((s, x) => (RANK[x.state] > RANK[s] ? x.state : s), own);
 
+/** The Anchor flow's button, wherever it starts it. */
+export const ANCHOR_WITH_ROBOT = "Anchor with a robot…";
+/** What anchoring takes, said where it starts. */
+export const ANCHOR_NEEDS =
+  "Needs a real robot and a tape measure. Put a robot on spots you measured on the floor (one robot moved around, or several at once); the editor lines the frame up with where the robots report themselves.";
+/** Why anchoring cannot start. */
+export const NO_ROBOT_POSITION = "No robot is reporting a position. Turn one on inside the coverage.";
+
 const spots = (n: number) => `${n} spot${n === 1 ? "" : "s"}`;
 /** "anchored on 4 spots, worst 1.2 mm", from what site.toml keeps. */
 export function anchoredText(doc: Doc): string {
@@ -198,7 +206,7 @@ export function goals(i: GoalInputs): Goal[] {
       title: "Anchor",
       state: "warn",
       detail: `not anchored: the origin is where the spin put it${canRead ? "" : " · open the editor from a controller to read robots"}`,
-      action: canRead ? { label: "Anchor", title: "Put robots on spots measured with a tape, so the frame matches the floor", go: { anchor: "anchor" } } : undefined,
+      action: canRead ? { label: ANCHOR_WITH_ROBOT, title: "Put robots on spots measured with a tape, so the frame matches the floor", go: { anchor: "anchor" } } : undefined,
       subject: ["anchor"],
     });
   } else {

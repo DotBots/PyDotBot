@@ -3,6 +3,7 @@ import React from "react";
 import { areaColor } from "../areaColor";
 import { Badge } from "../shared/Badge";
 import type { UnifiedBot } from "../types";
+import { ANCHOR_NEEDS, ANCHOR_WITH_ROBOT, NO_ROBOT_POSITION } from "./checks";
 import { KV, NumField, Sec, SelectField, TextArea, TextField } from "./fields";
 import { Icon } from "./icons";
 import type { EditKind } from "./keys";
@@ -477,7 +478,7 @@ export const Inspector: React.FC<InspectorProps> = (props) => {
               </button>
               {props.onAnchor && (
                 <button type="button" className="btn sm" onClick={() => props.onAnchor?.("anchor")}>
-                  <Icon name="capture" size={13} /> Anchor
+                  <Icon name="capture" size={13} /> {ANCHOR_WITH_ROBOT}
                 </button>
               )}
             </div>
@@ -490,10 +491,11 @@ export const Inspector: React.FC<InspectorProps> = (props) => {
   // --- the anchor, and a kind as a whole ------------------------------------------
   if (one === "anchor" || (kind === "anchor" && !one)) {
     const spots = doc.anchor_spots;
+    const located = props.robots.some((b) => b.position);
     return (
       <div data-testid="inspector-anchor">
         <Head kind="Anchor" name={spots.length ? `${spots.length} spot${spots.length === 1 ? "" : "s"}` : "not anchored"} swatch={<Icon name="capture" size={14} />} />
-        <div className="ins-sub">{props.anchorText ?? "How the frame is tied to the floor: robots on spots measured with a tape."}</div>
+        <div className="ins-sub" data-testid="anchor-needs">{spots.length ? (props.anchorText ?? ANCHOR_NEEDS) : ANCHOR_NEEDS}</div>
         {spots.length > 0 && (
           <table className="strip" style={{ marginTop: 8 }} data-testid="anchor-kept">
             <thead>
@@ -516,17 +518,28 @@ export const Inspector: React.FC<InspectorProps> = (props) => {
             </tbody>
           </table>
         )}
-        {doc.anchor && <div className="note" style={{ marginTop: 8 }}>Note: {doc.anchor}</div>}
         {props.onAnchor && (
-          <div className="acts">
-            <button type="button" className="btn sm primary" onClick={() => props.onAnchor?.(spots.length ? "check" : "anchor")}>
-              {spots.length ? "Check again" : "Anchor"}
-            </button>
-            {spots.length > 0 && (
-              <button type="button" className="btn sm" onClick={() => props.onAnchor?.("anchor")}>
-                Anchor again
+          <>
+            <div className="acts">
+              <button type="button" className="btn sm primary" data-testid="anchor-start" disabled={!located} onClick={() => props.onAnchor?.(spots.length ? "check" : "anchor")}>
+                {spots.length ? "Check again" : ANCHOR_WITH_ROBOT}
               </button>
+              {spots.length > 0 && (
+                <button type="button" className="btn sm" disabled={!located} onClick={() => props.onAnchor?.("anchor")}>
+                  Anchor again
+                </button>
+              )}
+            </div>
+            {!located && (
+              <div className="note" style={{ marginTop: 6 }} data-testid="anchor-no-robot">
+                {NO_ROBOT_POSITION}
+              </div>
             )}
+          </>
+        )}
+        {doc.anchor && (
+          <div className="note" style={{ marginTop: 10, fontSize: 11 }} data-testid="anchor-note">
+            Where the origin is: {doc.anchor}
           </div>
         )}
       </div>

@@ -287,7 +287,29 @@ describe("rows look, buttons act", () => {
     fireEvent.click(screen.getByTestId("goal-anchor"));
     expect(screen.getByTestId("inspector-anchor")).toBeTruthy();
     expect(screen.queryByTestId("anchor-panel")).toBeNull();
-    expect(screen.getByTestId("act-anchor").textContent).toBe("Anchor");
+    expect(screen.getByTestId("act-anchor").textContent).toBe("Anchor with a robot…");
+  });
+
+  it("says anchoring needs a robot, and keeps its button off until one reports a position", async () => {
+    fleet.bots = [{ ...holding("DE00000000002222", served.id), position: null }];
+    stubFetch();
+    const first = render(<SiteEditorApp />);
+    fireEvent.click(await screen.findByTestId("goal-anchor"));
+    expect(screen.getByTestId("inspector-anchor").querySelector(".ins-h")!.textContent).toContain("not anchored");
+    expect(screen.getByTestId("anchor-needs").textContent).toContain("Needs a real robot and a tape measure");
+    expect(screen.getByTestId("inspector-anchor").textContent).not.toContain("where the spin put it");
+    const start = screen.getByTestId("anchor-start") as HTMLButtonElement;
+    expect(start.textContent).toBe("Anchor with a robot…");
+    expect(start.disabled).toBe(true);
+    expect(screen.getByTestId("anchor-no-robot").textContent).toBe("No robot is reporting a position. Turn one on inside the coverage.");
+    first.unmount();
+    fleet.bots = [holding("DE00000000002222", served.id)];
+    render(<SiteEditorApp />);
+    fireEvent.click(await screen.findByTestId("goal-anchor"));
+    expect((screen.getByTestId("anchor-start") as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByTestId("anchor-no-robot")).toBeNull();
+    fireEvent.click(screen.getByTestId("anchor-start"));
+    await waitFor(() => expect(screen.getByTestId("anchor-panel").textContent).toContain("Needs a real robot and a tape measure"));
   });
 
   it("closes a flow when another row is picked, and reopening it keeps what was typed", async () => {

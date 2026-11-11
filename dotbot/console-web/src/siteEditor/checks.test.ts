@@ -48,7 +48,8 @@ describe("the rows", () => {
     for (const g of all) expect(g.subject.length, g.id).toBeGreaterThan(0);
     expect(goal(inputs([bot("A1", SERVED.id)]), "floor").action).toBeUndefined();
     expect(goal(inputs([bot("A1", SERVED.id)]), "robots").action).toBeUndefined();
-    for (const g of all) if (g.action) expect(g.action.label, g.id).not.toMatch(/…/);
+    // Only the Anchor flow, which asks for a robot on the floor first, reads as more to come
+    for (const g of all) if (g.action && g.id !== "anchor") expect(g.action.label, g.id).not.toMatch(/…/);
   });
 
   it("asks for the floor's size only when it is missing", () => {
@@ -112,7 +113,7 @@ describe("the Anchor row", () => {
   };
 
   it("asks to anchor a map not tied to the floor, from a controller only", () => {
-    expect(goal(inputs([]), "anchor")).toMatchObject({ state: "warn", action: { label: "Anchor", go: { anchor: "anchor" } } });
+    expect(goal(inputs([]), "anchor")).toMatchObject({ state: "warn", action: { label: "Anchor with a robot…", go: { anchor: "anchor" } } });
     const standalone = goal(inputs([], { live: false }), "anchor");
     expect(standalone.action).toBeUndefined();
     expect(standalone.detail).toContain("open the editor from a controller");
