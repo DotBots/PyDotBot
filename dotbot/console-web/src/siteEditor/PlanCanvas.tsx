@@ -3,7 +3,6 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { BotMarker, MARKER_SCALE_VAR } from "../BotMarker";
 import { DEFAULT_BODY_COLOR_MODE } from "../bodyColor";
 import { areaColor } from "../areaColor";
-import { gridStepMm } from "../grid";
 import { DEFAULT_ROBOT_DRAWING } from "../robotDrawing";
 import { ringDash, spinRings } from "../shared/spinRings";
 import { facing } from "../siteObjects";
@@ -26,7 +25,7 @@ import {
   type ViewGeom,
 } from "../zoom";
 import { movedHandover, handover as handoverOf } from "./coverage";
-import { planViewport } from "./mapView";
+import { contextBounds, contextStep, FLOOR_FILL, floorStep, planViewport, stationLabel } from "./mapView";
 import { Icon } from "./icons";
 import type { EditKind, Tool } from "./keys";
 import { freshKey, freshName, numberedName, type Doc, type DocObject, type ObjectKind, type Point } from "./model";
@@ -63,6 +62,8 @@ export interface StationPose {
   x: number;
   y: number;
   height: number;
+  /** The station's fit, mm, when known. */
+  fit?: number;
 }
 
 /** Two presses of the zoom further out than the whole viewport, so what
@@ -476,16 +477,30 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
 
   const [fx, fy] = px([0, 0]);
   const [fw, fh] = [pxLen(extent[0]), pxLen(extent[1])];
-  const gridMm = perMm * 100 >= 14 ? 100 : gridStepMm(perMm);
+  // The grid both views draw: a faint context beyond the floor, a finer one on it
+  const gridMm = floorStep(perMm, extent);
+  const ctxMm = contextStep(extent);
   const gridLines: React.ReactNode[] = [];
-  if (props.layers.grid && gridMm > 0) {
+  const contextLines: React.ReactNode[] = [];
+  if (props.layers.grid) {
+    const [cx0, cy0, cx1, cy1] = contextBounds(extent, (props.stations ?? []).map((s) => [s.x, s.y] as Point), ctxMm);
+    for (let x = cx0; x <= cx1; x += ctxMm) {
+      const [a, b] = px([x, cy0]);
+      const [, d] = px([x, cy1]);
+      contextLines.push(<line key={`cx${x}`} x1={a} y1={b} x2={a} y2={d} strokeOpacity={x % 1000 === 0 ? 0.26 : 0.16} />);
+    }
+    for (let y = cy0; y <= cy1; y += ctxMm) {
+      const [a, b] = px([cx0, y]);
+      const [c] = px([cx1, y]);
+      contextLines.push(<line key={`cy${y}`} x1={a} y1={b} x2={c} y2={b} strokeOpacity={y % 1000 === 0 ? 0.26 : 0.16} />);
+    }
     for (let x = gridMm; x < extent[0]; x += gridMm) {
       const [gx] = px([x, 0]);
-      gridLines.push(<line key={`gx${x}`} x1={gx} y1={fy} x2={gx} y2={fy + fh} stroke="var(--grid)" strokeWidth={chrome} />);
+      gridLines.push(<line key={`gx${x}`} x1={gx} y1={fy} x2={gx} y2={fy + fh} />);
     }
     for (let y = gridMm; y < extent[1]; y += gridMm) {
       const [, gy] = px([0, y]);
-      gridLines.push(<line key={`gy${y}`} x1={fx} y1={gy} x2={fx + fw} y2={gy} stroke="var(--grid)" strokeWidth={chrome} />);
+      gridLines.push(<line key={`gy${y}`} x1={fx} y1={gy} x2={fx + fw} y2={gy} />);
     }
   }
   // Ruler labels every half metre (or metre on a large floor), outside the floor
@@ -630,7 +645,7 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
         const hue = `var(--st-${b.index % 2})`;
         const strong = kind === "stations" || on;
         return (
-          <g key={`box-${b.index}`} data-testid={`box-${b.index}`} opacity={strong ? 1 : 0.6}>
+          <g key={`box-${b.index}`} data-testid={`box-${b.index}`} opacity={strong ? 1 : 0.75}>
             <rect
               x={x0 + inset}
               y={y0 + inset}
@@ -638,7 +653,7 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
               height={Math.max(y1 - y0 - 2 * inset, 0)}
               fill={on ? `color-mix(in srgb, ${hue} 14%, transparent)` : "none"}
               stroke={hue}
-              strokeWidth={(on ? 2.5 : 1.5) * chrome}
+              strokeWidth={(on ? 2.5 : 1.3) * chrome}
               strokeDasharray={b.index >= 2 ? `${5 * chrome} ${3 * chrome}` : undefined}
               style={{ pointerEvents: kind === "stations" && interactive ? "stroke" : "none", cursor: "pointer" }}
               onPointerDown={(e) => onEntityDown(e, `box:${b.index}`)}
@@ -907,12 +922,25 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
         <circle cx={x} cy={y} r={r} fill={`color-mix(in srgb, ${hue} 28%, transparent)`} stroke={hue} strokeWidth={1.8 * chrome} />
         <line x1={x - r * 1.6} y1={y} x2={x + r * 1.6} y2={y} stroke={hue} strokeWidth={1.3 * chrome} />
         <line x1={x} y1={y - r * 1.6} x2={x} y2={y + r * 1.6} stroke={hue} strokeWidth={1.3 * chrome} />
-        <text className="halo" x={x + r + 6 * chrome} y={y - 2 * chrome} fontSize={11.5 * label} fill={hue} fontWeight={700} strokeWidth={3 * chrome}>
-          S{s.index} ≈ {(s.height / 1000).toFixed(1)} m up
-        </text>
-        <text className="tl halo" x={x + r + 6 * chrome} y={y + 11 * label} fontSize={9.5 * label} fontFamily="var(--font-mono)" strokeWidth={3 * chrome}>
-          ({Math.round(s.x)}, {Math.round(s.y)}) mm
-        </text>
+        {(() => {
+          const said = stationLabel(s.index, s.height, s.fit);
+          const size = 11.5 * label;
+          const cw = said.length * 5.5 * label + 14 * chrome;
+          const ch = size * 1.9;
+          const cx = x + r + 8 * chrome;
+          const cy = y - ch / 2;
+          return (
+            <g data-testid={`station-card-${s.index}`}>
+              <rect x={cx} y={cy} width={cw} height={ch} rx={6 * chrome} fill="var(--surface)" stroke={hue} strokeWidth={1.4 * chrome} />
+              <text x={cx + 7 * chrome} y={cy + ch / 2 + size * 0.36} fontSize={size} fontWeight={600} fill="var(--text)">
+                <tspan fill={hue} fontWeight={700}>
+                  S{s.index}
+                </tspan>
+                {said.slice(`S${s.index}`.length)}
+              </text>
+            </g>
+          );
+        })()}
       </g>
     );
   });
@@ -980,13 +1008,13 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
         >
           <div style={{ position: "absolute", left: "50%", top: "50%", width: geom.boxW, height: geom.boxH, transform: "translate(-50%, -50%)" }}>
             <svg width={geom.boxW} height={geom.boxH} style={{ position: "absolute", inset: 0, overflow: "visible" }}>
-              <path
-                d={`M${-geom.boxW * 4},${-geom.boxH * 4}H${geom.boxW * 5}V${geom.boxH * 5}H${-geom.boxW * 4}Z M${fx},${fy}V${fy + fh}H${fx + fw}V${fy}Z`}
-                fill="var(--outside)"
-                fillRule="evenodd"
-                style={{ pointerEvents: "none" }}
-              />
-              {gridLines}
+              <g data-testid="plan-context-grid" stroke="var(--muted)" strokeWidth={chrome} style={{ pointerEvents: "none" }}>
+                {contextLines}
+              </g>
+              <rect x={fx} y={fy} width={fw} height={fh} fill={FLOOR_FILL} style={{ pointerEvents: "none" }} />
+              <g data-testid="plan-floor-grid" stroke="var(--grid)" strokeWidth={chrome} style={{ pointerEvents: "none" }}>
+                {gridLines}
+              </g>
               {ruler}
               {props.underlay?.(paint, shownBoxes)}
               <rect
@@ -998,7 +1026,7 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
                 height={fh}
                 fill="none"
                 stroke={sel("floor") ? "var(--accent)" : "var(--muted)"}
-                strokeWidth={(sel("floor") ? 2.5 : 1) * chrome}
+                strokeWidth={(sel("floor") ? 2.6 : 1.4) * chrome}
                 strokeDasharray={doc.extent_mm ? undefined : `${3 * chrome} ${5 * chrome}`}
                 style={{ pointerEvents: "none" }}
               />
@@ -1029,6 +1057,15 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
                   );
                 })}
               {poseNodes}
+              {robots.length <= 50 &&
+                robots.map((b) => {
+                  const [x, y] = px([b.position!.x, b.position!.y]);
+                  return (
+                    <text key={`id-${b.id}`} data-testid="robot-id" className="halo" x={x + Math.max(pxLen(70), 10 * chrome) + 3 * chrome} y={y + 3.5 * chrome} fontSize={9.5 * label} fontFamily="var(--font-mono)" fill="var(--muted)" strokeWidth={3 * chrome} style={{ pointerEvents: "none" }}>
+                      {b.id.slice(-4).toUpperCase()}
+                    </text>
+                  );
+                })}
               {props.overlay?.(paint, shownBoxes)}
               {handoverGrip}
               {handles}

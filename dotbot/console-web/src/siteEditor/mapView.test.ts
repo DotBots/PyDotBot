@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { FIT, planCamFromRoom, planProject, planViewport, roomFit, roomProject, roomZoomFromPlan, TOP_DOWN } from "./mapView";
+import { contextBounds, FIT, floorStep, planCamFromRoom, planProject, planViewport, roomFit, roomProject, roomZoomFromPlan, stationLabel, TOP_DOWN } from "./mapView";
 
 const EXTENT: [number, number] = [1060, 1220];
 const STATIONS: [number, number, number][] = [
@@ -42,5 +42,23 @@ describe("the 3D view and the plan, straight down", () => {
       expect(Math.abs(a[0] - b[0])).toBeLessThan(1);
       expect(Math.abs(a[1] - b[1])).toBeLessThan(1);
     }
+  });
+});
+
+describe("the grid and labels both views share", () => {
+  it("draws the floor finer than the context, as fine as the screen allows", () => {
+    expect(floorStep(0.2, [1060, 1220])).toBe(100);
+    expect(floorStep(0.1, [1060, 1220])).toBe(250);
+    expect(floorStep(0.03, [1060, 1220])).toBe(500);
+    expect(floorStep(0.001, [6000, 4000])).toBe(1000);
+  });
+
+  it("runs the context a step beyond the floor and the stations' feet", () => {
+    expect(contextBounds([1060, 1220], [[-542, 1268]], 500)).toEqual([-1500, -500, 2000, 2000]);
+  });
+
+  it("says a station the same way in 3D and top-down", () => {
+    expect(stationLabel(0, 2423, 1.1)).toBe("S0 ≈ 2.4 m up · fit 1.10 mm");
+    expect(stationLabel(1, 1606)).toBe("S1 ≈ 1.6 m up");
   });
 });

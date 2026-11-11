@@ -156,3 +156,33 @@ export function roomZoomFromPlan(fit: RoomFit, cam: Camera, size: Size, viewport
 
 /** The shortest turn from `from` to `to`, degrees, in -180 to 180. */
 export const turn = (from: number, to: number) => ((((to - from) % 360) + 540) % 360) - 180;
+
+// --- the grid both views draw ------------------------------------------------
+// A faint context grid runs beyond the floor, to the stations' feet, for the
+// room around it; the floor itself is a brighter rectangle with a finer grid,
+// so the floor reads as the map in either view. Both use these steps, so the
+// lines meet at the Top pose.
+
+/** The context grid's step, mm: half a metre, or a metre on a large floor. */
+export const contextStep = (extent: [number, number]) => (Math.max(extent[0], extent[1]) > 4000 ? 1000 : 500);
+
+/** The floor grid's step at `pxPerMm`: the finest of 100, 250 or 500 mm still 14 px apart, never coarser than the context. */
+export function floorStep(pxPerMm: number, extent: [number, number]): number {
+  const ctx = contextStep(extent);
+  const step = [100, 250, 500].find((s) => s * pxPerMm >= 14) ?? ctx;
+  return Math.min(step, ctx);
+}
+
+/** The context grid's bounds, mm: the floor and the stations' feet, a step beyond. */
+export function contextBounds(extent: [number, number], feet: Point[], step: number): [number, number, number, number] {
+  const xs = [0, extent[0], ...feet.map((p) => p[0])];
+  const ys = [0, extent[1], ...feet.map((p) => p[1])];
+  return [Math.floor(Math.min(...xs) / step) * step - step, Math.floor(Math.min(...ys) / step) * step - step, Math.ceil(Math.max(...xs) / step) * step + step, Math.ceil(Math.max(...ys) / step) * step + step];
+}
+
+/** The floor's fill, the same in both views. */
+export const FLOOR_FILL = "color-mix(in srgb, var(--text) 7%, transparent)";
+
+
+/** A station's label, the same in both views: "S0 ≈ 2.4 m up · fit 1.10 mm". */
+export const stationLabel = (index: number, heightMm: number, fit?: number) => `S${index} ≈ ${(heightMm / 1000).toFixed(1)} m up${fit !== undefined ? ` · fit ${fit.toFixed(2)} mm` : ""}`;

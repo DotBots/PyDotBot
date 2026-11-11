@@ -409,7 +409,7 @@ describe("the one map", () => {
     expect(screen.getByTestId("pane-left")).toBeTruthy();
     expect(screen.getByTestId("pane-right")).toBeTruthy();
     expect(preset("3/4").getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getByTestId("room-card-0").textContent).toBe("S0 · 2.4 m up · fit 1.10 mm");
+    expect(screen.getByTestId("room-card-0").querySelector("text")?.textContent).toBe("S0 ≈ 2.4 m up · fit 1.10 mm");
     expect(screen.getAllByTestId("room-ray-0")).toHaveLength(4);
     expect(screen.getAllByTestId(/room-cover-/)).toHaveLength(2);
     await waitFor(() => expect(screen.getAllByTestId("room-robot")).toHaveLength(1));
@@ -516,8 +516,9 @@ describe("the one map", () => {
     render(<SiteEditorApp />);
     await toPlan();
     await waitFor(() => expect(screen.getByTestId("station-pos-0")).toBeTruthy());
-    expect(screen.getByTestId("station-pos-0").textContent).toContain("S0 ≈ 2.4 m up");
-    expect(screen.getByTestId("station-pos-0").textContent).toContain("(-542, 1268) mm");
+    // One label in both views, the same card; where it stands is in the tooltip
+    expect(screen.getByTestId("station-card-0").textContent).toBe("S0 ≈ 2.4 m up · fit 1.10 mm");
+    expect(screen.getByTestId("station-pos-0").querySelector("title")?.textContent).toContain("(-542, 1268) mm");
     expect(screen.getByTestId("station-pos-0").querySelector("title")?.textContent).toContain("estimated, not to tape");
     keyDown("4");
     expect(screen.queryByTestId("station-pos-0")).toBeNull();

@@ -5,7 +5,7 @@ import { heldCalibrationId } from "../botFacts";
 import type { UnifiedBot } from "../types";
 import { fogImage, handover, overlapBand, switchLabel, type Boxes, type Coverage, type Geometry } from "./coverage";
 import type { Doc, Point } from "./model";
-import { lens, roomFit, roomProject, TOP_DOWN, turn, zoomAt, type Insets, type RoomCam, type Size, type Zoom } from "./mapView";
+import { contextBounds, contextStep, FLOOR_FILL, floorStep, lens, stationLabel, roomFit, roomProject, TOP_DOWN, turn, zoomAt, type Insets, type RoomCam, type Size, type Zoom } from "./mapView";
 import type { CoverageMode } from "./StationsPanel";
 import { fixImageCached } from "./StationsLayer";
 
@@ -224,25 +224,26 @@ export const RoomView: React.FC<{
   const have = (b: UnifiedBot) => !!shownId && heldCalibrationId(b).toLowerCase() === shownId.toLowerCase();
   const located = bots.filter((b) => b.position);
 
-  // --- the grid: beyond the floor, out to the stations' feet ----------------
-  const step = Math.max(w, h) > 4000 ? 1000 : 500;
-  const xs = [0, w, ...stations.map((s) => s.x_mm)];
-  const ys = [0, h, ...stations.map((s) => s.y_mm)];
-  const gx0 = Math.floor(Math.min(...xs) / step) * step - step;
-  const gx1 = Math.ceil(Math.max(...xs) / step) * step + step;
-  const gy0 = Math.floor(Math.min(...ys) / step) * step - step;
-  const gy1 = Math.ceil(Math.max(...ys) / step) * step + step;
+  // --- the grid: a faint context beyond the floor, a finer one on it ------------
+  const step = contextStep(extent);
+  const [gx0, gy0, gx1, gy1] = contextBounds(extent, stations.map((s) => [s.x_mm, s.y_mm] as Point), step);
   const gridLines: React.ReactNode[] = [];
   for (let x = gx0; x <= gx1; x += step) {
     const a = P(x, gy0);
     const b = P(x, gy1);
-    gridLines.push(<line key={`gx${x}`} x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} strokeOpacity={(x % 1000 === 0 ? 0.32 : 0.18) * depth(x, (gy0 + gy1) / 2)} />);
+    gridLines.push(<line key={`gx${x}`} x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} strokeOpacity={(x % 1000 === 0 ? 0.26 : 0.16) * depth(x, (gy0 + gy1) / 2)} />);
   }
   for (let y = gy0; y <= gy1; y += step) {
     const a = P(gx0, y);
     const b = P(gx1, y);
-    gridLines.push(<line key={`gy${y}`} x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} strokeOpacity={(y % 1000 === 0 ? 0.32 : 0.18) * depth((gx0 + gx1) / 2, y)} />);
+    gridLines.push(<line key={`gy${y}`} x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} strokeOpacity={(y % 1000 === 0 ? 0.26 : 0.16) * depth((gx0 + gx1) / 2, y)} />);
   }
+  const o0 = P(0, 0);
+  const o1 = P(1000, 0);
+  const fine = floorStep(Math.hypot(o1[0] - o0[0], o1[1] - o0[1]) / 1000, extent);
+  const floorLines: React.ReactNode[] = [];
+  for (let x = fine; x < w; x += fine) floorLines.push(<line key={`fx${x}`} x1={P(x, 0)[0]} y1={P(x, 0)[1]} x2={P(x, h)[0]} y2={P(x, h)[1]} />);
+  for (let y = fine; y < h; y += fine) floorLines.push(<line key={`fy${y}`} x1={P(0, y)[0]} y1={P(0, y)[1]} x2={P(w, y)[0]} y2={P(w, y)[1]} />);
 
   // --- labels, placed so none covers another or a robot ---------------------
   const wants: (Want & { draw: (x: number, y: number) => React.ReactNode })[] = [];
@@ -337,7 +338,7 @@ export const RoomView: React.FC<{
     obstacles.push([top[0] - 8, top[1] - 8, top[0] + 8, top[1] + 8]);
     const hue = `var(--st-${st.index % 2})`;
     const fit = stationFit?.[st.index];
-    const s = `S${st.index} · ${(st.height_mm / 1000).toFixed(1)} m up${fit !== undefined ? ` · fit ${fit.toFixed(2)} mm` : ""}`;
+    const s = stationLabel(st.index, st.height_mm, fit);
     const size = 11.5 * f;
     const cw = textW(s, size, false, true) + 14 * f;
     const ch = size * 1.9;
@@ -351,6 +352,9 @@ export const RoomView: React.FC<{
       gap: 12,
       draw: (x, y) => (
         <g key={`card-${st.index}`} data-testid={`room-card-${st.index}`}>
+          <title>
+            S{st.index} stands about ({Math.round(st.x_mm)}, {Math.round(st.y_mm)}) mm, {(st.height_mm / 1000).toFixed(1)} m up: estimated, not to tape
+          </title>
           <rect x={x} y={y} width={cw} height={ch} rx={6} fill="var(--surface)" stroke={hue} strokeWidth={1.4} />
           <text x={x + 7 * f} y={y + ch / 2 + size * 0.36} fontSize={size} fontWeight={600}>
             <tspan fill={hue} fontWeight={700}>
@@ -449,10 +453,13 @@ export const RoomView: React.FC<{
             data-testid="room-floor"
             data-selected={sel("floor") || undefined}
             points={poly(floor)}
-            fill="color-mix(in srgb, var(--text) 7%, transparent)"
+            fill={FLOOR_FILL}
             stroke={sel("floor") ? "var(--accent)" : "var(--muted)"}
             strokeWidth={sel("floor") ? 2.6 : 1.4}
           />
+          <g data-testid="room-floor-grid" stroke="var(--grid)" strokeWidth={1}>
+            {floorLines}
+          </g>
           <g stroke="var(--muted)" strokeWidth={1.2}>
             {ticks}
           </g>

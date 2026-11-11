@@ -824,7 +824,8 @@ export const SiteEditorApp: React.FC = () => {
     );
     return { ...g, stations };
   }, [shown?.geometry, shown?.id, coverage, shownMoved, shownMoved ? JSON.stringify(frameDraft!.move) : ""]);
-  const stationPoses: StationPose[] = shown?.in_frame && poses ? Object.entries(poses.stations).map(([k, p]) => ({ index: Number(k), x: p.x_mm, y: p.y_mm, height: p.height_mm })) : [];
+  const stationPoses: StationPose[] =
+    shown?.in_frame && poses ? Object.entries(poses.stations).map(([k, p]) => ({ index: Number(k), x: p.x_mm, y: p.y_mm, height: p.height_mm, fit: shown.stations.find((st) => st.index === Number(k))?.residual_mm })) : [];
   // The coverage drawn, said against the file in use
   const inUseBoxes = servedRowNow?.in_frame ? servedRowNow.stations.map((s) => ({ index: s.index, rect: s.box })) : null;
   const coverageNote = coverageSay(boxes, inUseBoxes).text;
@@ -1758,7 +1759,13 @@ export const SiteEditorApp: React.FC = () => {
                 onView={(cam, size) => (planView.current = { cam, size })}
                 onBoxEdit={shown?.in_frame ? (index, rect) => editBoxes({ [index]: rect }) : undefined}
                 onBoxesEdit={shown?.in_frame && editable ? (rects) => editBoxes(rects) : undefined}
-                underlay={kind === "stations" ? stationsUnderlay(coverageMode, coverage && coverage.id === shown?.id ? coverage : null, draft.doc.extent_mm ?? [1000, 1000], theme === "light", coverageStale) : undefined}
+                underlay={
+                  kind === "stations"
+                    ? stationsUnderlay(coverageMode, coverage && coverage.id === shown?.id ? coverage : null, draft.doc.extent_mm ?? [1000, 1000], theme === "light", coverageStale)
+                    : kind === "view" && layers.boxes
+                      ? stationsUnderlay("fix", null, draft.doc.extent_mm ?? [1000, 1000], theme === "light", false)
+                      : undefined
+                }
                 overlay={withCoverage(
                   newRoom && placePreview
                     ? placeOverlay(placePreview)
