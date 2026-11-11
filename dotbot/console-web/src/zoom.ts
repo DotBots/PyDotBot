@@ -100,16 +100,16 @@ export function wheelDeltaPx(e: { deltaY: number; deltaMode: number }): number {
 }
 
 /** The scale a wheel of `deltaPx` lands on: in when scrolled up, out when down. */
-export function wheelScale(scale: number, deltaPx: number, max: number): number {
-  if (!Number.isFinite(deltaPx)) return clampScale(scale, max);
-  return steppedScale(scale, -deltaPx / WHEEL_PX_PER_STEP, max);
+export function wheelScale(scale: number, deltaPx: number, max: number, min = ZOOM_MIN): number {
+  if (!Number.isFinite(deltaPx)) return clampScale(scale, max, min);
+  return steppedScale(scale, -deltaPx / WHEEL_PX_PER_STEP, max, min);
 }
 
-/** A scale held inside the range the map can show. */
-export function clampScale(scale: number, max: number): number {
-  const top = Number.isFinite(max) ? Math.max(ZOOM_MIN, max) : ZOOM_MIN;
-  if (!(scale > 0)) return ZOOM_MIN;
-  return Math.min(top, Math.max(ZOOM_MIN, scale));
+/** A scale held inside the range the map can show, `min` to `max`. */
+export function clampScale(scale: number, max: number, min = ZOOM_MIN): number {
+  const top = Number.isFinite(max) ? Math.max(min, max) : min;
+  if (!(scale > 0)) return min;
+  return Math.min(top, Math.max(min, scale));
 }
 
 /**
@@ -122,11 +122,12 @@ export function steppedScale(
   scale: number,
   delta: number,
   max: number,
+  min = ZOOM_MIN,
 ): number {
-  if (scale < ZOOM_MIN && delta <= 0) return scale;
-  const top = Number.isFinite(max) ? Math.max(ZOOM_MIN, max) : ZOOM_MIN;
+  if (scale < min && delta <= 0) return scale;
+  const top = Number.isFinite(max) ? Math.max(min, max) : min;
   if (scale > top && delta >= 0) return scale;
-  return clampScale(scale * ZOOM_STEP ** delta, max);
+  return clampScale(scale * ZOOM_STEP ** delta, max, min);
 }
 
 /**
@@ -134,21 +135,19 @@ export function steppedScale(
  * Measured in ratios rather than differences, so the same travel along a
  * slider is the same magnification wherever the handle already is.
  */
-export function zoomFraction(scale: number, max: number): number {
-  const top = Number.isFinite(max) ? Math.max(ZOOM_MIN, max) : ZOOM_MIN;
-  if (!(top > ZOOM_MIN)) return 0;
-  return (
-    Math.log(clampScale(scale, top) / ZOOM_MIN) / Math.log(top / ZOOM_MIN)
-  );
+export function zoomFraction(scale: number, max: number, min = ZOOM_MIN): number {
+  const top = Number.isFinite(max) ? Math.max(min, max) : min;
+  if (!(top > min)) return 0;
+  return Math.log(clampScale(scale, top, min) / min) / Math.log(top / min);
 }
 
 /** The scale one position along the range stands for: `zoomFraction` back. */
-export function scaleForFraction(fraction: number, max: number): number {
-  const top = Number.isFinite(max) ? Math.max(ZOOM_MIN, max) : ZOOM_MIN;
+export function scaleForFraction(fraction: number, max: number, min = ZOOM_MIN): number {
+  const top = Number.isFinite(max) ? Math.max(min, max) : min;
   const f = Number.isFinite(fraction)
     ? Math.max(0, Math.min(1, fraction))
     : 0;
-  return ZOOM_MIN * (top / ZOOM_MIN) ** f;
+  return min * (top / min) ** f;
 }
 
 /**
