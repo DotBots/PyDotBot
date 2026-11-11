@@ -122,9 +122,10 @@ export const NumField: React.FC<{
           onKeyDown={(e) => {
             if (e.key === "Enter") apply();
             else if (e.key === "Escape") {
+              // Esc puts a typed value back; with nothing typed it goes on to close the panel
+              if (text !== show(value) || error) e.stopPropagation();
               setText(show(value));
               setError("");
-              e.stopPropagation();
             } else if ((e.key === "ArrowUp" || e.key === "ArrowDown") && value !== null) {
               e.preventDefault();
               const next = value + (e.key === "ArrowUp" ? 1 : -1) * step(e);

@@ -8,7 +8,8 @@ import type { Doc } from "./model";
 import { heldBy, tail } from "./robots";
 import type { Rect } from "./types";
 
-// The left pane's Outline: everything on the plan by kind. Clicking a row
+// The left pane's Outline: everything on the plan by kind, in the editing
+// kinds' order. Clicking a row
 // selects it and switches to its kind, as clicking it on the plan does;
 // Shift-click adds to the selection.
 
@@ -75,15 +76,41 @@ export const OutlinePane: React.FC<{
   const barriers = [...doc.walls, ...doc.obstacles];
   return (
     <div data-testid="outline" style={{ paddingTop: 4 }}>
-      <Group title="Floor and origin" icon="frame" count={1} kindKey={KIND_KEY.frame} active={kind === "frame"}>
+      <Group title="Floor" icon="frame" count={1} kindKey={KIND_KEY.frame} active={kind === "frame"}>
         <Row on={on("floor")} onPick={() => onPick("floor", "frame", false)}>
           <span className="sw" style={{ border: "1px solid var(--muted)" }} />
           <span>floor</span>
           <span className="meta">{doc.extent_mm ? `${doc.extent_mm[0]} × ${doc.extent_mm[1]}` : "not measured"}</span>
         </Row>
       </Group>
+      <Group title={`Stations${shownName ? ` · ${shownName}` : ""}`} icon="stations" count={boxes.length} kindKey={KIND_KEY.stations} active={kind === "stations"}>
+        {boxes.length === 0 && empty("No calibration shown: pick one in Calibrations.")}
+        {boxes.map((b) => (
+          <Row key={b.index} testid={`outline-box:${b.index}`} on={on(`box:${b.index}`)} onPick={() => onPick(`box:${b.index}`, "stations", false)}>
+            <span className="stpin" style={{ background: `var(--st-${b.index % 2})` }}>
+              S{b.index}
+            </span>
+            <span>coverage</span>
+            <span className="meta">
+              x {b.rect[0]}-{b.rect[2]} · y {b.rect[1]}-{b.rect[3]}
+            </span>
+          </Row>
+        ))}
+      </Group>
+      <Group title="Anchor" icon="capture" count={doc.anchor_spots.length} kindKey={KIND_KEY.anchor} active={kind === "anchor"}>
+        {doc.anchor_spots.length === 0 && empty(`Not anchored. Press ${KIND_KEY.anchor}, then A, with robots on measured spots.`)}
+        {doc.anchor_spots.map((sp, i) => (
+          <Row key={i} testid={`outline-spot-${i}`} on={on("anchor")} onPick={() => onPick("anchor", "anchor", false)}>
+            <Icon name="capture" size={13} />
+            <span>spot {i + 1}</span>
+            <span className="meta">
+              {sp.at[0]}, {sp.at[1]} · {sp.error_mm.toFixed(1)} mm
+            </span>
+          </Row>
+        ))}
+      </Group>
       <Group title="Areas" icon="areas" count={doc.areas.length} kindKey={KIND_KEY.areas} active={kind === "areas"}>
-        {doc.areas.length === 0 && empty("None yet. Press 2, then A, and drag on the floor.")}
+        {doc.areas.length === 0 && empty(`None yet. Press ${KIND_KEY.areas}, then A, and drag on the floor.`)}
         {doc.areas.map((a) => {
           const colour = areaColor({ ...a, role: a.role ?? undefined }, doc.areas.map((b) => ({ ...b, role: b.role ?? undefined })));
           return (
@@ -99,7 +126,7 @@ export const OutlinePane: React.FC<{
         })}
       </Group>
       <Group title="Walls and obstacles" icon="walls" count={barriers.length} kindKey={KIND_KEY.walls} active={kind === "walls"}>
-        {barriers.length === 0 && empty("None yet. Press 3, then W for a wall or O for an obstacle.")}
+        {barriers.length === 0 && empty(`None yet. Press ${KIND_KEY.walls}, then W for a wall or O for an obstacle.`)}
         {barriers.map((b) => (
           <Row key={b.key} testid={`outline-${b.key}`} on={on(b.key)} onPick={(add) => onPick(b.key, "walls", add)}>
             <Icon name={b.key.startsWith("wall:") ? "wall" : "obstacle"} size={13} />
@@ -109,27 +136,13 @@ export const OutlinePane: React.FC<{
         ))}
       </Group>
       <Group title="Objects" icon="objects" count={doc.objects.length} kindKey={KIND_KEY.objects} active={kind === "objects"}>
-        {doc.objects.length === 0 && empty("None yet. Press 4, then C for a charger.")}
+        {doc.objects.length === 0 && empty(`None yet. Press ${KIND_KEY.objects}, then C for a charger.`)}
         {doc.objects.map((o) => (
           <Row key={o.key} testid={`outline-${o.key}`} on={on(o.key)} onPick={(add) => onPick(o.key, "objects", add)}>
             <Icon name={o.kind === "camera" ? "camera" : o.kind} size={13} />
             <span>{o.name}</span>
             <span className="meta">
               {Math.round(o.x)}, {Math.round(o.y)}
-            </span>
-          </Row>
-        ))}
-      </Group>
-      <Group title={`Stations${shownName ? ` · ${shownName}` : ""}`} icon="stations" count={boxes.length} kindKey={KIND_KEY.stations} active={kind === "stations"}>
-        {boxes.length === 0 && empty("No calibration shown: pick one in Calibrations.")}
-        {boxes.map((b) => (
-          <Row key={b.index} testid={`outline-box:${b.index}`} on={on(`box:${b.index}`)} onPick={() => onPick(`box:${b.index}`, "stations", false)}>
-            <span className="stpin" style={{ background: `var(--st-${b.index % 2})` }}>
-              S{b.index}
-            </span>
-            <span>coverage</span>
-            <span className="meta">
-              x {b.rect[0]}-{b.rect[2]} · y {b.rect[1]}-{b.rect[3]}
             </span>
           </Row>
         ))}

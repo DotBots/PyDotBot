@@ -128,6 +128,7 @@ export function changes(base: Doc, doc: Doc): Change[] {
   const out: Change[] = [];
   if (base.anchor !== doc.anchor) out.push({ key: "anchor", what: "changed", label: "the note on where the origin is" });
   if (!same(base.extent_mm, doc.extent_mm)) out.push({ key: "extent_mm", what: "changed", label: "the floor's size" });
+  if (!same(base.anchor_spots ?? [], doc.anchor_spots ?? [])) out.push({ key: "anchor_spots", what: "changed", label: "the spots the map is anchored on" });
   const a = entities(base);
   const b = entities(doc);
   for (const [key, e] of b) {
@@ -279,7 +280,7 @@ function mergeList<T extends Keyed & { was: unknown }>(
 export function reapply(oldBase: Doc, mine: Doc, theirs: Doc): { doc: Doc; conflicts: Change[] } {
   const conflicts: Change[] = [];
   const lab = (key: string, e: { name?: string | null } | undefined) => labelOf(key, e);
-  const field = <K extends "anchor" | "extent_mm">(k: K, text: string): Doc[K] => {
+  const field = <K extends "anchor" | "extent_mm" | "anchor_spots">(k: K, text: string): Doc[K] => {
     if (same(oldBase[k], mine[k])) return theirs[k];
     if (same(oldBase[k], theirs[k]) || same(mine[k], theirs[k])) return mine[k];
     conflicts.push({ key: k, what: "changed", label: text });
@@ -289,6 +290,7 @@ export function reapply(oldBase: Doc, mine: Doc, theirs: Doc): { doc: Doc; confl
     anchor: field("anchor", "the note on where the origin is"),
     frame: theirs.frame,
     extent_mm: field("extent_mm", "the floor's size"),
+    anchor_spots: field("anchor_spots", "the spots the map is anchored on") ?? [],
     areas: mergeList(oldBase.areas, mine.areas, theirs.areas, conflicts, lab),
     walls: mergeList(oldBase.walls, mine.walls, theirs.walls, conflicts, lab),
     obstacles: mergeList(oldBase.obstacles, mine.obstacles, theirs.obstacles, conflicts, lab),

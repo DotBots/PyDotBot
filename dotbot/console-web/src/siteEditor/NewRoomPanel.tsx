@@ -55,7 +55,7 @@ export const NewRoomPanel: React.FC<{
   /** Opens the review before Save */
   onSave?: () => void;
   onClose: () => void;
-  /** Opens the verification, once a placed calibration is in use */
+  /** Opens the Anchor flow, once a placed calibration is in use */
   onCheck?: () => void;
   /** What the controller serves in this room's frame, if anything */
   servedId?: string | null;
@@ -201,14 +201,14 @@ export const NewRoomPanel: React.FC<{
               {written.id.slice(0, 8)} {written.served ? "is in use in this room" : "is placed in this room; choose it in Calibrations to use it"}. To put another spin in it, pick the spin in Calibrations and choose Put in this room.
             </div>
           </Step>
-          <Step n={4} title="Push it, then verify" state="on">
+          <Step n={4} title="Push it, then tie the map to the floor" state="on">
             <div className="note">
-              Robots still use what they have: Push to robots, in the title bar, sends {written.id.slice(0, 8)} to them. Then park one on a measured spot to verify the origin.
+              Robots still use what they have: Push to robots, in the title bar, sends {written.id.slice(0, 8)} to them. Then put robots on spots measured with a tape, so the map lands on the room.
             </div>
             <div className="acts">
               {props.onCheck && written.served && (
                 <button type="button" className="btn sm" onClick={props.onCheck}>
-                  Verify…
+                  Anchor
                 </button>
               )}
             </div>

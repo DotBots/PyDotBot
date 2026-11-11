@@ -77,8 +77,12 @@ export interface InspectorProps {
   onBlink?: (id: string) => void;
   /** The site's frame id, recorded or derived. */
   frameId?: string;
-  /** Opens a frame tool. */
-  onFrameTool?: (tool: "turn" | "capture") => void;
+  /** Opens the manual move of zero. */
+  onFrameTool?: (tool: "turn") => void;
+  /** Opens the Anchor flow, to anchor or to check the anchor. */
+  onAnchor?: (mode: "anchor" | "check") => void;
+  /** The Anchor row's finding, as the Checks home says it. */
+  anchorText?: string;
   /** Starts a check on a mark with a robot. */
   onCheck?: (id: string) => void;
 }
@@ -357,7 +361,7 @@ export const Inspector: React.FC<InspectorProps> = (props) => {
     if (!bot)
       return (
         <div data-testid="inspector-robot">
-          <Head kind="Robot" name={`…${tail(robotId, 6)}`} />
+          <Head kind="Robot" name={`…${tail(robotId)}`} />
           <div className="note">This robot stopped reporting to the controller.</div>
         </div>
       );
@@ -366,7 +370,7 @@ export const Inspector: React.FC<InspectorProps> = (props) => {
     const axle = bot.axle ?? null;
     return (
       <div data-testid="inspector-robot">
-        <Head kind="Robot" name={`…${tail(bot.id, 6)}`} swatch={<span className="dot" style={{ background: bot.state ? `var(--s-${bot.state})` : "var(--s-Inactive)", width: 10, height: 10, borderRadius: 3 }} />} />
+        <Head kind="Robot" name={`…${tail(bot.id)}`} swatch={<span className="dot" style={{ background: bot.state ? `var(--s-${bot.state})` : "var(--s-Inactive)", width: 10, height: 10, borderRadius: 3 }} />} />
         <div className="ins-sub mono">
           {bot.id} · {bot.state ?? "unknown state"} · {bot.battery ? `${bot.battery.toFixed(2)} V` : "no battery reading"} · read only
         </div>
@@ -426,7 +430,7 @@ export const Inspector: React.FC<InspectorProps> = (props) => {
           )}
           {props.onCheck && bot.position && (
             <button type="button" className="btn sm" onClick={() => props.onCheck?.(bot.id)}>
-              <Icon name="pin" size={13} /> Verify a position
+              <Icon name="pin" size={13} /> Check the anchor here
             </button>
           )}
         </div>
@@ -436,7 +440,7 @@ export const Inspector: React.FC<InspectorProps> = (props) => {
   }
 
   // --- the floor ---------------------------------------------------------------
-  if (kind === "frame" || one === "floor") {
+  if (one === "floor" || (kind === "frame" && !one)) {
     return (
       <div data-testid="inspector-floor">
         <Head kind="Floor" name={doc.extent_mm ? `${doc.extent_mm[0]} × ${doc.extent_mm[1]} mm` : "not measured"} swatch={<Icon name="frame" size={14} />} />
@@ -453,7 +457,7 @@ export const Inspector: React.FC<InspectorProps> = (props) => {
           ))}
         <div style={{ marginTop: 10 }}>
           <TextArea
-            label="Where the origin is, in the room"
+            label="Note on where the origin is (optional)"
             value={doc.anchor ?? ""}
             disabled={!editable}
             placeholder="how to find the origin on the floor: the tape cross, the wall, the corner"
@@ -466,17 +470,92 @@ export const Inspector: React.FC<InspectorProps> = (props) => {
         </div>
         {editable && props.onFrameTool && (
           <Sec title="Move the origin">
-            <div className="note">Turn the room, shift the origin, or put it where robots stand on known spots: one change, reviewed before anything is written.</div>
+            <div className="note">Turn the room or shift the origin by hand: one change, reviewed before anything is written. To lay the map on spots measured in the room, use Anchor.</div>
             <div className="acts">
               <button type="button" className="btn sm" onClick={() => props.onFrameTool?.("turn")}>
                 <Icon name="turn" size={13} /> Turn or shift the origin (T)
               </button>
-              <button type="button" className="btn sm" onClick={() => props.onFrameTool?.("capture")}>
-                <Icon name="capture" size={13} /> Set the origin from robots (C)
-              </button>
+              {props.onAnchor && (
+                <button type="button" className="btn sm" onClick={() => props.onAnchor?.("anchor")}>
+                  <Icon name="capture" size={13} /> Anchor
+                </button>
+              )}
             </div>
           </Sec>
         )}
+      </div>
+    );
+  }
+
+  // --- the anchor, and a kind as a whole ------------------------------------------
+  if (one === "anchor" || (kind === "anchor" && !one)) {
+    const spots = doc.anchor_spots;
+    return (
+      <div data-testid="inspector-anchor">
+        <Head kind="Anchor" name={spots.length ? `${spots.length} spot${spots.length === 1 ? "" : "s"}` : "not anchored"} swatch={<Icon name="capture" size={14} />} />
+        <div className="ins-sub">{props.anchorText ?? "How the map is tied to the room: robots on spots measured with a tape."}</div>
+        {spots.length > 0 && (
+          <table className="strip" style={{ marginTop: 8 }} data-testid="anchor-kept">
+            <thead>
+              <tr>
+                <th>spot</th>
+                <th>at, mm</th>
+                <th>off</th>
+              </tr>
+            </thead>
+            <tbody>
+              {spots.map((sp, i) => (
+                <tr key={i}>
+                  <td>{i + 1}</td>
+                  <td>
+                    {sp.at[0]}, {sp.at[1]}
+                  </td>
+                  <td>{sp.error_mm.toFixed(1)} mm</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {doc.anchor && <div className="note" style={{ marginTop: 8 }}>Note: {doc.anchor}</div>}
+        {props.onAnchor && (
+          <div className="acts">
+            <button type="button" className="btn sm primary" onClick={() => props.onAnchor?.(spots.length ? "check" : "anchor")}>
+              {spots.length ? "Check again" : "Anchor"}
+            </button>
+            {spots.length > 0 && (
+              <button type="button" className="btn sm" onClick={() => props.onAnchor?.("anchor")}>
+                Anchor again
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+  const listed =
+    one === "areas"
+      ? doc.areas.map((a) => ({ key: a.key, name: a.name, meta: `${Math.round(a.w)} × ${Math.round(a.h)}${a.role && a.role !== a.name ? ` · ${a.role}` : ""}` }))
+      : one === "walls"
+        ? [...doc.walls, ...doc.obstacles].map((b) => ({ key: b.key, name: b.name || (b.key.startsWith("wall:") ? "wall" : "obstacle"), meta: `${b.points.length} points` }))
+        : one === "objects"
+          ? doc.objects.map((o) => ({ key: o.key, name: o.name, meta: `${o.kind} at ${Math.round(o.x)}, ${Math.round(o.y)}` }))
+          : one === "robots"
+            ? props.robots.map((r) => ({ key: `robot:${r.id}`, name: `…${tail(r.id)}`, meta: heldText(heldBy(r, props.servedId)) }))
+            : null;
+  if (listed) {
+    const title = { areas: "Areas", walls: "Walls and obstacles", objects: "Objects", robots: "Robots" }[one as "areas" | "walls" | "objects" | "robots"];
+    return (
+      <div data-testid={`inspector-${one}`}>
+        <Head kind={title} name={`${listed.length}`} />
+        {one === "areas" && !doc.areas.some((a) => roleOf(a) === "field") && <div className="callout warn" style={{ marginTop: 8 }}>No area is the field: scripts using --area field find none.</div>}
+        {listed.length === 0 && <div className="note" style={{ marginTop: 8 }}>None yet.</div>}
+        {listed.map((x) => (
+          <div key={x.key} role="button" tabIndex={0} className="orow" style={{ marginLeft: 0 }} onClick={() => onSelect([x.key])} onKeyDown={(e) => e.key === "Enter" && onSelect([x.key])}>
+            <span className={x.key.startsWith("robot:") ? "mono" : undefined}>{x.name}</span>
+            <span className="meta">{x.meta}</span>
+          </div>
+        ))}
+        {one === "robots" && listed.length > 0 && <div className="note" style={{ marginTop: 8 }}>Read only here: the console drives robots.</div>}
       </div>
     );
   }

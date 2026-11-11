@@ -65,36 +65,11 @@ export interface Anchor {
   robot: string;
   fix: Point;
   spot: Point;
+  /** What the plan calls it; the robot's id when unset. */
+  label?: string;
 }
 
 const round = (v: number, d = 10) => Math.round(v * d) / d;
-
-/** The move that lays the room on its anchors: one anchor shifts, two or
- * more turn and shift by least squares (the spot positions as the new
- * frame, the fixes as the old one). Null without an anchor. */
-export function fitAnchors(anchors: Anchor[], note: string | null): FrameMove | null {
-  if (!anchors.length) return null;
-  const n = anchors.length;
-  const cf: Point = [anchors.reduce((a, x) => a + x.fix[0], 0) / n, anchors.reduce((a, x) => a + x.fix[1], 0) / n];
-  const cs: Point = [anchors.reduce((a, x) => a + x.spot[0], 0) / n, anchors.reduce((a, x) => a + x.spot[1], 0) / n];
-  let theta = 0;
-  if (n > 1) {
-    // old = R(theta) new + t: the angle that best turns the spots onto the fixes
-    let sxx = 0;
-    let syx = 0;
-    for (const a of anchors) {
-      const s = [a.spot[0] - cs[0], a.spot[1] - cs[1]];
-      const f = [a.fix[0] - cf[0], a.fix[1] - cf[1]];
-      sxx += s[0] * f[0] + s[1] * f[1];
-      syx += s[0] * f[1] - s[1] * f[0];
-    }
-    theta = Math.atan2(syx, sxx);
-  }
-  const deg = round((theta * 180) / Math.PI, 100);
-  // With the pivot at the fixes' centroid, the shift is what moves the spots' centroid onto it
-  const pivot: Point = [round(cf[0], 1), round(cf[1], 1)];
-  return { theta_deg: deg, pivot, dx: round(cf[0] - cs[0]), dy: round(cf[1] - cs[1]), note };
-}
 
 /** `m` with its new origin at `o` (current frame's mm), the turn kept. */
 export function withOrigin(m: FrameMove, o: Point): FrameMove {

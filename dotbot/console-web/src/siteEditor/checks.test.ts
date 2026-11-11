@@ -39,14 +39,21 @@ const inputs = (robots: UnifiedBot[], over: Partial<GoalInputs> = {}): GoalInput
 });
 const goal = (i: GoalInputs, id: string) => goals(i).find((g) => g.id === id)!;
 
+const sub = (i: GoalInputs, id: string) => goal(i, "stations").subs!.find((x) => x.id === id)!;
+
 describe("the rows", () => {
-  it("each has one of three states and one action", () => {
+  it("come in the operator's order, each naming its subject, with a button only when something needs doing", () => {
     const all = goals(inputs([bot("A1", SERVED.id)]));
-    expect(all.map((g) => g.id)).toEqual(["floor", "origin", "stations", "coverage", "accuracy", "field", "robots", "verified"]);
-    for (const g of all) {
-      expect(["ok", "warn", "fail", "unknown"]).toContain(g.state);
-      expect(g.action, g.id).toBeTruthy();
-    }
+    expect(all.map((g) => g.id)).toEqual(["floor", "stations", "anchor", "areas", "walls", "objects", "robots"]);
+    for (const g of all) expect(g.subject.length, g.id).toBeGreaterThan(0);
+    expect(goal(inputs([bot("A1", SERVED.id)]), "floor").action).toBeUndefined();
+    expect(goal(inputs([bot("A1", SERVED.id)]), "robots").action).toBeUndefined();
+    for (const g of all) if (g.action) expect(g.action.label, g.id).not.toMatch(/…/);
+  });
+
+  it("asks for the floor's size only when it is missing", () => {
+    const none = inputs([], { doc: docFromSite({ anchor: null, extent_mm: null, areas: [] }) });
+    expect(goal(none, "floor")).toMatchObject({ state: "fail", action: { label: "Set the size" } });
   });
 
   it("counts a robot that cannot say which calibration it has as unknown, never as a pass", () => {
@@ -54,54 +61,86 @@ describe("the rows", () => {
     expect(verdict(goals(inputs([bot("A1"), bot("B2"), bot("C3")]))).unknown).toBeGreaterThan(0);
   });
 
-  it("points at Push when a robot has another calibration, and says all have it otherwise", () => {
+  it("offers Push to robots when a robot has another calibration, and says all have it otherwise", () => {
     const other = goal(inputs([bot("A1", "a1b41f12aaaa0000"), bot("B2", SERVED.id)]), "robots");
     expect(other.state).toBe("warn");
-    expect(other.detail).toContain("Push to robots, in the title bar");
-    expect(other.action).toEqual({ label: "Show…", go: { tab: "outline" } });
+    expect(other.action).toEqual({ label: "Push to robots", go: { push: true } });
     expect(goal(inputs([bot("A1", SERVED.id), bot("B2", SERVED.id)]), "robots")).toMatchObject({ state: "ok", detail: "2 of 2 in the field · all have r3" });
   });
 
-  it("reads coverage as a handover, or asks for one when both stations cover everything", () => {
-    expect(goal(inputs([]), "coverage")).toMatchObject({ state: "warn", action: { label: "Split the floor at the best line" } });
-    expect(goal(inputs([], { served: HANDOVER }), "coverage")).toMatchObject({ state: "ok", detail: "handover at x 530 mm" });
+  it("reads coverage as a sub-line of Stations, with a split offered only when both cover everything", () => {
+    expect(sub(inputs([]), "coverage")).toMatchObject({ state: "warn", action: { label: "Split at the best line" } });
+    expect(goal(inputs([]), "stations").state).toBe("warn");
+    expect(sub(inputs([], { served: HANDOVER }), "coverage")).toMatchObject({ state: "ok", text: "handover at x 530 mm" });
+    expect(sub(inputs([], { served: HANDOVER }), "coverage").action).toBeUndefined();
   });
 
-  it("describes the drafted coverage when it differs from the file in use, and names what is in use", () => {
+  it("describes the drafted coverage when it differs from the file in use", () => {
     const drawn = HANDOVER.stations.map((s) => ({ index: s.index, rect: s.box }));
-    expect(goal(inputs([], { drawn }), "coverage")).toMatchObject({
-      state: "warn",
-      detail: "handover at x 530 mm · not in use yet (in use: both cover the whole floor)",
-      action: { label: "Edit…" },
-    });
-    // A draft equal to the file says only the file
-    const same = SERVED.stations.map((s) => ({ index: s.index, rect: s.box }));
-    expect(goal(inputs([], { drawn: same }), "coverage").detail).toContain("robots pick the closer fix");
+    expect(sub(inputs([], { drawn }), "coverage")).toMatchObject({ state: "warn", text: "handover at x 530 mm · not in use yet (in use: both cover the whole floor)" });
+    expect(sub(inputs([], { drawn }), "coverage").action).toBeUndefined();
   });
 
-  it("states accuracy against the limit", () => {
-    expect(goal(inputs([]), "accuracy").detail).toBe("within 1.5 mm everywhere (limit 2 mm)");
-    const over = inputs([]);
+  it("states accuracy against the limit, with Show where only over it", () => {
+    expect(sub(inputs([]), "accuracy")).toMatchObject({ state: "ok", text: "accurate within 1.5 mm everywhere (limit 2 mm)" });
+    expect(sub(inputs([]), "accuracy").action).toBeUndefined();
+    const over = inputs([], { served: HANDOVER });
     over.coverage!.headline!.worst_mm = 2.5;
-    expect(goal(over, "accuracy")).toMatchObject({ state: "warn", detail: "up to 2.5 mm, over the 2 mm limit" });
+    expect(sub(over, "accuracy")).toMatchObject({ state: "warn", text: "up to 2.5 mm off, over the 2 mm limit", action: { label: "Show where" } });
     expect(verdict(goals(over)).fails).toBe(0);
+  });
+
+  it("folds the field into Areas, and offers to draw one when none is", () => {
+    expect(goal(inputs([]), "areas")).toMatchObject({ state: "ok", detail: "field 1060 × 1220" });
+    const bare = inputs([], { doc: docFromSite({ anchor: null, extent_mm: [1060, 1220], areas: [{ name: "pen", x: 0, y: 0, w: 100, h: 100 }] }) });
+    expect(goal(bare, "areas")).toMatchObject({ state: "warn", action: { label: "Draw the field", go: { kind: "areas", tool: "area" } } });
+    expect(goal(bare, "areas").detail).toContain("no area is the field");
+  });
+
+  it("lists walls and objects, as optional when there are none", () => {
+    expect(goal(inputs([]), "walls")).toMatchObject({ state: "none", detail: "none drawn: robots may go anywhere on the floor" });
+    expect(goal(inputs([]), "objects").state).toBe("none");
+    expect(verdict(goals(inputs([bot("A1", SERVED.id)]))).needs).toBe(2);
   });
 });
 
-describe("the origin and the verification", () => {
+describe("the Anchor row", () => {
   const check = (over: Partial<CheckRecord> = {}): CheckRecord => ({ calibration: SERVED.id, mark_mm: [300, 400], measured_mm: [301, 400], error_mm: 1, robot: "DE00000000000001", at: "2026-11-10T09:30:00Z", ...over });
+  const anchored = (errors: number[]) => {
+    const doc = docFromSite({ anchor: "the door", extent_mm: [1060, 1220], areas: [{ name: "field", x: 0, y: 0, w: 1060, h: 1220 }] });
+    return { ...doc, anchor_spots: errors.map((e, i) => ({ at: [i * 100, 0] as [number, number], error_mm: e })) };
+  };
 
-  it("turns green only on a check the robot vouched for", () => {
-    expect(goal(inputs([], { checks: [check()] }), "origin")).toMatchObject({ state: "ok", detail: "verified with a robot on 10 Nov 09:30" });
-    expect(goal(inputs([], { checks: [check({ assumed: true })] }), "origin")).toMatchObject({ state: "warn", detail: "verified assuming the robots had the calibration: not proven" });
-    expect(goal(inputs([], { checks: [check({ assumed: true })] }), "verified").detail).toContain("assumed the robot had the calibration: unverified");
-    expect(goal(inputs([], { checks: [check({ error_mm: 9 })] }), "origin").detail).toBe("the last check was off: check the tape, or move the origin");
+  it("asks to anchor a map not tied to the floor, from a controller only", () => {
+    expect(goal(inputs([]), "anchor")).toMatchObject({ state: "warn", action: { label: "Anchor", go: { anchor: "anchor" } } });
+    const standalone = goal(inputs([], { live: false }), "anchor");
+    expect(standalone.action).toBeUndefined();
+    expect(standalone.detail).toContain("open the editor from a controller");
+  });
+
+  it("says how many spots and the worst once anchored, and offers Check again", () => {
+    expect(goal(inputs([], { doc: anchored([1.2, 4, 0.5, 2]) }), "anchor")).toMatchObject({ state: "ok", detail: "anchored on 4 spots, worst 4.0 mm", action: { label: "Check again", go: { anchor: "check" } } });
+    expect(goal(inputs([], { doc: anchored([0, 0]) }), "anchor").detail).toBe("anchored on 2 spots, no error check");
+  });
+
+  it("says when the draft holds the anchoring, with nothing to press but Save", () => {
+    const g = goal(inputs([], { doc: anchored([1, 2, 3]), anchorDrafted: true }), "anchor");
+    expect(g).toMatchObject({ state: "warn", detail: "anchored on 3 spots, worst 3.0 mm · in the draft: Save writes it" });
+    expect(g.action).toBeUndefined();
+  });
+
+  it("turns amber when a check again is far off or unverified", () => {
+    const far = goal(inputs([], { doc: anchored([1, 1, 1]), checks: [check({ error_mm: 14 })] }), "anchor");
+    expect(far.state).toBe("warn");
+    expect(far.detail).toContain("checked again 10 Nov 09:30: 14.0 mm off, re-anchor");
+    expect(goal(inputs([], { doc: anchored([1, 1, 1]), checks: [check({ assumed: true })] }), "anchor")).toMatchObject({ state: "warn" });
+    expect(goal(inputs([], { doc: anchored([1, 1, 1]), checks: [check()] }), "anchor").state).toBe("ok");
   });
 
   it("is unknown, not a warning, before a calibration is in use", () => {
     const i = inputs([], { served: null, servedId: null, coverage: null, rows: [{ ...SERVED, served: false } as LibraryRow] });
-    expect(goal(i, "origin")).toMatchObject({ state: "unknown", action: { label: "Describe…" } });
-    expect(goal(i, "verified").state).toBe("unknown");
+    expect(goal(i, "anchor")).toMatchObject({ state: "unknown" });
+    expect(goal(i, "anchor").action).toBeUndefined();
   });
 });
 
@@ -110,11 +149,9 @@ describe("with nothing in use", () => {
   const IN_FRAME = { ...SERVED, served: false } as LibraryRow;
   const unserved = (rows: LibraryRow[]): GoalInputs => inputs([bot("A1")], { served: null, servedId: null, rows, coverage: null });
 
-  it("has one calibration row that leads to choosing, placing or measuring", () => {
-    expect(goals(unserved([IN_FRAME])).filter((g) => g.id === "calibration" || g.id === "stations")).toHaveLength(1);
-    expect(goal(unserved([FREE, IN_FRAME]), "calibration")).toMatchObject({ state: "warn", detail: "1 measured for this room, none in use", action: { label: "Choose…", go: { tab: "library" } } });
-    expect(goal(unserved([]), "calibration").action).toEqual({ label: "Mount and measure…", go: { sheet: "newroom" } });
-    expect(goal(unserved([FREE]), "calibration").action).toEqual({ label: "Put the spin in the room…", go: { sheet: "newroom" } });
-    expect(verdict(goals(unserved([IN_FRAME]))).title).toBe("1 needs you");
+  it("the Stations row leads to choosing, placing or setting up the room", () => {
+    expect(goal(unserved([FREE, IN_FRAME]), "stations")).toMatchObject({ state: "warn", detail: "1 measured for this room, none in use", action: { label: "Choose one", go: { tab: "library" } } });
+    expect(goal(unserved([]), "stations").action).toEqual({ label: "Set up the room", go: { sheet: "newroom" } });
+    expect(goal(unserved([FREE]), "stations").action).toEqual({ label: "Put the spin in the room", go: { sheet: "newroom" } });
   });
 });

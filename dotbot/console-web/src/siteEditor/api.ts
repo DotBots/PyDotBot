@@ -176,6 +176,14 @@ export async function postFrame(request: FrameRequest): Promise<FrameAnswer> {
   return { ok: false, status: response.status, message: typeof detail === "string" ? detail : response.statusText, offer: null };
 }
 
+export interface AnchorFit {
+  move: { theta_deg: number; pivot: [number, number]; dx_mm: number; dy_mm: number };
+  residuals_mm: number[];
+  worst_mm: number;
+}
+/** The move of the origin that lays tape-measured spots on the robots' reads; nothing is written. */
+export const postAnchor = (spots: { at_mm: [number, number]; read_mm: [number, number] }[]) => json<AnchorFit>("api/anchor", post({ spots }));
+
 export const fetchChecks = () => json<{ checks: import("./checks").CheckRecord[]; path: string }>("api/checks");
 export const postCheck = (check: { calibration: string; mark_mm: [number, number]; measured_mm: [number, number]; robot: string; predicted_mm: number | null; assumed?: boolean; revision?: string }) =>
   json<import("./checks").CheckRecord>("api/checks", post(check));

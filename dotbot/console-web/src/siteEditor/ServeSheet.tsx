@@ -198,9 +198,9 @@ export const ServeSheet: React.FC<{
         <div className="part">
           <div className="ph">
             <span className="stepn">3</span>
-            <span>Verify with a robot on a measured spot</span>
+            <span>Check the anchor with a robot on a measured spot</span>
           </div>
-          <div className="pb">Offered once it is in use: park a robot on a spot you measured from the origin and read it.</div>
+          <div className="pb">Offered once it is in use: park a robot on a spot you measured with a tape and read it against the map.</div>
         </div>
         {phase.kind === "done" && (
           <div className={`callout ${phase.error ? "err" : phase.stale.length ? "warn" : "ok"}`} role="status" data-testid="serve-result" style={{ marginTop: 10 }}>
@@ -227,7 +227,7 @@ export const ServeSheet: React.FC<{
           </button>
           {phase.kind === "done" && phase.used && onVerify && (
             <button type="button" className="btn primary" onClick={onVerify} data-testid="serve-verify">
-              Verify…
+              Check the anchor
             </button>
           )}
           {phase.kind !== "done" && inUse && (

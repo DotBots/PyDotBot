@@ -100,6 +100,8 @@ export interface EditorSite {
   walls?: { name?: string | null; points: [number, number][] }[];
   obstacles?: { name?: string | null; points: [number, number][] }[];
   objects?: { name: string; kind: string; x: number; y: number; heading_deg: number }[];
+  /** The spots the frame was anchored on: tape-measured, and the robot's distance from each once anchored. */
+  anchor_spots?: { at_mm: [number, number]; error_mm: number }[];
 }
 
 export interface SitePayload {

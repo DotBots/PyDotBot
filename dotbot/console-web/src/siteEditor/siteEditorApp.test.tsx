@@ -164,7 +164,7 @@ describe("the editor shell", () => {
     render(<SiteEditorApp />);
     await toPlan();
     const kindTab = (name: RegExp) => screen.getByRole("tab", { name });
-    keyDown("2");
+    keyDown("4");
     expect(kindTab(/^Areas/).getAttribute("aria-selected")).toBe("true");
     keyDown("r");
     expect(kindTab(/^Areas/).getAttribute("aria-selected")).toBe("true");
@@ -240,35 +240,73 @@ describe("the editor shell", () => {
   });
 });
 
-describe("capturing zero", () => {
-  it("leaves no dead end with nothing served: the capture panel names the step that serves one", async () => {
+describe("the anchor flow from the page", () => {
+  it("leaves no dead end with nothing served: the Anchor kind names the step that serves one", async () => {
     stubFetch({
       "api/context": () => new Response(JSON.stringify({ ...CONTEXT, served: null }), { status: 200 }),
       "api/calibrations": () => new Response(JSON.stringify({ ...LIBRARY, served: null, serving: null, groups: [{ ...LIBRARY.groups[0], rows: inFrame.map((r) => ({ ...r, served: false })) }] }), { status: 200 }),
     });
     render(<SiteEditorApp />);
-    await waitFor(() => expect(screen.getByTestId("goal-calibration").textContent).toContain("none in use"));
-    expect(screen.getByTestId("goal-origin").textContent).toContain("Describe…");
-    expect(screen.queryByTestId("goal-stations")).toBeNull();
-    keyDown("1");
-    keyDown("c");
-    await waitFor(() => expect(screen.getByTestId("frame-serve-step").textContent).toBe("Choose…"));
-    fireEvent.click(screen.getByTestId("frame-serve-step"));
+    await waitFor(() => expect(screen.getByTestId("goal-stations").textContent).toContain("none in use"));
+    expect(screen.getByTestId("goal-anchor").textContent).toContain("once a calibration is in use");
+    expect(screen.queryByTestId("act-anchor")).toBeNull();
+    keyDown("3");
+    keyDown("a");
+    await waitFor(() => expect(screen.getByTestId("anchor-unserved")).toBeTruthy());
+    expect(screen.getByTestId("anchor-serve-step").textContent).toBe("Choose one");
+    fireEvent.click(screen.getByTestId("anchor-serve-step"));
     expect(screen.getByRole("tab", { name: /Calibrations/ }).getAttribute("aria-selected")).toBe("true");
-    expect(screen.getByTestId("library-serve-hint").textContent).toContain("Use this…");
   });
 
-  it("shows the capture panel even when the new room sheet was open", async () => {
+  it("opens from the Anchor row's button, closing the new room steps", async () => {
+    fleet.bots = [holding("DE00000000002222", served.id)];
     stubFetch();
     render(<SiteEditorApp />);
-    await toPlan();
-    fireEvent.click(screen.getByLabelText("More"));
+    fireEvent.click(await screen.findByLabelText("More"));
     fireEvent.click(screen.getByRole("menuitem", { name: /Set up a room/ }));
     expect(screen.getByTestId("new-room")).toBeTruthy();
-    keyDown("1");
-    keyDown("c");
-    await waitFor(() => expect(screen.getByTestId("frame-capture")).toBeTruthy());
+    fireEvent.click(await screen.findByTestId("act-anchor"));
+    await waitFor(() => expect(screen.getByTestId("anchor-panel")).toBeTruthy());
     expect(screen.queryByTestId("new-room")).toBeNull();
+    expect(screen.getByRole("tab", { name: /^Anchor/ }).getAttribute("aria-selected")).toBe("true");
+  });
+});
+
+describe("rows look, buttons act", () => {
+  it("a row click selects its subject and shows it, in 3D, without a flow or a kind", async () => {
+    fleet.bots = [holding("DE00000000002222", served.id)];
+    stubFetch();
+    render(<SiteEditorApp />);
+    fireEvent.click(await screen.findByTestId("goal-floor"));
+    expect(screen.getByTestId("inspector-floor")).toBeTruthy();
+    expect(screen.getByTestId("goal-floor").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByTestId("room-view")).toBeTruthy();
+    expect(screen.getByRole("tab", { name: /^View/ }).getAttribute("aria-selected")).toBe("true");
+    // The floor is measured: nothing to do, so no button
+    expect(screen.queryByTestId("act-floor")).toBeNull();
+    fireEvent.click(screen.getByTestId("goal-anchor"));
+    expect(screen.getByTestId("inspector-anchor")).toBeTruthy();
+    expect(screen.queryByTestId("anchor-panel")).toBeNull();
+    expect(screen.getByTestId("act-anchor").textContent).toBe("Anchor");
+  });
+
+  it("closes a flow when another row is picked, and reopening it keeps what was typed", async () => {
+    fleet.bots = [holding("DE00000000002222", served.id)];
+    stubFetch();
+    render(<SiteEditorApp />);
+    fireEvent.click(await screen.findByTestId("act-anchor"));
+    await waitFor(() => expect(screen.getByTestId("anchor-panel")).toBeTruthy());
+    const x = screen.getByLabelText("spot x of …2222");
+    fireEvent.change(x, { target: { value: "120" } });
+    fireEvent.keyDown(x, { key: "Enter" });
+    fireEvent.click(screen.getByTestId("goal-areas"));
+    expect(screen.queryByTestId("anchor-panel")).toBeNull();
+    expect(screen.getByTestId("inspector-areas")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("act-anchor"));
+    await waitFor(() => expect(screen.getByTestId("anchor-panel")).toBeTruthy());
+    expect((screen.getByLabelText("spot x of …2222") as HTMLInputElement).value).toBe("120");
+    keyDown("Escape");
+    await waitFor(() => expect(screen.queryByTestId("anchor-panel")).toBeNull());
   });
 });
 
@@ -390,7 +428,7 @@ describe("the one map", () => {
     fireEvent.click(screen.getByTestId("done-editing"));
     await waitFor(() => expect(screen.getByTestId("room-view")).toBeTruthy());
     await waitFor(() => expect(preset("3/4").getAttribute("aria-pressed")).toBe("true"));
-    keyDown("2");
+    keyDown("4");
     await waitFor(() => expect(screen.getByTestId("tools")).toBeTruthy());
     expect(screen.getByRole("tab", { name: /^Areas/ }).getAttribute("aria-selected")).toBe("true");
     keyDown("Escape");
@@ -456,17 +494,17 @@ describe("the one map", () => {
   it("follows a drafted split: the canvas, the legend and the Coverage check all describe the draft", async () => {
     stub();
     render(<SiteEditorApp />);
-    await waitFor(() => expect(screen.getByTestId("goal-coverage")).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: "Split the floor at the best line" }));
+    await waitFor(() => expect(screen.getByTestId("goal-stations-coverage")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Split at the best line" }));
     await waitFor(() => expect(screen.getByTestId("notice").textContent).toContain("Draft: split at x 530 mm. Drag the dashed line to move it, then Save."));
     await waitFor(() => expect(screen.getByTestId("plan")).toBeTruthy());
-    expect(screen.getByTestId("goal-coverage").textContent).toContain("handover at x 530 mm · not in use yet (in use: both cover the whole floor)");
+    expect(screen.getByTestId("goal-stations-coverage").textContent).toContain("handover at x 530 mm · not in use yet (in use: both cover the whole floor)");
     expect(screen.getByTestId("coverage-card").textContent).toContain("Handover at x 530 mm · not in use yet");
     fireEvent.click(screen.getByTestId("done-editing"));
     await waitFor(() => expect(screen.getByTestId("room-handover")).toBeTruthy());
     expect(screen.getByTestId("room-coverage-note").textContent).toBe("handover at x 530 mm · not in use yet (in use: both cover the whole floor)");
     fireEvent.click(screen.getByTestId("notice-act"));
-    await waitFor(() => expect(screen.getByTestId("goal-coverage").textContent).toContain("robots pick the closer fix"));
+    await waitFor(() => expect(screen.getByTestId("goal-stations-coverage").textContent).toContain("robots pick the closer fix"));
   });
 
   it("marks where each station stands on the plan, with a layer to hide them", async () => {
@@ -477,9 +515,9 @@ describe("the one map", () => {
     expect(screen.getByTestId("station-pos-0").textContent).toContain("S0 ≈ 2.4 m up");
     expect(screen.getByTestId("station-pos-0").textContent).toContain("(-542, 1268) mm");
     expect(screen.getByTestId("station-pos-0").querySelector("title")?.textContent).toContain("estimated, not to tape");
-    keyDown("2");
+    keyDown("4");
     expect(screen.queryByTestId("station-pos-0")).toBeNull();
-    keyDown("5");
+    keyDown("2");
     expect(screen.getByTestId("station-pos-1")).toBeTruthy();
     fireEvent.click(screen.getByRole("tab", { name: "Layers" }));
     fireEvent.click(screen.getByText("Station positions"));
@@ -527,7 +565,7 @@ describe("the frame tools", () => {
     fireEvent.change(turn, { target: { value: "5" } });
     fireEvent.keyDown(turn, { key: "Enter" });
     await waitFor(() => expect(screen.getByTestId("frame-ghost")).toBeTruthy());
-    keyDown("c");
+    keyDown("v");
     await waitFor(() => expect(screen.queryByTestId("frame-ghost")).toBeNull());
   });
 });

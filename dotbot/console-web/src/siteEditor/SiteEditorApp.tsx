@@ -28,16 +28,16 @@ import {
   type SavePlan,
   type Version,
 } from "./api";
-import { CheckMarkPanel } from "./CheckMarkPanel";
-import { goals as goalsOf, serveStep, verdict as verdictOf, type CheckRecord, type GoalAction } from "./checks";
+import { AnchorPanel, anchorsOf, newWork, reading as readingNow, type AnchorWork } from "./AnchorPanel";
+import { anchoredText, goals as goalsOf, serveStep, verdict as verdictOf, type CheckRecord, type Goal, type GoalAction } from "./checks";
 import { ChecksPane } from "./ChecksPane";
 import { CompareSheet } from "./CompareSheet";
 import { anchorsOverlay, FramePanel } from "./FramePanel";
-import { moveBody, moves, NO_MOVE, onPlan, sameMove, toNew, toOld, turnedAbout, withOrigin, type Anchor, type FrameMove } from "./frameMove";
+import { moveBody, moves, NO_MOVE, onPlan, sameMove, toNew, toOld, turnedAbout, withOrigin, type FrameMove } from "./frameMove";
 import { ServeSheet } from "./ServeSheet";
 import { heldCalibrationId } from "../botFacts";
 import { bestSplit, coverageSay, type Coverage, type Geometry } from "./coverage";
-import { FRAME_LOST, forget, newDraft, pending, persist, reapply, redo, restore, serialize, step, storageKey, undo, type Change, type Draft, type KeyValue, type PlaceDraft, type Snap } from "./draft";
+import { baseOf, FRAME_LOST, forget, newDraft, pending, persist, reapply, redo, restore, serialize, step, storageKey, undo, type Change, type Draft, type KeyValue, type PlaceDraft, type Snap } from "./draft";
 import "./editor.css";
 import { EditorFleet } from "./EditorFleet";
 import { SitesSheet, StartScreen } from "./SitesSheet";
@@ -48,15 +48,15 @@ import { KV } from "./fields";
 import { FileView } from "./FileView";
 import { Icon, type IconName } from "./icons";
 import { Inspector } from "./Inspector";
-import { EDITOR_SHORTCUTS, KIND_KEY, KIND_LABEL, keyAction, PRESENT_KEY, SHARED_KEY, TOOL_ICON, TOOL_LABEL, TOOLS, type EditKind, type Tool } from "./keys";
+import { EDITOR_SHORTCUTS, KIND_KEY, KIND_LABEL, KINDS, keyAction, PRESENT_KEY, SHARED_KEY, TOOL_ICON, TOOL_LABEL, TOOLS, type EditKind, type Tool } from "./keys";
 import { LibraryPane, type LibraryAction } from "./LibraryPane";
 import { coverageText, nameOf, residuals, when } from "./library";
-import { docFromPayload, docFromSite, movedDoc, siteModel, type Doc, type Point } from "./model";
+import { docFromPayload, docFromSite, movedDoc, siteModel, type AnchorSpot, type Doc, type Point } from "./model";
 import { saveBody } from "./save";
 import { pushOf, statusOf, statusText } from "./status";
 import { StatusLine, StatusSide } from "./StatusLine";
 import { OutlinePane } from "./OutlinePane";
-import { DEFAULT_LAYERS, kindOfKey, PlanCanvas, type PlanLayers, type PlanPaint, type StationPose } from "./PlanCanvas";
+import { DEFAULT_LAYERS, isWhole, kindOfKey, PlanCanvas, type PlanLayers, type PlanPaint, type StationPose } from "./PlanCanvas";
 import { edgeMoved, handleAt, movedAll, removed, resized, type Handle } from "./plan";
 import { ReviewSheet } from "./ReviewSheet";
 import { HOME, MapPresets, presetOf, RoomView } from "./RoomView";
@@ -103,8 +103,7 @@ function useWidth(): number {
   return w;
 }
 
-const KINDS: EditKind[] = ["frame", "areas", "walls", "objects", "stations"];
-const KIND_ICON: Record<EditKind, IconName> = { view: "view", frame: "frame", areas: "areas", walls: "walls", objects: "objects", stations: "stations" };
+const KIND_ICON: Record<EditKind, IconName> = { view: "view", frame: "frame", stations: "stations", anchor: "capture", areas: "areas", walls: "walls", objects: "objects" };
 
 type LeftTab = "checks" | "outline" | "library";
 type RightTab = "inspect" | "layers";
@@ -132,6 +131,8 @@ interface Notice {
   lost?: string;
   /** One action the notice offers. */
   act?: { label: string; on: () => void };
+  /** The split's notice, which closes when the selection moves on. */
+  split?: boolean;
 }
 
 /** The message and dependents of a 409 refusal, when the server sent them. */
@@ -248,11 +249,11 @@ export const SiteEditorApp: React.FC = () => {
   const [comparing, setComparing] = useState<[LibraryRow, LibraryRow] | null>(null);
   const [toast, setToast] = useState<{ text: string; undo?: () => void } | null>(null);
   const [frameMove, setFrameMove] = useState<FrameMove>(NO_MOVE);
-  const [anchors, setAnchors] = useState<Anchor[]>([]);
   const [measured, setMeasured] = useState<Point[]>([]);
+  // The Anchor flow's work, one per mode, kept while it is closed so reopening it restores it
+  const [anchorFlow, setAnchorFlow] = useState<{ mode: AnchorWork["mode"]; works: Partial<Record<AnchorWork["mode"], AnchorWork>> }>({ mode: "anchor", works: {} });
   const [servedCoverage, setServedCoverage] = useState<Coverage | null>(null);
   const [checks, setChecks] = useState<CheckRecord[]>([]);
-  const [checking, setChecking] = useState<string | true | null>(null);
   const [present, setPresent] = useState(false);
   // The one map: always opens in 3D, on the camera this browser last left
   const [stage, setStage] = useState<Stage>("3d");
@@ -502,6 +503,7 @@ export const SiteEditorApp: React.FC = () => {
         frameChangeOpen: frameOpen,
         servedHere: (context?.served?.source ?? "").startsWith("the site editor"),
         drawn: shown?.in_frame ? boxes : null,
+        anchorDrafted: JSON.stringify(draft.doc.anchor_spots) !== JSON.stringify(baseOf(draft).anchor_spots),
       })
     : [];
   const verdict = verdictOf(goalList);
@@ -540,10 +542,28 @@ export const SiteEditorApp: React.FC = () => {
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
   });
+  /** Opens the Anchor flow in `mode`, on the work it held when last closed;
+   * `robot` starts it on that robot, moved from spot to spot. */
+  const openAnchor = (mode: AnchorWork["mode"], robot?: string) => {
+    if (!closeFlows("anchor")) return;
+    setAnchorFlow((af) => {
+      const kept = af.works[mode] ?? newWork(mode);
+      return { mode, works: { ...af.works, [mode]: robot ? { ...kept, style: "one", robot } : kept } };
+    });
+    setKind("anchor");
+    setTool("anchor");
+    setRightTab("inspect");
+    if (rightAsRail) setDrawer("right");
+  };
   const goalAction = (a: GoalAction) => {
     const go = a.go;
     if (go.href) {
       window.open(go.href, "dotbot-console");
+      return;
+    }
+    if (go.anchor) return openAnchor(go.anchor);
+    if (go.push) {
+      if (servedRowNow) setServing(servedRowNow);
       return;
     }
     if (go.mode) setCoverageMode(go.mode);
@@ -553,13 +573,8 @@ export const SiteEditorApp: React.FC = () => {
       return;
     }
     if (go.sheet === "newroom") {
+      if (!closeFlows()) return;
       setNewRoom(true);
-      setRightTab("inspect");
-      if (rightAsRail) setDrawer("right");
-      return;
-    }
-    if (go.sheet === "check") {
-      setChecking(true);
       setRightTab("inspect");
       if (rightAsRail) setDrawer("right");
       return;
@@ -572,10 +587,19 @@ export const SiteEditorApp: React.FC = () => {
     if (go.sheet === "split") splitNow();
     setRightTab("inspect");
   };
+  /** A Checks row clicked: its subject selected and inspected, in 3D or
+   * top-down as the map is; nothing else changes. */
+  const selectGoal = (g: Goal) => {
+    if (!closeFlows()) return;
+    setSelected(g.subject);
+    setEdge(null);
+    setRightTab("inspect");
+  };
   const blocking = problems.filter((p) => p.blocking);
 
   const onEdit = useCallback((doc: Doc) => setDraft((d) => (d ? step(d, { doc }) : d)), []);
   const select = useCallback((keys: string[]) => {
+    if (!closeFlowsRef.current()) return;
     setSelected(keys);
     if (keys.length) {
       const k = kindOfKey(keys[0]);
@@ -584,15 +608,38 @@ export const SiteEditorApp: React.FC = () => {
   }, []);
   // A frame tool opens on the move the draft holds, else on none, turning
   // about the middle of the floor
+  // A move typed but not put in the draft is kept for its tool while it is closed
+  const parkedMoves = useRef<Partial<Record<Tool, FrameMove>>>({});
+  const lastTool = useRef<Tool>(tool);
+  const frameMoveRef = useRef(frameMove);
+  frameMoveRef.current = frameMove;
   useEffect(() => {
+    const was = lastTool.current;
+    if ((was === "turn" || was === "anchor") && was !== tool) parkedMoves.current[was] = frameMoveRef.current;
+    lastTool.current = tool;
     const [w, h] = draft?.doc.extent_mm ?? [0, 0];
     const held = draft?.frame?.move ?? null;
-    setFrameMove(held ? { ...held } : tool === "turn" && w ? { ...NO_MOVE, pivot: [Math.round(w / 2), Math.round(h / 2)] } : NO_MOVE);
-    setAnchors([]);
+    const parked = parkedMoves.current[tool];
+    setFrameMove(parked ? { ...parked } : held ? { ...held } : tool === "turn" && w ? { ...NO_MOVE, pivot: [Math.round(w / 2), Math.round(h / 2)] } : NO_MOVE);
   }, [tool, kind]);
+  const anchorWork = anchorFlow.works[anchorFlow.mode] ?? null;
+  const anchorOpen = kind === "anchor" && tool === "anchor";
+  const anchors = anchorOpen && anchorFlow.mode === "anchor" ? anchorsOf(anchorWork) : [];
+  const onAnchorWork = useCallback(
+    (f: (w: AnchorWork) => AnchorWork) =>
+      setAnchorFlow((af) => {
+        const cur = af.works[af.mode] ?? newWork(af.mode);
+        const next = f(cur);
+        if (next === cur) return af;
+        // Re-anchoring from a check carries its spots into the anchor's work
+        if (next.mode !== af.mode) return { mode: next.mode, works: { ...af.works, [next.mode]: { ...next, recorded: null } } };
+        return { ...af, works: { ...af.works, [af.mode]: next } };
+      }),
+    [],
+  );
   // Where the origin may go: every measured point of the calibration in use
   useEffect(() => {
-    if (kind !== "frame" || tool !== "capture" || !servedId) return setMeasured([]);
+    if (tool !== "anchor" || !servedId) return setMeasured([]);
     let live = true;
     fetchOverlay(servedId).then(
       (o) => live && setMeasured((o.stations ?? []).flatMap((s) => (s.circles ?? []).map((c) => [c.x, c.y] as Point))),
@@ -619,23 +666,39 @@ export const SiteEditorApp: React.FC = () => {
     }
   };
 
-  // A verification takes the right pane: the frame tool and its ghost go
-  useEffect(() => {
-    if (checking) setTool("select");
-  }, [checking]);
   // The frame tools draw in the inspector, so a sheet open there gives way
   useEffect(() => {
-    if (kind !== "frame" || (tool !== "turn" && tool !== "capture")) return;
+    if (tool !== "turn" && tool !== "anchor") return;
     setNewRoom(false);
     setPlacePreview(null);
-    setChecking(null);
   }, [kind, tool]);
 
+  /** Closes every right-pane flow before the selection moves on: the Anchor
+   * flow and the move of zero (their work kept for reopening), the new-room
+   * steps and the split notice. A robot being read asks first; false when
+   * the operator keeps reading. `keep` names a flow that stays. */
+  const closeFlows = (keep?: "anchor"): boolean => {
+    const anchorBusy = anchorOpen && readingNow(anchorWork);
+    if (anchorBusy && keep !== "anchor") {
+      if (!window.confirm("Stop the reading?")) return false;
+      onAnchorWork((w) => ({ ...w, spots: w.spots.map((x) => (x.since !== null ? { ...x, since: null } : x)) }));
+    }
+    if ((tool === "turn" || (tool === "anchor" && keep !== "anchor")) && !(keep === "anchor" && tool === "anchor")) setTool("select");
+    if (newRoom) {
+      setNewRoom(false);
+      setPlacePreview(null);
+    }
+    setNotice((n) => (n?.split ? null : n));
+    return true;
+  };
+  const closeFlowsRef = useRef(closeFlows);
+  closeFlowsRef.current = closeFlows;
+
   const pickKind = (k: EditKind) => {
+    if (k !== kind && !closeFlows()) return;
     setKind(k);
     setTool("select");
     setEdge(null);
-    setChecking(null);
     if (k === "view") setSelected([]);
     else setSelected((s) => s.filter((key) => kindOfKey(key) === k));
   };
@@ -886,6 +949,7 @@ export const SiteEditorApp: React.FC = () => {
     setFlash((n) => n + 1);
     setNotice({
       tone: "info",
+      split: true,
       text: `Draft: split at ${s.axis} ${s.at} mm. Drag the dashed line to move it, then Save.`,
       act: { label: "Undo", on: () => (setDraft((d) => (d ? undo(d) : d)), setNotice(null)) },
     });
@@ -908,11 +972,13 @@ export const SiteEditorApp: React.FC = () => {
   /** Puts a checked move of the origin in the draft, as one step: every
    * number renumbered so it stays where it is on the floor. */
   const applyFrame = useCallback(
-    (m: FrameMove, r: FrameMoved) => {
+    (m: FrameMove, r: FrameMoved, spots: AnchorSpot[] = []) => {
       if (!frameSource) return;
+      parkedMoves.current = {};
       setDraft((d) => {
         if (!d) return d;
-        const doc = { ...movedDoc(d.doc, r.site), anchor: m.note ?? d.doc.anchor };
+        // A move by hand leaves the spots behind; an anchoring keeps the spots it was laid on
+        const doc = { ...movedDoc(d.doc, r.site), anchor: m.note ?? d.doc.anchor, anchor_spots: spots };
         const frame = moves(m) ? { from: frameSource, move: { ...m }, frame: r.frame, base: movedDoc(d.base, r.base), coverage: r.coverage } : null;
         return step(d, { doc, frame, boxes: d.boxes && r.stations ? { ...d.boxes, boxes: r.stations } : d.boxes });
       });
@@ -925,7 +991,7 @@ export const SiteEditorApp: React.FC = () => {
     setDraft((d) => {
       if (!d) return d;
       if (d.frame || d.boxes) setNotice({ tone: "info", text: "The placement replaces the origin move and the coverage edits in the draft: Undo brings them back." });
-      return step(d, { doc, place, boxes: null, frame: null });
+      return step(d, { doc: { ...doc, anchor_spots: [] }, place, boxes: null, frame: null });
     });
   }, []);
 
@@ -952,7 +1018,7 @@ export const SiteEditorApp: React.FC = () => {
     if (!bot) return;
     try {
       await putRgbLed(id, bot.application, { red: 255, green: 255, blue: 255 });
-      setToast({ text: `…${id.slice(-6).toUpperCase()} blinks white for 2 s: look for it on the floor.` });
+      setToast({ text: `…${id.slice(-4).toUpperCase()} blinks white for 2 s: look for it on the floor.` });
       window.setTimeout(() => putRgbLed(id, bot.application, { red: 0, green: 0, blue: 0 }).catch(() => {}), 2000);
     } catch (e) {
       setNotice({ tone: "err", text: `Blink failed: ${(e as Error).message}` });
@@ -980,6 +1046,12 @@ export const SiteEditorApp: React.FC = () => {
         window.setTimeout(() => setReviewing(true), 0);
         return;
       }
+      // Esc from a field with nothing typed in it closes the flow the field is in
+      if (e.key === "Escape" && typingIn(e.target) && !reviewing && (tool === "turn" || tool === "anchor")) {
+        (e.target as HTMLElement).blur();
+        closeFlows();
+        return;
+      }
       if (typingIn(e.target) || reviewing) return;
       if (ctrl && e.key.toLowerCase() === "z") {
         e.preventDefault();
@@ -994,7 +1066,7 @@ export const SiteEditorApp: React.FC = () => {
         const d = e.shiftKey ? 100 : e.altKey ? 1 : 10;
         const dx = e.key === "ArrowLeft" ? -d : e.key === "ArrowRight" ? d : 0;
         const dy = e.key === "ArrowUp" ? -d : e.key === "ArrowDown" ? d : 0;
-        const movable = selected.filter((k) => kindOfKey(k) === kind && !k.startsWith("box:") && !k.startsWith("robot:"));
+        const movable = selected.filter((k) => kindOfKey(k) === kind && !isWhole(k) && !k.startsWith("box:") && !k.startsWith("robot:"));
         if (edge && edge.key.startsWith("box:") && kind === "stations") {
           e.preventDefault();
           const index = Number(edge.key.slice(4));
@@ -1014,7 +1086,7 @@ export const SiteEditorApp: React.FC = () => {
         }
         return;
       }
-      const deletable = selected.filter((k) => kindOfKey(k) === kind && !k.startsWith("box:") && !k.startsWith("robot:") && k !== "floor");
+      const deletable = selected.filter((k) => kindOfKey(k) === kind && !isWhole(k) && !k.startsWith("box:") && !k.startsWith("robot:"));
       if ((e.key === "Delete" || e.key === "Backspace") && deletable.length && draft) {
         e.preventDefault();
         setDraft(step(draft, { doc: deletable.reduce(removed, draft.doc) }));
@@ -1029,8 +1101,11 @@ export const SiteEditorApp: React.FC = () => {
           return;
         }
         if (edge) return setEdge(null);
+        if (tool === "turn" || tool === "anchor" || newRoom || notice?.split) {
+          closeFlows();
+          return;
+        }
         if (tool !== "select") return setTool("select");
-        if (checking) return setChecking(null);
         // Esc with nothing else to cancel leaves the edit for the 3D view
         if (stage === "edit" || stage === "toTop") {
           e.preventDefault();
@@ -1136,6 +1211,8 @@ export const SiteEditorApp: React.FC = () => {
             live={live}
             refresh={checksRefresh}
             onAction={goalAction}
+            onSelect={selectGoal}
+            selected={selected}
             onRestore={setRestoring}
             onShowProblem={(key) => {
               setView("plan");
@@ -1193,6 +1270,7 @@ export const SiteEditorApp: React.FC = () => {
             servedId={servedId}
             live={live}
             onPick={(key, k, additive) => {
+              if (!closeFlows()) return;
               setSelected((s) => (additive && kindOfKey(s[0] ?? key) === kindOfKey(key) ? (s.includes(key) ? s.filter((x) => x !== key) : [...s, key]) : [key]));
               if (k !== "view") setKind(k);
               setEdge(null);
@@ -1266,49 +1344,60 @@ export const SiteEditorApp: React.FC = () => {
             onPlaceId={setPlaceId}
             onPreview={setPlacePreview}
             onClose={() => (setNewRoom(false), setPlacePreview(null))}
-            onCheck={() => (setNewRoom(false), setChecking(true))}
+            onCheck={() => openAnchor(draft.doc.anchor_spots.length ? "check" : "anchor")}
             servedId={servedId && servedRowNow?.in_frame !== false ? servedId : null}
             rows={rows}
             placed={draft.place}
             onDraft={draftPlace}
             onSave={editable ? () => setReviewing(true) : undefined}
           />
-        ) : rightTab === "inspect" && checking && servedId ? (
-          <CheckMarkPanel
+        ) : rightTab === "inspect" && anchorOpen && anchorWork && servedId ? (
+          <AnchorPanel
+            work={anchorWork}
+            onWork={onAnchorWork}
             bots={bots}
-            robotId={typeof checking === "string" ? checking : null}
+            live={live}
             calibrationId={servedId}
             coverage={servedCoverage}
             revision={draft.revision}
-            onClose={() => setChecking(null)}
+            kept={draft.doc.anchor_spots}
+            move={frameMove}
+            onMove={setFrameMove}
+            applied={draft.frame?.move ?? null}
+            onCheck={checkFrame}
+            onApply={applyFrame}
             onRecorded={(c) => {
               setChecks((cs) => [...cs, c]);
               setChecksRefresh((n) => n + 1);
             }}
+            onClose={() => closeFlows()}
+            note={draft.doc.anchor ?? ""}
           />
-        ) : rightTab === "inspect" && kind === "frame" && (tool === "turn" || tool === "capture") ? (
+        ) : rightTab === "inspect" && anchorOpen ? (
+          <div className="callout" style={{ marginTop: 12 }} data-testid="anchor-unserved">
+            <div className="h">No calibration in use</div>
+            Anchoring lays the map of the calibration in use on the room, so one has to be in use first.
+            <div className="acts">
+              <button type="button" className="btn sm primary" data-testid="anchor-serve-step" onClick={() => goalAction(serveStep(rows))}>
+                {serveStep(rows).label}
+              </button>
+            </div>
+          </div>
+        ) : rightTab === "inspect" && kind === "frame" && tool === "turn" ? (
           <FramePanel
-            mode={tool === "capture" ? "capture" : "turn"}
             move={frameMove}
             onMove={setFrameMove}
             site={payload?.name ?? ""}
             calibrationId={frameSource}
             frameId={payload?.frame_id ?? ""}
-            extent={draft.doc.extent_mm ?? [1000, 1000]}
             note={draft.doc.anchor ?? ""}
-            bots={bots}
-            live={live}
             applied={draft.frame?.move ?? null}
             onCheck={checkFrame}
             onApply={applyFrame}
-            onMode={(m) => setTool(m)}
             nextStep={serveStep(rows)}
             onAction={goalAction}
-            anchors={anchors}
-            onAnchors={setAnchors}
-            points={measured}
           />
-        ) : rightTab === "inspect" && (kind === "stations" || (stage !== "edit" && selected.length === 1 && selected[0].startsWith("box:"))) && !selected.some((k) => k.startsWith("robot:")) ? (
+        ) : rightTab === "inspect" && (selected[0] === "stations" || (kind === "stations" && !selected.some((k) => isWhole(k))) || (stage !== "edit" && selected.length === 1 && selected[0].startsWith("box:"))) && !selected.some((k) => k.startsWith("robot:")) ? (
           <StationsPanel
             shown={shown}
             servedId={servedId}
@@ -1347,11 +1436,13 @@ export const SiteEditorApp: React.FC = () => {
             onSelect={select}
             onBlink={live ? blink : undefined}
             frameId={payload?.frame_id}
-            onCheck={live && servedId ? (id) => setChecking(id) : undefined}
+            onCheck={live && servedId ? (id) => openAnchor("check", id) : undefined}
             onFrameTool={(t) => {
               setKind("frame");
               setTool(t);
             }}
+            onAnchor={live && servedId && editable ? openAnchor : undefined}
+            anchorText={goalList.find((g) => g.id === "anchor")?.detail ?? (draft.doc.anchor_spots.length ? anchoredText(draft.doc) : undefined)}
           />
         ) : (
           <div data-testid="layers" style={{ paddingTop: 8 }}>
@@ -1628,12 +1719,14 @@ export const SiteEditorApp: React.FC = () => {
                 onHome={() => onPreset(HOME)}
                 onSize={setMapSize}
                 selectedStation={selected.length === 1 && selected[0].startsWith("box:") ? Number(selected[0].slice(4)) : null}
-                onSelectStation={(i) => setSelected(i === null ? [] : [`box:${i}`])}
+                onSelectStation={(i) => closeFlows() && setSelected(i === null ? [] : [`box:${i}`])}
                 selectedRobot={selected.find((k) => k.startsWith("robot:"))?.slice(6) ?? null}
                 onSelectRobot={(id) => {
+                  if (!closeFlows()) return;
                   setSelected(id ? [`robot:${id}`] : []);
                   setRightTab("inspect");
                 }}
+                selected={selected}
               />
             ) : view === "plan" ? (
               <PlanCanvas
@@ -1661,7 +1754,7 @@ export const SiteEditorApp: React.FC = () => {
                       ? mountOverlay(draft.doc.extent_mm)
                       : kind === "stations"
                     ? stationsOverlay(coverage && coverage.id === shown?.id ? coverage : null, showNext && coverageMode === "error", probe?.at ?? null, flash)
-                    : kind === "frame" && tool === "capture"
+                    : anchorOpen
                       ? (p: PlanPaint) => (
                           <>
                             {anchorsOverlay(frameMove, anchors, measured)(p)}
@@ -1674,7 +1767,7 @@ export const SiteEditorApp: React.FC = () => {
                 }
                 onProbe={(at, px) => setProbe(at && px ? { at, px } : null)}
                 onPoint={(p) => setFrameMove((m) => ({ ...m, pivot: draft.frame ? toOld(draft.frame.move, p) : p }))}
-                onFloorDrag={kind === "frame" && tool === "capture" && anchors.length > 0 ? onFloorDrag : undefined}
+                onFloorDrag={anchorOpen && anchors.length > 0 ? onFloorDrag : undefined}
                 onSelect={select}
                 onEdge={setEdge}
                 onEdit={onEdit}
@@ -1738,7 +1831,7 @@ export const SiteEditorApp: React.FC = () => {
               </button>
             </div>
           )}
-          <div className="float kinds" data-testid="editing-switch" role="tablist" aria-label="Editing">
+          <div className={`float kinds${mapSize.w < 1180 ? " tight" : ""}`} data-testid="editing-switch" role="tablist" aria-label="Editing">
             {stage === "edit" || stage === "toTop" ? (
               <button type="button" className="btn primary sm" data-testid="done-editing" title="Back to the 3D view; the draft stays (Esc)" onClick={() => leaveEdit()}>
                 Done editing
@@ -1753,7 +1846,7 @@ export const SiteEditorApp: React.FC = () => {
               <span className="tx">View</span>
             </button>
             <span className="vsep" />
-            {!narrow && <span className="lbl2">Editing</span>}
+            {!narrow && mapSize.w >= 1180 && <span className="lbl2">Editing</span>}
             {KINDS.map((k) => (
               <button
                 key={k}
@@ -1962,9 +2055,7 @@ export const SiteEditorApp: React.FC = () => {
           }}
           onVerify={() => {
             setServing(null);
-            setChecking(true);
-            setRightTab("inspect");
-            if (rightAsRail) setDrawer("right");
+            openAnchor(draft?.doc.anchor_spots.length ? "check" : "anchor");
           }}
         />
       )}

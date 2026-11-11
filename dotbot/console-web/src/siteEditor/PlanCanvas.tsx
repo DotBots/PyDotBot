@@ -70,8 +70,19 @@ export interface StationPose {
 export const PLAN_ZOOM_MIN = ZOOM_STEP ** -2;
 
 
+/** Keys that stand for a whole kind, as a Checks row selects it, not for one entity. */
+export const WHOLE_KINDS: Record<string, EditKind> = { floor: "frame", stations: "stations", anchor: "anchor", areas: "areas", walls: "walls", objects: "objects", robots: "view" };
+export const isWhole = (key: string) => key in WHOLE_KINDS;
+
+/** The whole-kind key an entity key is part of. */
+export function wholeOf(key: string): string | null {
+  const prefix = key.split(":")[0];
+  return ({ area: "areas", wall: "walls", obstacle: "walls", object: "objects", box: "stations", robot: "robots" } as Record<string, string>)[prefix] ?? null;
+}
+
 /** The kind an entity key belongs to on the plan; robots belong to none. */
 export function kindOfKey(key: string): EditKind {
+  if (key in WHOLE_KINDS) return WHOLE_KINDS[key];
   if (key.startsWith("area:")) return "areas";
   if (key.startsWith("wall:") || key.startsWith("obstacle:")) return "walls";
   if (key.startsWith("object:")) return "objects";
@@ -223,6 +234,8 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
   const label = (props.labelScale ?? 1) * chrome;
   const shown = preview ?? doc;
   const sel = (key: string) => selected.includes(key);
+  /** Selected itself, or as part of its whole kind. */
+  const lit = (key: string) => sel(key) || sel(wholeOf(key) ?? "");
 
   useEffect(() => {
     if (props.fitSignal) setCam(FRAME_CAMERA);
@@ -332,7 +345,7 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
     if (tool === "measure") return setDrag({ type: "measure", from: at, to: at });
     if (tool === "probe") return props.onProbe?.(rawMm(e), local(e));
     if (tool === "turn") return props.onPoint?.(at);
-    if (tool === "capture" && props.onFloorDrag) return setDrag({ type: "floor", from: rawMm(e), turn: e.altKey || e.shiftKey });
+    if (tool === "anchor" && props.onFloorDrag) return setDrag({ type: "floor", from: rawMm(e), turn: e.altKey || e.shiftKey });
     if (editable && (tool === "wall" || tool === "obstacle")) return setPoly((p) => [...p, at]);
     const objectKind = OBJECT_TOOLS[tool];
     if (editable && objectKind) return placeObject(at, objectKind);
@@ -506,7 +519,7 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
   const areaNodes = shown.areas.map((a) => {
     const [x, y] = px([a.x, a.y]);
     const colour = areaColor({ x: a.x, y: a.y, w: a.w, h: a.h, name: a.name, role: a.role ?? undefined }, shown.areas.map((b) => ({ ...b, role: b.role ?? undefined })));
-    const on = sel(a.key);
+    const on = lit(a.key);
     const dim = kind !== "view" && kind !== "areas" && !on;
     return (
       <g key={a.key} data-testid={`area-${a.name}`} opacity={dim ? 0.55 : 1}>
@@ -532,7 +545,7 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
 
   const barrier = (b: { key: string; points: Point[] }, closed: boolean) => {
     const pts = b.points.map((p) => px(p).join(",")).join(" ");
-    const on = sel(b.key);
+    const on = lit(b.key);
     const common = {
       points: pts,
       stroke: on ? "var(--accent)" : "var(--text)",
@@ -550,7 +563,7 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
     const [x, y] = px([o.x, o.y]);
     const s = 22 * chrome;
     const [hx, hy] = facing(o.heading_deg ?? 0);
-    const on = sel(o.key);
+    const on = lit(o.key);
     return (
       <g
         key={o.key}
@@ -613,7 +626,7 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
         const inset = (i + 1) * 3 * chrome;
         const [x0, y0] = px([b.rect[0], b.rect[1]]);
         const [x1, y1] = px([b.rect[2], b.rect[3]]);
-        const on = sel(`box:${b.index}`);
+        const on = lit(`box:${b.index}`);
         const hue = `var(--st-${b.index % 2})`;
         const strong = kind === "stations" || on;
         return (
@@ -877,7 +890,7 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
 
   // Where the stations stand: a marker on the floor, or an arrow at the
   // canvas edge pointing at one out of view
-  const poses = props.layers.stations && (kind === "view" || kind === "stations") ? (props.stations ?? []) : [];
+  const poses = props.layers.stations && (kind === "view" || kind === "stations" || sel("stations")) ? (props.stations ?? []) : [];
   const onScreen = (p: Point): Point => {
     const [bx, by] = px(p);
     return [size.w / 2 + cam.tx + cam.scale * (bx - geom.boxW / 2), size.h / 2 + cam.ty + cam.scale * (by - geom.boxH / 2)];
@@ -976,7 +989,19 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
               {gridLines}
               {ruler}
               {props.underlay?.(paint, shownBoxes)}
-              <rect data-testid="floor" x={fx} y={fy} width={fw} height={fh} fill="none" stroke="var(--muted)" strokeWidth={chrome} strokeDasharray={doc.extent_mm ? undefined : `${3 * chrome} ${5 * chrome}`} style={{ pointerEvents: "none" }} />
+              <rect
+                data-testid="floor"
+                data-selected={sel("floor") || undefined}
+                x={fx}
+                y={fy}
+                width={fw}
+                height={fh}
+                fill="none"
+                stroke={sel("floor") ? "var(--accent)" : "var(--muted)"}
+                strokeWidth={(sel("floor") ? 2.5 : 1) * chrome}
+                strokeDasharray={doc.extent_mm ? undefined : `${3 * chrome} ${5 * chrome}`}
+                style={{ pointerEvents: "none" }}
+              />
               <text className="tl halo" x={fx + fw / 2} y={fy + fh + 16 * label} fontSize={10 * label} textAnchor="middle" strokeWidth={3 * chrome}>
                 {doc.extent_mm ? `floor ${extent[0]} × ${extent[1]} mm` : "floor not measured yet: a placeholder"}
               </text>
@@ -987,6 +1012,22 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
               {shown.obstacles.map((o) => barrier(o, true))}
               {objectNodes}
               {frameNodes}
+              {(kind === "anchor" || sel("anchor")) &&
+                shown.anchor_spots.map((sp, i) => {
+                  const [x, y] = px(sp.at);
+                  const r = 7 * chrome;
+                  const hot = sel("anchor");
+                  return (
+                    <g key={`spot-${i}`} data-testid="anchor-spot-mark" style={{ pointerEvents: "none" }}>
+                      <circle cx={x} cy={y} r={r} fill="none" stroke={hot ? "var(--accent)" : "var(--text)"} strokeWidth={(hot ? 2 : 1.3) * chrome} />
+                      <line x1={x - r * 1.5} y1={y} x2={x + r * 1.5} y2={y} stroke={hot ? "var(--accent)" : "var(--text)"} strokeWidth={chrome} />
+                      <line x1={x} y1={y - r * 1.5} x2={x} y2={y + r * 1.5} stroke={hot ? "var(--accent)" : "var(--text)"} strokeWidth={chrome} />
+                      <text className="tl halo" x={x + r + 4 * chrome} y={y - 5 * chrome} fontSize={10 * label} strokeWidth={3 * chrome}>
+                        spot {i + 1} · {sp.error_mm.toFixed(1)} mm
+                      </text>
+                    </g>
+                  );
+                })}
               {poseNodes}
               {props.overlay?.(paint, shownBoxes)}
               {handoverGrip}
@@ -1001,7 +1042,7 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
                 <div key={b.id} style={{ pointerEvents: tool === "select" ? "auto" : "none" }}>
                   <BotMarker
                     bot={b}
-                    selected={b.id === selectedRobot}
+                    selected={b.id === selectedRobot || sel("robots")}
                     hovered={false}
                     solid={1}
                     perMm={perMm}

@@ -41,6 +41,12 @@ export interface DocObject {
   was: string | null;
 }
 
+/** A tape-measured spot the frame is anchored on, and how far the robot read there stayed from it, mm. */
+export interface AnchorSpot {
+  at: Point;
+  error_mm: number;
+}
+
 export interface Doc {
   anchor: string | null;
   /** The frame id site.toml records; null when derived. Never edited here. */
@@ -50,6 +56,7 @@ export interface Doc {
   walls: DocBarrier[];
   obstacles: DocBarrier[];
   objects: DocObject[];
+  anchor_spots: AnchorSpot[];
 }
 
 export type Kind = "area" | "wall" | "obstacle" | "object";
@@ -95,6 +102,7 @@ export function docFromSite(site: EditorSite): Doc {
       comment: null,
       was: o.name,
     })),
+    anchor_spots: (site.anchor_spots ?? []).map((s) => ({ at: [s.at_mm[0], s.at_mm[1]] as Point, error_mm: s.error_mm })),
   };
 }
 
@@ -132,6 +140,7 @@ export function siteModel(doc: Doc) {
       ...(o.comment ? { comment: o.comment } : {}),
       was: o.was,
     })),
+    anchor_spots: doc.anchor_spots.map((s) => ({ at_mm: s.at, error_mm: s.error_mm })),
   };
 }
 

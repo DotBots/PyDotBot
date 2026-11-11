@@ -139,6 +139,8 @@ export const RoomView: React.FC<{
   onSelectStation?: (index: number | null) => void;
   selectedRobot?: string | null;
   onSelectRobot?: (id: string | null) => void;
+  /** The selection: an entity's key, or a whole kind as a Checks row picks it. */
+  selected?: string[];
 }> = (props) => {
   const { doc, extent, geometry, boxes, coverage, mode, bots, shownName, shownId, stationFit, coverageNote, light, large, insets, cam, zoom, onCam, onZoom, selectedStation, onSelectStation } = props;
   const topInset = insets.top;
@@ -218,6 +220,7 @@ export const RoomView: React.FC<{
     return `matrix(${ex[0] - o[0]} ${ex[1] - o[1]} ${ey[0] - o[0]} ${ey[1] - o[1]} ${o[0]} ${o[1]})`;
   };
   const apart = Object.entries(geometry?.apart_mm ?? {})[0];
+  const sel = (k: string) => (props.selected ?? []).includes(k);
   const have = (b: UnifiedBot) => !!shownId && heldCalibrationId(b).toLowerCase() === shownId.toLowerCase();
   const located = bots.filter((b) => b.position);
 
@@ -306,6 +309,8 @@ export const RoomView: React.FC<{
     const col = areaColor({ ...a, role: a.role ?? undefined }, doc.areas.map((x) => ({ ...x, role: x.role ?? undefined })));
     text(`area-${a.key}`, P(a.x + a.w / 2, a.y + a.h), a.name, 10.5 * f, 4, { fill: col, gap: 4 });
   });
+
+  if (sel("anchor")) doc.anchor_spots.forEach((sp, i) => text(`spot-${i}`, P(sp.at[0], sp.at[1]), `spot ${i + 1} · ${sp.error_mm.toFixed(1)} mm`, 10 * f, 3, { must: true, fill: "var(--accent)", gap: 8 }));
 
   if (mode === "fix" && line) {
     // The label stays off its own line
@@ -438,7 +443,14 @@ export const RoomView: React.FC<{
             {gridLines}
           </g>
           {/* the floor */}
-          <polygon data-testid="room-floor" points={poly(floor)} fill="color-mix(in srgb, var(--text) 7%, transparent)" stroke="var(--muted)" strokeWidth={1.4} />
+          <polygon
+            data-testid="room-floor"
+            data-selected={sel("floor") || undefined}
+            points={poly(floor)}
+            fill="color-mix(in srgb, var(--text) 7%, transparent)"
+            stroke={sel("floor") ? "var(--accent)" : "var(--muted)"}
+            strokeWidth={sel("floor") ? 2.6 : 1.4}
+          />
           <g stroke="var(--muted)" strokeWidth={1.2}>
             {ticks}
           </g>
@@ -462,7 +474,32 @@ export const RoomView: React.FC<{
           {doc.areas.map((a) => {
             const col = areaColor({ ...a, role: a.role ?? undefined }, doc.areas.map((x) => ({ ...x, role: x.role ?? undefined })));
             const ps = [P(a.x, a.y), P(a.x + a.w, a.y), P(a.x + a.w, a.y + a.h), P(a.x, a.y + a.h)];
-            return <polygon key={a.key} points={poly(ps)} fill="none" stroke={col} strokeWidth={1.3} strokeDasharray="5 3" />;
+            const on = sel(a.key) || sel("areas");
+            return <polygon key={a.key} data-testid={`room-area-${a.name}`} points={poly(ps)} fill={on ? `color-mix(in srgb, ${col} 18%, transparent)` : "none"} stroke={col} strokeWidth={on ? 2.2 : 1.3} strokeDasharray="5 3" />;
+          })}
+          {/* walls, obstacles and objects, flat on the floor */}
+          {doc.walls.map((b) => {
+            const on = sel(b.key) || sel("walls");
+            return <polyline key={b.key} data-testid="room-wall" points={poly(b.points.map((q) => P(q[0], q[1])))} fill="none" stroke={on ? "var(--accent)" : "var(--text)"} strokeWidth={on ? 3.2 : 2.2} strokeLinecap="round" strokeLinejoin="round" />;
+          })}
+          {doc.obstacles.map((b) => {
+            const on = sel(b.key) || sel("walls");
+            return <polygon key={b.key} data-testid="room-obstacle" points={poly(b.points.map((q) => P(q[0], q[1])))} fill="color-mix(in srgb, var(--text) 18%, transparent)" stroke={on ? "var(--accent)" : "var(--text)"} strokeWidth={on ? 3 : 2} strokeLinejoin="round" />;
+          })}
+          {doc.objects.map((o) => {
+            const on = sel(o.key) || sel("objects");
+            const ps = [P(o.x - 60, o.y - 60), P(o.x + 60, o.y - 60), P(o.x + 60, o.y + 60), P(o.x - 60, o.y + 60)];
+            return <polygon key={o.key} data-testid="room-object" points={poly(ps)} fill="var(--elevated)" stroke={on ? "var(--accent)" : "var(--muted)"} strokeWidth={on ? 2.2 : 1.2} />;
+          })}
+          {(sel("anchor") ? doc.anchor_spots : []).map((sp, i) => {
+            const c = P(sp.at[0], sp.at[1]);
+            const ring = Array.from({ length: 16 }, (_, k) => P(sp.at[0] + 45 * Math.cos((k / 16) * 2 * Math.PI), sp.at[1] + 45 * Math.sin((k / 16) * 2 * Math.PI)));
+            return (
+              <g key={`spot-${i}`} data-testid="room-anchor-spot">
+                <polygon points={poly(ring)} fill="none" stroke="var(--accent)" strokeWidth={2} />
+                <circle cx={c[0]} cy={c[1]} r={2} fill="var(--accent)" />
+              </g>
+            );
           })}
           {/* handover */}
           {mode === "fix" && line && (
@@ -494,7 +531,7 @@ export const RoomView: React.FC<{
             const r = rectOf(st.index);
             const corners: Point[] = r ? [P(r[0], r[1]), P(r[2], r[1]), P(r[2], r[3]), P(r[0], r[3])] : [];
             const raw: [number, number][] = r ? [[r[0], r[1]], [r[2], r[1]], [r[2], r[3]], [r[0], r[3]]] : [];
-            const on = picked === st.index;
+            const on = picked === st.index || sel("stations");
             const ring = Array.from({ length: 24 }, (_, k) => P(st.x_mm + 70 * Math.cos((k / 24) * 2 * Math.PI), st.y_mm + 70 * Math.sin((k / 24) * 2 * Math.PI)));
             const fade = depth(st.x_mm, st.y_mm, st.height_mm / 2);
             return (
@@ -529,7 +566,7 @@ export const RoomView: React.FC<{
           {located.map((b) => {
             const p = P(b.position!.x, b.position!.y);
             const has = have(b);
-            const on = props.selectedRobot === b.id;
+            const on = props.selectedRobot === b.id || sel("robots");
             return (
               <circle
                 key={b.id}
@@ -551,7 +588,7 @@ export const RoomView: React.FC<{
           {/* the stations themselves: a dot at the top of each pole */}
           {stations.map((st) => {
             const top = P(st.x_mm, st.y_mm, st.height_mm);
-            const on = picked === st.index;
+            const on = picked === st.index || sel("stations");
             return (
               <g key={st.index} data-testid={`room-station-${st.index}`} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => (e.stopPropagation(), pick(on ? null : st.index))} style={{ cursor: "pointer" }}>
                 <circle cx={top[0]} cy={top[1]} r={(on ? 8 : 6.5) * Math.min(f, 1.4)} fill={`var(--st-${st.index % 2})`} stroke={on ? "var(--text)" : "var(--canvas)"} strokeWidth={1.5} />

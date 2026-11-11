@@ -5,15 +5,20 @@ import type { IconName } from "./icons";
 // the console's keys and meanings; the console's Start, Go and pose mode are
 // left unbound, so a habit never fires the fleet from this tab.
 
-export type EditKind = "view" | "frame" | "areas" | "walls" | "objects" | "stations";
+export type EditKind = "view" | "frame" | "stations" | "anchor" | "areas" | "walls" | "objects";
+
+/** The editing kinds in the operator's order: install the stations, spin,
+ * tie the map to the floor, then draw. */
+export const KINDS: Exclude<EditKind, "view">[] = ["frame", "stations", "anchor", "areas", "walls", "objects"];
 
 export const KIND_KEY: Record<EditKind, string> = {
   view: "Escape",
   frame: "1",
-  areas: "2",
-  walls: "3",
-  objects: "4",
-  stations: "5",
+  stations: "2",
+  anchor: "3",
+  areas: "4",
+  walls: "5",
+  objects: "6",
 };
 
 /** Present the room, full screen, and back to editing. */
@@ -30,13 +35,14 @@ export type Tool =
   | "camera"
   | "probe"
   | "turn"
-  | "capture"
+  | "anchor"
   | "measure";
 
 /** Each kind's tools, by the key that picks them. */
 export const TOOLS: Record<EditKind, Partial<Record<string, Tool>>> = {
   view: {},
-  frame: { V: "select", T: "turn", C: "capture", M: "measure" },
+  frame: { V: "select", T: "turn", M: "measure" },
+  anchor: { V: "select", A: "anchor", M: "measure" },
   areas: { V: "select", A: "area", M: "measure" },
   walls: { V: "select", W: "wall", O: "obstacle", M: "measure" },
   objects: { V: "select", C: "charger", D: "dock", L: "landmark", K: "camera", M: "measure" },
@@ -65,10 +71,11 @@ export function editorKeys(): Set<string> {
 export const KIND_LABEL: Record<EditKind, string> = {
   view: "View",
   frame: "Floor",
+  stations: "Stations",
+  anchor: "Anchor",
   areas: "Areas",
   walls: "Walls",
   objects: "Objects",
-  stations: "Stations",
 };
 
 export const TOOL_LABEL: Record<Tool, string> = {
@@ -82,7 +89,7 @@ export const TOOL_LABEL: Record<Tool, string> = {
   camera: "Camera position",
   probe: "Point inspector",
   turn: "Turn or shift the origin",
-  capture: "Set the origin from robots",
+  anchor: "Tie the map to the floor",
   measure: "Measure",
 };
 
@@ -98,7 +105,7 @@ export const TOOL_ICON: Record<Tool, IconName> = {
   camera: "camera",
   probe: "probe",
   turn: "turn",
-  capture: "capture",
+  anchor: "capture",
   measure: "measure",
 };
 
@@ -124,7 +131,7 @@ export const EDITOR_SHORTCUTS: ShortcutGroup[] = [
       { keys: ["alt", "drag"], does: "Move or draw without snapping" },
       { keys: ["arrows"], does: "Nudge the selection or a picked edge 10 mm (Alt 1, Shift 100)" },
       { keys: ["Escape"], does: "Back to View; cancels a drawing, never commits it" },
-      { keys: ["1 to 5"], does: "Floor, Areas, Walls, Objects, Stations" },
+      { keys: ["1 to 6"], does: KINDS.map((k) => KIND_LABEL[k]).join(", ") },
       { keys: [PRESENT_KEY], does: "Present the room in 3D, and back (Esc leaves too)" },
       { keys: ["Delete"], does: "Delete the selection" },
     ],

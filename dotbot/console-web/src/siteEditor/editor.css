@@ -1047,10 +1047,12 @@ body {
   background: var(--hairline);
   margin: 0 3px;
 }
-.se.narrow .kinds button .tx {
+.se.narrow .kinds button .tx,
+.se .kinds.tight button .tx {
   display: none;
 }
-.se.narrow .kinds button.on .tx {
+.se.narrow .kinds button.on .tx,
+.se .kinds.tight button.on .tx {
   display: inline;
 }
 .se .rail {
@@ -2059,6 +2061,48 @@ body {
 }
 .se .goal .t .acts {
   margin-top: 6px;
+}
+/* A row selects: its hover is a light wash and its selection an accent
+   edge; its button acts, set apart on its own surface so the two never blur */
+.se .goal[role="button"]:hover:not(:has(.act:hover)) {
+  background: color-mix(in srgb, var(--accent) 7%, var(--elevated));
+}
+.se .goal.on {
+  background: color-mix(in srgb, var(--accent) 11%, transparent);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.se .goal .btn.act {
+  background: var(--surface);
+  border: 1px solid var(--edge-strong);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--text) 8%, transparent);
+  padding: 0 9px;
+}
+.se .goal .btn.act:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.se .goal .t .sub {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  margin-top: 5px;
+}
+.se .goal .t .sub .s {
+  flex: 1 1 140px;
+  margin-top: 0;
+}
+.se .goal .t .sub .acts {
+  margin-top: 0;
+}
+.se .goal .st.sm {
+  width: 12px;
+  height: 12px;
+  margin-top: 1px;
+}
+.se .goal .st.sm svg {
+  width: 8px;
+  height: 8px;
 }
 .se .prob {
   display: flex;

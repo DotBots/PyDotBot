@@ -6,45 +6,76 @@ import { Icon } from "./icons";
 import type { Doc } from "./model";
 import type { Problem } from "./rules";
 
-// The left pane's Checks home: the room's rows, then what to look at before
-// a run, then the problems, then the tools (the setup summary,
-// snapshots). Every row has the same shape and one action; none edits.
+// The left pane's Checks home: the room's rows in the operator's order, then
+// what to look at before a run, then the problems, then the tools (the setup
+// summary, snapshots). A click on a row selects its subject; only its button
+// acts, and a row shows one only when something needs doing.
 
 const STATE_ICON: Record<Goal["state"], React.ReactNode> = {
   ok: <Icon name="check" size={11} />,
   warn: <Icon name="warn" size={11} />,
   fail: <Icon name="x" size={11} />,
   unknown: "?",
+  none: null,
 };
-const STATE_CLASS: Record<Goal["state"], string> = { ok: "ok", warn: "warn", fail: "fail", unknown: "unk" };
-const STATE_WORD: Record<Goal["state"], string> = { ok: "good", warn: "needs you", fail: "blocks a run", unknown: "cannot tell" };
+const STATE_CLASS: Record<Goal["state"], string> = { ok: "ok", warn: "warn", fail: "fail", unknown: "unk", none: "opt" };
+const STATE_WORD: Record<Goal["state"], string> = { ok: "good", warn: "needs you", fail: "blocks a run", unknown: "cannot tell", none: "optional, none" };
 
-const GoalRow: React.FC<{ g: Goal; onAction: (a: GoalAction) => void; editable: boolean }> = ({ g, onAction, editable }) => (
-  <div className="goal" data-testid={`goal-${g.id}`} onClick={() => g.action && onAction(g.action)} role={g.action ? "button" : undefined} tabIndex={g.action ? 0 : undefined}>
-    <span className={`st ${STATE_CLASS[g.state]}`} title={STATE_WORD[g.state]}>
-      {STATE_ICON[g.state]}
-    </span>
-    <span className="t">
-      <span className="a">{g.title}</span>
-      <span className="s">{g.detail}</span>
-    </span>
-    {g.action && (editable || g.action.go.tab || g.action.go.href) && (
-      <span className="acts">
-        <button
-          type="button"
-          className="btn xs"
-          title={g.action.title}
-          onClick={(e) => {
-            e.stopPropagation();
-            onAction(g.action!);
-          }}
-        >
-          {g.action.label}
-        </button>
-      </span>
-    )}
-  </div>
+const Act: React.FC<{ a: GoalAction; onAction: (a: GoalAction) => void; testid: string }> = ({ a, onAction, testid }) => (
+  <span className="acts">
+    <button
+      type="button"
+      className="btn xs act"
+      title={a.title}
+      data-testid={testid}
+      onClick={(e) => {
+        e.stopPropagation();
+        onAction(a);
+      }}
+      onKeyDown={(e) => e.stopPropagation()}
+    >
+      {a.label}
+    </button>
+  </span>
 );
+
+const GoalRow: React.FC<{ g: Goal; on: boolean; onSelect: (g: Goal) => void; onAction: (a: GoalAction) => void; editable: boolean }> = ({ g, on, onSelect, onAction, editable }) => {
+  const may = (a?: GoalAction) => !!a && (editable || !!a.go.tab || !!a.go.href);
+  return (
+    <div
+      className={`goal${on ? " on" : ""}`}
+      data-testid={`goal-${g.id}`}
+      role="button"
+      tabIndex={0}
+      aria-pressed={on}
+      title={`Show ${g.title.toLowerCase()} on the map`}
+      onClick={() => onSelect(g)}
+      onKeyDown={(e) => {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        e.preventDefault();
+        onSelect(g);
+      }}
+    >
+      <span className={`st ${STATE_CLASS[g.state]}`} title={STATE_WORD[g.state]}>
+        {STATE_ICON[g.state]}
+      </span>
+      <span className="t">
+        <span className="a">{g.title}</span>
+        <span className="s">{g.detail}</span>
+        {g.subs?.map((x) => (
+          <span className="sub" key={x.id} data-testid={`goal-${g.id}-${x.id}`}>
+            <span className={`st sm ${STATE_CLASS[x.state]}`} title={STATE_WORD[x.state]}>
+              {STATE_ICON[x.state]}
+            </span>
+            <span className="s">{x.text}</span>
+            {may(x.action) && <Act a={x.action!} onAction={onAction} testid={`act-${g.id}-${x.id}`} />}
+          </span>
+        ))}
+      </span>
+      {may(g.action) && <Act a={g.action!} onAction={onAction} testid={`act-${g.id}`} />}
+    </div>
+  );
+};
 
 export const ChecksPane: React.FC<{
   goals: Goal[];
@@ -55,6 +86,10 @@ export const ChecksPane: React.FC<{
   /** Bumped when what the summary reads changed. */
   refresh: number;
   onAction: (a: GoalAction) => void;
+  /** A row clicked: select its subject, nothing more. */
+  onSelect: (g: Goal) => void;
+  /** The selection, to show which row's subject is selected. */
+  selected: string[];
   onRestore: (p: RestorePoint) => void;
   onShowProblem: (key: string) => void;
   onToast: (text: string) => void;
@@ -84,21 +119,20 @@ export const ChecksPane: React.FC<{
   const room = props.goals.filter((g) => g.group === "room");
   const run = props.goals.filter((g) => g.group === "run");
   const notes = props.problems;
-  const chargers = props.doc.objects.filter((o) => o.kind === "charger").length;
-  const walls = props.doc.walls.length + props.doc.obstacles.length;
+  const on = (g: Goal) => g.subject.length > 0 && g.subject.every((k) => props.selected.includes(k));
   return (
     <div data-testid="checks">
       <div className="sec-h" style={{ marginTop: 10 }}>
         This room
       </div>
       {room.map((g) => (
-        <GoalRow key={g.id} g={g} onAction={props.onAction} editable={props.editable} />
+        <GoalRow key={g.id} g={g} on={on(g)} onSelect={props.onSelect} onAction={props.onAction} editable={props.editable} />
       ))}
       <div className="sec-h" style={{ marginTop: 16 }}>
         Before a run
       </div>
       {run.map((g) => (
-        <GoalRow key={g.id} g={g} onAction={props.onAction} editable={props.editable} />
+        <GoalRow key={g.id} g={g} on={on(g)} onSelect={props.onSelect} onAction={props.onAction} editable={props.editable} />
       ))}
       {notes.length > 0 && (
         <>
@@ -126,27 +160,6 @@ export const ChecksPane: React.FC<{
       )}
       <div className="sec-h" style={{ marginTop: 16 }}>
         More
-      </div>
-      <div className="goal" data-testid="goal-objects" role="button" tabIndex={0} onClick={() => props.onAction({ label: "", go: { kind: "objects" } })}>
-        <span className="st opt" />
-        <span className="t">
-          <span className="a">Chargers and walls</span>
-          <span className="s">{chargers + walls ? `${chargers} charger${chargers === 1 ? "" : "s"}, ${walls} wall${walls === 1 ? "" : "s"}` : "none drawn"}</span>
-        </span>
-        {props.editable && (
-          <span className="acts">
-            <button
-              type="button"
-              className="btn xs"
-              onClick={(e) => {
-                e.stopPropagation();
-                props.onAction({ label: "", go: { kind: "objects" } });
-              }}
-            >
-              Edit…
-            </button>
-          </span>
-        )}
       </div>
       <div className="acts" style={{ marginTop: 10 }}>
         <button type="button" className="btn sm" onClick={copy} disabled={!provenance} title="The block an experiment log keeps">

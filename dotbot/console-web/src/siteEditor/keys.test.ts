@@ -23,13 +23,14 @@ describe("the editor's keys against the console's", () => {
   });
 
   it("gives X no tool in any kind, so it is only ever Stop", () => {
-    for (const kind of ["view", "frame", "areas", "walls", "objects", "stations"] as const) {
+    for (const kind of ["view", "frame", "stations", "anchor", "areas", "walls", "objects"] as const) {
       expect(keyAction("x", kind)).toBeNull();
     }
   });
 
   it("picks kinds by number and tools by letter within a kind", () => {
-    expect(keyAction("2", "view")).toEqual({ kind: "areas" });
+    expect(["1", "2", "3", "4", "5", "6"].map((k) => keyAction(k, "view"))).toEqual(["frame", "stations", "anchor", "areas", "walls", "objects"].map((kind) => ({ kind })));
+    expect(keyAction("a", "anchor")).toEqual({ tool: "anchor" });
     expect(keyAction("Escape", "walls")).toEqual({ kind: "view" });
     expect(keyAction("a", "areas")).toEqual({ tool: "area" });
     expect(keyAction("a", "walls")).toBeNull();
