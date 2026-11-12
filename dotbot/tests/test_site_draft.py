@@ -286,6 +286,41 @@ def test_the_bench_s_origin_moved_500_mm_left_and_up(
     assert (field["x"], field["y"], field["w"], field["h"]) == (500, 500, 1060, 1220)
 
 
+def test_a_drag_inward_from_a_drafted_origin_keeps_the_far_edges_on_the_floor(
+    tmp_path, home, spun
+):  # noqa: F811
+    client, _, _ = _editor(tmp_path, BENCH)
+    cal = read_calibration_file(
+        next(
+            s["detail"]
+            for s in _save(client, source=spun.id8, place={})["steps"]
+            if s["step"] == "calibration"
+        )
+    )
+    _, base = _loaded(client)
+    first = {"dx_mm": -500, "dy_mm": -500}
+    drafted = client.post(
+        "/api/frame",
+        json={"calibration": cal.id, "site": base, "base": base, "move": first},
+    ).json()["site"]
+    far = drafted["extent_mm"]
+    # The origin dragged 130 mm right and 140 mm down from where the draft has it
+    moved = client.post(
+        "/api/frame",
+        json={
+            "calibration": cal.id,
+            "site": drafted,
+            "base": base,
+            "start": first,
+            "move": {"dx_mm": -370, "dy_mm": -360},
+        },
+    ).json()
+    assert moved["site"]["extent_mm"] == [far[0] - 130, far[1] - 140]
+    (field,) = moved["site"]["areas"]
+    assert (field["x"], field["y"]) == (370, 360)
+    assert moved["warnings"] == []
+
+
 def test_a_move_a_robot_could_not_take_is_refused_with_the_largest_shift(
     editor, placed, home  # noqa: F811
 ):

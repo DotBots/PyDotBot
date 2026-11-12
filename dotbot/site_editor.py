@@ -11,6 +11,7 @@ meanwhile is never overwritten.
 
 from __future__ import annotations
 
+import dataclasses
 import ipaddress
 import os
 import shlex
@@ -667,11 +668,8 @@ def create_app(
                         ),
                     )
                 ) from exc
-            warnings = site_turn.outside_warnings(
-                moved, site_now
-            ) + site_turn.widened_note(move.theta_deg)
         else:
-            frame, moved, warnings = site_now.frame_id, source, []
+            frame, moved = site_now.frame_id, source
         floor = site_draft.between(request.start, move)
         stations = (
             None
@@ -683,12 +681,21 @@ def create_app(
         )
         keep = site_draft.kept_rects(moved) + list((stations or {}).values())
         points = site_draft.kept_points(moved)
+        site = site_draft.moved_site(_model_dict(request.site), floor, keep, points)
+        warnings = []
+        if move.moves:
+            # Measured points against the draft's extent once moved, not the file's
+            extent = site.get("extent_mm")
+            warnings = site_turn.outside_warnings(
+                moved,
+                dataclasses.replace(
+                    site_now, extent_mm=tuple(extent) if extent else None
+                ),
+            ) + site_turn.widened_note(move.theta_deg)
         return {
             "frame": frame,
             "from_frame": site_now.frame_id,
-            "site": site_draft.moved_site(
-                _model_dict(request.site), floor, keep, points
-            ),
+            "site": site,
             "base": site_draft.moved_site(
                 _model_dict(request.base), move.floor(), keep, points
             ),
