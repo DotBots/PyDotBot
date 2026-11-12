@@ -6,9 +6,10 @@
 The site's frame moves, so a point fixed on the floor gets new site
 coordinates. Each calibration of the site maps the stations' sweeps to those
 coordinates, so each is re-expressed by the floor's move as a new
-calibration, recording the new frame's id. Its coverage stays where it is on
-the floor: the stations' boxes and the fence get new numbers by the same
-move, as the box round each turned rectangle, cut at zero.
+calibration, recording the new frame's id. The extent moves with the frame
+and keeps its size. The coverage stays where it is on the floor: the
+stations' boxes and the fence get new numbers by the same move, as the box
+round each turned rectangle, cut to the extent.
 """
 
 from __future__ import annotations
@@ -81,12 +82,45 @@ def widened_note(theta_deg: float) -> list[str]:
     ]
 
 
-def _kept(move: Rigid2D, rect: Sequence[float] | None):
-    """`rect`, fixed on the floor, in the moved frame's numbers, cut at zero."""
+def kept(
+    move: Rigid2D, rect: Sequence[float] | None, extent: Sequence[int] | None
+) -> tuple[int, int, int, int] | None:
+    """`rect`, fixed on the floor, in the moved frame's numbers, cut to
+    `extent`; only at zero when nothing of it lies in the extent, and None
+    when nothing of it is left right of and below zero."""
     if rect is None:
         return None
     x0, y0, x1, y1 = move.box(rect)
-    return (max(0, x0), max(0, y0), max(0, x1), max(0, y1))
+    at_zero = (max(0, x0), max(0, y0), x1, y1)
+    if at_zero[0] >= at_zero[2] or at_zero[1] >= at_zero[3]:
+        return None
+    if extent is None:
+        return at_zero
+    cut = (*at_zero[:2], min(extent[0], x1), min(extent[1], y1))
+    return cut if cut[0] < cut[2] and cut[1] < cut[3] else at_zero
+
+
+def cut_notes(
+    source: Calibration, move: Rigid2D, extent: Sequence[int] | None
+) -> list[str]:
+    """One line per station whose coverage reaches outside `extent` once
+    moved, saying whether `kept` cut it to the extent."""
+    if extent is None:
+        return []
+    out = []
+    for st in source.stations:
+        if st.coverage_mm is None:
+            continue
+        box = move.box(st.coverage_mm)
+        if box[0] >= 0 and box[1] >= 0 and box[2] <= extent[0] and box[3] <= extent[1]:
+            continue
+        inside = kept(move, st.coverage_mm, extent)
+        cut = inside is not None and inside[2] <= extent[0] and inside[3] <= extent[1]
+        out.append(
+            f"{lighthouse2.station_label(st.index)}'s coverage reaches outside the "
+            + ("extent once moved, and is cut to it" if cut else "extent once moved")
+        )
+    return out
 
 
 def default_pivot(site: Site) -> tuple[float, float]:
@@ -141,6 +175,7 @@ def turned(
     taken_tags: Iterable[str] = (),
     move: Rigid2D | None = None,
     frame: str | None = None,
+    extent: Sequence[int] | None = None,
 ) -> Calibration:
     """`source` re-expressed for `site` turned by `theta_deg` about `pivot`,
     or moved by `move` when given, recording `anchor` and the frame id
@@ -148,10 +183,11 @@ def turned(
 
     Every homography becomes `floor_move . H` and every placement point
     moves with it. The stations' boxes and the fence stay where they are on
-    the floor, so they get new numbers by the same move (`widened_note`).
-    The tag takes `-turned` for a turn, else `-moved`. Refused when
-    `source` is not in `site`'s frame, was edited by hand, or when a spin
-    centre or placement point would land below zero.
+    the floor, so they get new numbers by the same move (`widened_note`),
+    cut to `extent` (the site's when None). The tag takes `-turned` for a
+    turn, else `-moved`. Refused when `source` is not in `site`'s frame,
+    was edited by hand, or when a spin centre, a placement point or a
+    whole coverage would land below zero.
     """
     why = frame_refusal(source.site, site)
     if why is not None:
@@ -169,7 +205,18 @@ def turned(
         moved = place_calibration(source, site, move, reanchor=True)
     except PlacementRefused as exc:
         raise TurnRefused(f"calibration {source.id8}: {exc}") from exc
-    rects = {st.index: _kept(move, st.coverage_mm) for st in source.stations}
+    extent = extent if extent is not None else site.extent_mm
+    rects = {st.index: kept(move, st.coverage_mm, extent) for st in source.stations}
+    lost = [
+        lighthouse2.station_label(st.index)
+        for st in source.stations
+        if st.coverage_mm is not None and rects[st.index] is None
+    ]
+    if lost:
+        raise TurnRefused(
+            f"calibration {source.id8}: {' and '.join(lost)}'s coverage would "
+            "land wholly below zero, where a robot cannot report a position"
+        )
     turns = abs(((move.theta_deg + 180) % 360) - 180) > 1e-9
     suffix = TAG_SUFFIX if turns else SHIFT_SUFFIX
     return dataclasses.replace(
@@ -228,7 +275,7 @@ def save_turn(
 ) -> list[tuple[Calibration, Path]]:
     """Write every planned calibration, then `site_text` with its anchor and
     frame id changed and its areas, walls, obstacles and objects renumbered
-    by the floor's `move` (the extent grown to hold them), through
+    by the floor's `move`, the extent keeping its size, through
     `write_site`: a failure part way leaves the site's frame as it was."""
     from dotbot import site_draft, site_toml
     from dotbot.calibration.placement import save_new
@@ -240,12 +287,7 @@ def save_turn(
     for key in ("walls", "obstacles"):
         for i, entry in enumerate(model.get(key) or []):
             entry["was"] = i
-    model = site_draft.moved_site(
-        model,
-        move,
-        [r for cal in planned for r in site_draft.kept_rects(cal)],
-        [p for cal in planned for p in site_draft.kept_points(cal)],
-    )
+    model = site_draft.moved_site(model, move)
     model["anchor"] = anchor or None
     model["frame"] = planned[0].site.frame if planned else model.get("frame")
     text = site_toml.patched_text(site_text, model)

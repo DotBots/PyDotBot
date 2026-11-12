@@ -6,9 +6,10 @@ new calibration.
 
 A calibration edit starts from one file and takes, in order, a placement
 into the room or a move of the room's origin, then new station rectangles.
-A move of the origin keeps everything physical where it is on the floor:
-areas, walls, obstacles, objects, coverage and spin circles get new numbers,
-and the extent grows to hold them.
+A move of the origin moves the extent with it, at the same size, and keeps
+everything physical where it is on the floor: areas, walls, obstacles,
+objects, coverage and spin circles get new numbers, and what the extent no
+longer covers is warned about rather than refused.
 """
 
 from __future__ import annotations
@@ -27,7 +28,6 @@ from dotbot.calibration.placement import (
     Rigid2D,
     place_calibration,
     solved_in_own_frame,
-    spin_centres,
     suffixed_tag,
 )
 from dotbot.calibration.station_boxes import (
@@ -114,46 +114,28 @@ def between(start: Move | None, end: Move) -> Rigid2D:
     return _rigid(end.floor().matrix() @ back)
 
 
-def _cut(v: float) -> int:
-    return max(0, int(round(v)))
-
-
 def _heading(deg: float, turn: float) -> float:
     out = round(((deg + turn + 180) % 360) - 180, 2)
     return 180.0 if out == -180.0 else out
 
 
-def moved_site(
-    model: dict,
-    move: Rigid2D,
-    keep_rects: Iterable[Sequence[int]] = (),
-    keep_points: Iterable[Sequence[float]] = (),
-) -> dict:
+def moved_site(model: dict, move: Rigid2D) -> dict:
     """`model` (the editor's site model) renumbered by `move`, every area,
-    wall, obstacle and object kept where it is on the floor and cut at zero,
-    with the extent grown to hold them, the floor's own far edges, and
-    `keep_rects` and `keep_points` given in the moved frame."""
+    wall, obstacle and object kept where it is on the floor, the extent
+    keeping its size."""
     turn = abs(((move.theta_deg + 180) % 360) - 180) > 1e-9
     out = dict(model)
-    far_x, far_y = [], []
 
     def point(p: Sequence[float]) -> list[int]:
         (x, y) = move.apply([(float(p[0]), float(p[1]))])[0]
-        q = [_cut(x), _cut(y)]
-        far_x.append(q[0])
-        far_y.append(q[1])
-        return q
+        return [int(round(x)), int(round(y))]
 
     areas = []
     for area in model.get("areas") or []:
         x0, y0, x1, y1 = move.box(
             (area["x"], area["y"], area["x"] + area["w"], area["y"] + area["h"])
         )
-        x0, y0 = max(0, x0), max(0, y0)
-        w, h = max(1, x1 - x0), max(1, y1 - y0)
-        far_x.append(x0 + w)
-        far_y.append(y0 + h)
-        areas.append({**area, "x": x0, "y": y0, "w": w, "h": h})
+        areas.append({**area, "x": x0, "y": y0, "w": x1 - x0, "h": y1 - y0})
     out["areas"] = areas
     for key in ("walls", "obstacles"):
         if model.get(key) is not None:
@@ -170,18 +152,6 @@ def moved_site(
                 heading = _heading(heading, move.theta_deg)
             objects.append({**obj, "x": x, "y": y, "heading_deg": heading})
         out["objects"] = objects
-    extent = model.get("extent_mm")
-    if extent is not None:
-        _, _, x1, y1 = move.box((0, 0, extent[0], extent[1]))
-        far_x.append(x1)
-        far_y.append(y1)
-        for rect in keep_rects:
-            far_x.append(int(rect[2]))
-            far_y.append(int(rect[3]))
-        for p in keep_points:
-            far_x.append(math.ceil(p[0]))
-            far_y.append(math.ceil(p[1]))
-        out["extent_mm"] = [max(1, max(far_x)), max(1, max(far_y))]
     return out
 
 
@@ -234,6 +204,7 @@ def composed(
                 frame.shift,
                 new_site.anchor,
                 new_site.frame_id,
+                extent=new_site.extent_mm,
             )
         except site_turn.TurnRefused as exc:
             raise ComposeRefused(
@@ -244,6 +215,7 @@ def composed(
             ) from exc
         parts.append(site_turn.TAG_SUFFIX if frame.turns else site_turn.SHIFT_SUFFIX)
         warnings += site_turn.outside_warnings(result, new_site)
+        warnings += site_turn.cut_notes(source, frame.floor(), new_site.extent_mm)
         warnings += site_turn.widened_note(frame.theta_deg)
     if edit.stations:
         now = {st.index: st.coverage_mm for st in result.stations}
@@ -275,17 +247,3 @@ def composed(
         **lineage,
     )
     return result, warnings
-
-
-def kept_rects(calibration: Calibration) -> list[Rect]:
-    """Each station's coverage, to grow an extent round."""
-    return [tuple(int(v) for v in st.coverage_mm) for st in calibration.stations]
-
-
-def kept_points(calibration: Calibration) -> list[tuple[float, float]]:
-    """Every spin circle's centre, to grow an extent round."""
-    return [
-        (c["x"], c["y"])
-        for circles in spin_centres(calibration).values()
-        for c in circles
-    ]

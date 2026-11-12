@@ -32,6 +32,7 @@ from pydantic import BaseModel, Field
 
 from dotbot import site_backdrops, site_draft, site_history, site_placement, site_toml
 from dotbot.calibration import site_frame, site_turn, station_rule
+from dotbot.calibration.lighthouse2 import station_label
 from dotbot.calibration.placement import save_new, site_tags
 from dotbot.calibration.station_boxes import push_line
 from dotbot.config import ObjectKind, SiteSection
@@ -638,13 +639,15 @@ def create_app(
     @app.post("/api/frame")
     def frame_move(request: FrameRequest):
         """The draft after a move of the origin: its site and the file as
-        loaded, renumbered so everything stays where it is on the floor, the
-        drafted rectangles likewise, and the calibration's own coverage in
-        the moved frame. Nothing is written; a move a robot could not take
-        is refused with the largest legal shift."""
+        loaded, renumbered so everything stays where it is on the floor while
+        the extent moves with the frame at the draft's size, the drafted
+        rectangles likewise, and the calibration's own coverage in the moved
+        frame, both cut to that extent. Nothing is written; a move a robot
+        could not take is refused with the largest legal shift."""
         source = placement.resolve(request.calibration)
         site_now = placement.current_site()
         move = request.move
+        extent = request.site.extent_mm
         if move.moves:
             frame = site_frame.new_frame_id(
                 site_now.frame_id, move.theta_deg, move.pivot, move.shift
@@ -658,6 +661,7 @@ def create_app(
                     move.shift,
                     site_now.anchor,
                     frame,
+                    extent=extent,
                 )
             except site_turn.TurnRefused as exc:
                 raise refused(
@@ -671,34 +675,37 @@ def create_app(
         else:
             frame, moved = site_now.frame_id, source
         floor = site_draft.between(request.start, move)
-        stations = (
-            None
-            if request.stations is None
-            else {
-                index: [max(0, v) for v in floor.box(rect)]
-                for index, rect in request.stations.items()
-            }
-        )
-        keep = site_draft.kept_rects(moved) + list((stations or {}).values())
-        points = site_draft.kept_points(moved)
-        site = site_draft.moved_site(_model_dict(request.site), floor, keep, points)
+        stations = None
+        if request.stations is not None:
+            stations = {}
+            for index, rect in request.stations.items():
+                kept = site_turn.kept(floor, rect, extent)
+                if kept is None:
+                    raise refused(
+                        site_draft.ComposeRefused(
+                            f"{station_label(index)}'s drafted coverage would land "
+                            "wholly below zero, where a robot cannot report a position"
+                        )
+                    )
+                stations[index] = list(kept)
         warnings = []
         if move.moves:
-            # Measured points against the draft's extent once moved, not the file's
-            extent = site.get("extent_mm")
-            warnings = site_turn.outside_warnings(
-                moved,
-                dataclasses.replace(
-                    site_now, extent_mm=tuple(extent) if extent else None
-                ),
-            ) + site_turn.widened_note(move.theta_deg)
+            # Measured points against the draft's extent, not the file's
+            warnings = (
+                site_turn.outside_warnings(
+                    moved,
+                    dataclasses.replace(
+                        site_now, extent_mm=tuple(extent) if extent else None
+                    ),
+                )
+                + site_turn.cut_notes(source, move.floor(), extent)
+                + site_turn.widened_note(move.theta_deg)
+            )
         return {
             "frame": frame,
             "from_frame": site_now.frame_id,
-            "site": site,
-            "base": site_draft.moved_site(
-                _model_dict(request.base), move.floor(), keep, points
-            ),
+            "site": site_draft.moved_site(_model_dict(request.site), floor),
+            "base": site_draft.moved_site(_model_dict(request.base), move.floor()),
             "stations": stations,
             "coverage": {st.index: list(st.coverage_mm) for st in moved.stations},
             "warnings": warnings,

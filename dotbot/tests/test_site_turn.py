@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 """Turning a site on the floor or moving its zero: its calibrations saved
-again in a new frame, site.toml's frame id changed, no other number."""
+again in a new frame, site.toml's frame id changed, the extent moving with
+the frame at the same size."""
 
 import dataclasses
 import math
@@ -65,9 +66,8 @@ def test_a_turned_calibration_moves_every_fix_by_the_floor_move(placed):
         )
     assert result.id != placed.id
     assert [st.coverage_mm for st in result.stations] == [
-        tuple(max(0, v) for v in move.box(st.coverage_mm)) for st in placed.stations
+        site_turn.kept(move, st.coverage_mm, ARENA.extent_mm) for st in placed.stations
     ]
-    assert result.coverage_mm == tuple(max(0, v) for v in move.box(placed.coverage_mm))
     assert result.site == Site(name="arena", anchor="zero moved")
     assert plan_turn([placed], ARENA, 10, (1500, 2000), "zero moved")[0].site.frame
     assert result.edited_from == placed.id
@@ -76,29 +76,75 @@ def test_a_turned_calibration_moves_every_fix_by_the_floor_move(placed):
 
 
 def test_a_shift_keeps_the_coverage_where_it_is_on_the_floor(placed):
-    # Zero moves 500 mm left and up: what covered x 0-3000, y 0-4000 now
-    # covers x 500-3500, y 500-4500
-    result = turned(
-        placed, ARENA, 0, (0, 0), "", move=floor_move(0, (0, 0), (-500, -500))
-    )
+    # Zero moves 500 mm left and up and the 3000 x 4000 extent with it: what
+    # covered x 0-3000, y 0-4000 now covers x 500-3500, y 500-4500, cut to
+    # the extent
+    move = floor_move(0, (0, 0), (-500, -500))
+    result = turned(placed, ARENA, 0, (0, 0), "", move=move)
     assert placed.station(0).coverage_mm == (0, 0, 3000, 4000)
-    assert [st.coverage_mm for st in result.stations] == [(500, 500, 3500, 4500)] * len(
+    assert [st.coverage_mm for st in result.stations] == [(500, 500, 3000, 4000)] * len(
         placed.stations
     )
-    assert result.coverage_mm == (500, 500, 3500, 4500)
     assert result.tag == "spin-arena-moved"
-    move = floor_move(0, (0, 0), (-500, -500))
-    assert site_turn._kept(move, (0, 0, 1060, 1220)) == (500, 500, 1560, 1720)
+    assert site_turn.kept(move, (0, 0, 1060, 1220), None) == (500, 500, 1560, 1720)
+    assert site_turn.kept(move, (0, 0, 1060, 1220), (1000, 1000)) == (
+        500,
+        500,
+        1000,
+        1000,
+    )
+    (note, *_) = site_turn.cut_notes(placed, move, ARENA.extent_mm)
+    assert (
+        note == "S0's coverage reaches outside the extent once moved, and is cut to it"
+    )
     assert site_turn.widened_note(0) == []
 
 
+def test_a_shift_into_the_floor_moves_the_extent_and_keeps_its_size(placed):
+    # Zero moves 500 mm right: the extent's far edge moves 500 mm right too,
+    # and a coverage left of the new zero is cut there
+    move = floor_move(0, (0, 0), (500, 0))
+    result = turned(placed, ARENA, 0, (0, 0), "", move=move, extent=(3000, 4000))
+    assert result.station(0).coverage_mm == (0, 0, 2500, 4000)
+
+
+def test_a_coverage_wholly_outside_the_extent_is_kept_and_named(placed):
+    narrow = dataclasses.replace(
+        placed,
+        stations=[
+            dataclasses.replace(placed.stations[0], coverage_mm=(2800, 0, 3000, 4000)),
+            *placed.stations[1:],
+        ],
+    )
+    move = floor_move(0, (0, 0), (-500, 0))
+    result = turned(narrow, ARENA, 0, (0, 0), "", move=move, extent=(2000, 4000))
+    # coverage_mm holds any rectangle right of and below zero, so it stays
+    assert result.station(0).coverage_mm == (3300, 0, 3500, 4000)
+    assert site_turn.cut_notes(narrow, move, (2000, 4000))[0] == (
+        "S0's coverage reaches outside the extent once moved"
+    )
+
+
+def test_a_coverage_wholly_below_zero_is_refused(placed):
+    narrow = dataclasses.replace(
+        placed,
+        stations=[
+            dataclasses.replace(placed.stations[0], coverage_mm=(0, 0, 200, 4000)),
+            *placed.stations[1:],
+        ],
+    )
+    with pytest.raises(TurnRefused, match="wholly below zero"):
+        turned(narrow, ARENA, 0, (0, 0), "", move=floor_move(0, (0, 0), (500, 0)))
+
+
 def test_a_quarter_turn_swaps_the_box_sides(placed):
-    # A quarter turn about the floor's middle: 3000 wide by 4000 deep
-    # becomes 4000 wide by 3000 deep, at the same place on the floor
+    # A quarter turn about the floor's middle: a coverage 3000 wide by 4000
+    # deep is 4000 wide by 3000 deep in the turned frame, at the same place
+    # on the floor; the extent turns with the frame, so stays 3000 wide
     move = floor_move(90, (1500, 2000), (-500, 0))
+    assert move.box((0, 0, 3000, 4000)) == (0, 500, 4000, 3500)
     result = turned(placed, ARENA, 90, (1500, 2000), "", move=move)
-    assert result.station(0).coverage_mm == (0, 500, 4000, 3500)
-    assert result.coverage_mm == (0, 500, 4000, 3500)
+    assert result.station(0).coverage_mm == (0, 500, 3000, 3500)
     assert result.tag == "spin-arena-turned"
     assert site_turn.widened_note(90) == site_turn.widened_note(-270) == []
 
@@ -110,8 +156,7 @@ def test_any_other_turn_gives_the_box_round_the_turned_rectangle(placed):
     xs, ys = [p[0] for p in corners], [p[1] for p in corners]
     x0, y0, x1, y1 = result.station(0).coverage_mm
     assert (x0, y0) == (max(0, math.floor(min(xs))), max(0, math.floor(min(ys))))
-    assert (x1, y1) == (math.ceil(max(xs)), math.ceil(max(ys)))
-    assert x1 - x0 > 3000 and y1 - y0 > 4000 - 1
+    assert (x1, y1) == (min(3000, math.ceil(max(xs))), min(4000, math.ceil(max(ys))))
     assert site_turn.widened_note(30)
 
 
@@ -238,5 +283,19 @@ def test_site_turn_keeps_the_areas_where_they_are_on_the_floor(tmp_path, home, p
 
     site = site_model(parse((lab / "sites" / "arena" / "site.toml").read_text()))
     field = next(a for a in site["areas"] if a["name"] == "field")
-    assert (field["x"], field["y"]) == (500, 500)
-    assert site["extent_mm"][0] >= 3500 and site["extent_mm"][1] >= 4500
+    assert (field["x"], field["y"], field["w"], field["h"]) == (500, 500, 3000, 2000)
+    assert site["extent_mm"] == [3000, 4000]
+
+
+def test_site_turn_shift_inward_keeps_the_extent_size(tmp_path, home, placed):
+    lab = _lab(tmp_path)
+    write_calibration(placed)
+    result = _site_cmd(lab, "arena", "--shift=200,0", "--yes")
+    assert result.exit_code == 0, result.output
+    from dotbot.site_toml import parse, site_model
+
+    site = site_model(parse((lab / "sites" / "arena" / "site.toml").read_text()))
+    field = next(a for a in site["areas"] if a["name"] == "field")
+    # The field's left 200 mm now sits left of zero, with the numbers to say so
+    assert (field["x"], field["w"]) == (-200, 3000)
+    assert site["extent_mm"] == [3000, 4000]

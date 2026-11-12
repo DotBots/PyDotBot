@@ -6,7 +6,8 @@ its zero, or both, as one change with a new frame id.
 
 A point fixed on the floor gets new coordinates, so the served calibration
 is re-expressed by the floor's move as a new file recording the new frame
-id; its coverage stays where it is on the floor, with new numbers. Data
+id; the extent moves with the frame and keeps its size, and the coverage
+stays where it is on the floor, with new numbers, cut to the extent. Data
 logged before the change stays in the old frame.
 """
 
@@ -39,9 +40,11 @@ def moved(
     note: str,
     frame: str,
     taken_tags: Iterable[str] = (),
+    extent: Sequence[int] | None = None,
 ) -> Calibration:
     """`source` re-expressed in the moved frame `frame`, recording `note` as
-    where zero is; TurnRefused when a measured point would fall below zero."""
+    where zero is, its coverage cut to `extent` (the site's when None);
+    TurnRefused when a measured point would fall below zero."""
     if abs(theta_deg) < 1e-9 and abs(shift[0]) < 1e-9 and abs(shift[1]) < 1e-9:
         raise TurnRefused("nothing moves: give a turn or a shift")
     return turned(
@@ -53,6 +56,7 @@ def moved(
         taken_tags=taken_tags,
         move=floor_move(theta_deg, pivot, shift),
         frame=frame,
+        extent=extent,
     )
 
 

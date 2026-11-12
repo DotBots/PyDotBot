@@ -1008,9 +1008,10 @@ def _parse_point(_ctx, _param, value):
 def turn(ctx, site, rotate, about, shift, anchor, calibrations, yes):
     """Turn a site's frame on the floor or move its zero, as a new frame.
 
-    No number in site.toml changes, since the frame moves with the areas;
-    site.toml takes a new frame id, and each calibration of the site is saved
-    again, under a new id, in the new frame. Sends nothing: serve and push
+    The extent moves with zero and keeps its size; areas, walls and objects
+    keep their place on the floor with new numbers, and site.toml takes a
+    new frame id. Each calibration of the site is saved again, under a new
+    id, in the new frame, its coverage cut to the extent. Sends nothing: serve and push
     the new calibrations once they look right. The site editor's Frame kind
     does the same for the served calibration.
     """
@@ -1095,7 +1096,12 @@ def turn(ctx, site, rotate, about, shift, anchor, calibrations, yes):
     )
     for source, (cal, where) in zip(sources, saved):
         click.echo(f"  {source.id8} -> {cal.id8}, saved to {where}")
-        for line in site_turn.outside_warnings(cal, current) + coverage_warnings(cal):
+        notes = site_turn.cut_notes(
+            source, site_turn.floor_move(rotate, pivot, shift), current.extent_mm
+        )
+        for line in (
+            site_turn.outside_warnings(cal, current) + notes + coverage_warnings(cal)
+        ):
             click.echo(f"warning: {line}", err=True)
     click.echo(
         "Robots report in the old frame until they hold the new calibration; "
