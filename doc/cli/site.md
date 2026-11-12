@@ -24,8 +24,8 @@ detail.
 | Start a new site and edit it | `dotbot site new <name>` |
 | Turn the frame on the floor or move zero | `dotbot site turn [<name>] --rotate DEG --shift X,Y` |
 
-The [site editor guide](../guides/site-editor.md) covers the editor itself;
-the console opens the same editor on the controller's site.
+The [site page guide](../guides/site-page.md) covers the page itself; the
+console opens the same page on the controller's site.
 
 Onboarding at a site that publishes a pack is one command, then the controller:
 
@@ -199,11 +199,11 @@ dotbot site init spun --from-calibration 6b1a1c96 --size 3000x4000 # the field c
 
 ## `edit`
 
-Serves the [site editor](../guides/site-editor.md) on `127.0.0.1` for a site
+Serves the [site page](../guides/site-page.md) on `127.0.0.1` for a site
 pack, the active site by default, and opens it in a browser (`--headless`
 prints the URL instead; `--port` picks the port). With no controller behind
 it, it edits the files only: no robots, nothing served. A controller serves
-the same editor at `/controller/site-editor/` on its own site.
+the same page at `/controller/site-editor/` on its own site.
 
 ```bash
 dotbot site edit                 # the active site
@@ -240,7 +240,7 @@ dotbot site turn --shift 0,40 -y           # zero moves 40 mm down
 
 ## See also
 
-- [The site editor](../guides/site-editor.md) - the same work in the browser.
+- [The site page](../guides/site-page.md) - the same work in the browser.
 - [Configuration reference: sites](../reference/configuration.md#sites) - `site.toml`, area roles, the two homes.
 - [`dotbot config`](config.md) - `config show` names where the site, conn and swarm id came from.
 - [LH2 calibration](../guides/lh2-calibration.md) - calibrating a site.

@@ -53,7 +53,7 @@ DotBot id; `{application}` is `0` (DotBot) or `1` (SailBot).
 | `GET` | `/controller/cameras` | Registered overhead cameras currently serving a layer |
 | `GET` | `/controller/cameras/{area}/stream` | That area's camera, warped into its raster, as `multipart/x-mixed-replace` JPEG |
 
-Calibration, used by the console and the site editor (a page from another
+Calibration, used by the console and the site page (a page from another
 site is refused):
 
 | Method | Path | Purpose |
@@ -68,7 +68,7 @@ site is refused):
 | `GET` | `/controller/calibration/spin` | The spin run, or `null` |
 | `DELETE` | `/controller/calibration/spin` | Forget a finished spin run; its file stays |
 
-The site editor's own routes are under `/controller/site-editor/api/`. Any
+The site page's own routes are under `/controller/site-editor/api/`. Any
 page of the controller's origin may read them; they write only for a client
 on the controller's machine addressing it as `127.0.0.1` or `localhost`.
 
