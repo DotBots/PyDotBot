@@ -553,7 +553,7 @@ class Controller:
             "" if persist else ", for this run"
         )
         self.logger.info(
-            "Calibration served from the site editor",
+            "Calibration served from the site page",
             calibration_id=calibration.id,
             before=before,
             persist=persist,
@@ -1334,9 +1334,7 @@ class Controller:
         model = DotBotSiteModel.from_site(site, self.calibration)
         self.set_event("site", "site", model.model_dump(mode="json"))
         self.set_event("calibration_spin", "calibration_spin", None)
-        self.logger.info(
-            "Site switched from the site editor", site=name, dropped=dropped
-        )
+        self.logger.info("Site switched from the site page", site=name, dropped=dropped)
         return {"site": name, "pack": str(pack), "dropped": dropped}
 
     def reload_site(self) -> None:

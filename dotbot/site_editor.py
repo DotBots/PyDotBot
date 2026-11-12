@@ -222,16 +222,16 @@ def _refusal(scope) -> str | None:
     editor's own page or from no page at all, is let through."""
     client = scope.get("client")
     if client is None or not _is_loopback(client[0]):
-        return "the site editor answers this machine only"
+        return "the site page answers this machine only"
     headers = {
         key.decode("latin-1"): value.decode("latin-1")
         for key, value in scope.get("headers", [])
     }
     host = headers.get("host", "")
     if urlsplit(f"//{host}").hostname not in ("127.0.0.1", "localhost", "::1"):
-        return "the site editor answers 127.0.0.1 and localhost only"
+        return "the site page answers 127.0.0.1 and localhost only"
     if cross_site_refusal(headers) is not None:
-        return "the site editor answers its own page only"
+        return "the site page answers its own page only"
     return None
 
 
@@ -243,7 +243,7 @@ def _read_refusal(scope) -> str | None:
         for key, value in scope.get("headers", [])
     }
     if cross_site_refusal(headers) is not None:
-        return "the site editor answers its own page only"
+        return "the site page answers its own page only"
     return None
 
 
@@ -328,7 +328,7 @@ def create_app(
     `on_saved` after a save wrote the file, `context` says who opened it
     (`GET api/context`), `serve(spec, persist)` switches the calibration a
     controller serves. Without `page_dir` it serves the JSON routes only."""
-    app = FastAPI(title="DotBot site editor", docs_url=None, redoc_url=None)
+    app = FastAPI(title="DotBot site page", docs_url=None, redoc_url=None)
     app.add_middleware(LocalOnly)
 
     saving = threading.Lock()
@@ -986,7 +986,7 @@ def create_lobby_app(
     from dotbot.site_new import NewSiteRefused, home_beside, write_new_site
     from dotbot.site_packs import user_sites_dir
 
-    app = FastAPI(title="DotBot site editor, sites", docs_url=None, redoc_url=None)
+    app = FastAPI(title="DotBot site page, sites", docs_url=None, redoc_url=None)
     app.add_middleware(LocalOnly)
 
     def homes() -> list[Path]:

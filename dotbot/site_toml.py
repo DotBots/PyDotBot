@@ -53,7 +53,7 @@ def _named_table(doc: TOMLDocument, key: str) -> Table | None:
     table = doc[key]
     if not isinstance(table, Table):
         raise SiteTomlError(
-            f"the site editor edits {key} written as one run of [{key}.<name>] "
+            f"the site page edits {key} written as one run of [{key}.<name>] "
             f"tables, or as one [{key}] table; this file writes them otherwise "
             "(split by another table, as dotted keys or inline), so edit it by "
             "hand or gather them first"
@@ -108,7 +108,7 @@ def _barriers_table(doc: TOMLDocument, key: str) -> AoT | None:
     items = doc[key]
     if not isinstance(items, AoT):
         raise SiteTomlError(
-            f"the site editor edits {key} written as [[{key}]] tables; this file "
+            f"the site page edits {key} written as [[{key}]] tables; this file "
             "writes them otherwise (inline), so edit it by hand or rewrite them "
             "that way first"
         )

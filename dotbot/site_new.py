@@ -139,7 +139,7 @@ def write_new_site(
             name=name, anchor=note, extent_mm=size_mm if start == "size" else None
         )
         header = (
-            f"Site {name}, written by the site editor.\n"
+            f"Site {name}, written by the site page.\n"
             "The frame's zero is the anchor, x right, y down, mm."
         )
     text = render_pack(site, header)

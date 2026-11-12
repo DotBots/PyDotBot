@@ -81,7 +81,7 @@ def append_check(
         ""
         if path.exists()
         else "# Checks on a mark: a robot's fix against a taped mark, appended by\n"
-        "# the site editor; calibration files are never rewritten.\n"
+        "# the site page; calibration files are never rewritten.\n"
     )
     with open(path, "a", encoding="utf-8") as handle:
         handle.write(head + "\n".join(lines) + "\n")

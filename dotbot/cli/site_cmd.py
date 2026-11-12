@@ -7,7 +7,7 @@ A site pack is a folder holding `site.toml` and optionally `calibrations/`
 (`dotbot.site_packs`). `add` copies one into ~/.dotbot/sites/, where every
 folder finds it; `init` writes one around a spin calibration's robots; `use`
 makes a site the active one; `list` and `show` read; `export` writes one as a
-zip; `new` and `edit` open the site editor on a pack; `turn` turns one on
+zip; `new` and `edit` open the site page on a pack; `turn` turns one on
 the floor. The same folders can be shared with git, cp or unzip.
 """
 
@@ -669,7 +669,7 @@ def _editor_socket(port: int):
 
     if not (EDITOR_DIR / EDITOR_PAGE).is_file():
         raise click.ClickException(
-            f"the site editor page is not built ({EDITOR_DIR / EDITOR_PAGE} is "
+            f"the site page is not built ({EDITOR_DIR / EDITOR_PAGE} is "
             "missing). From a PyDotBot checkout, build it with: npm --prefix "
             "dotbot/console-web install && npm --prefix dotbot/console-web run "
             "build"
@@ -739,7 +739,7 @@ def _serve_editor(
     )
     server = uvicorn.Server(uvicorn.Config(app, log_level="warning"))
     click.echo(f"Editing site {name} ({pack / PACK_FILE})")
-    click.echo(f"Site editor at {url} - Ctrl-C or Done to stop")
+    click.echo(f"Site page at {url} - Ctrl-C or Done to stop")
     if not headless:
         threading.Thread(target=webbrowser.open, args=(url,), daemon=True).start()
     try:
@@ -753,10 +753,10 @@ _PORT = click.option(
     type=click.IntRange(0, 65535),
     default=0,
     show_default="a free port",
-    help="Port on 127.0.0.1 to serve the editor on.",
+    help="Port on 127.0.0.1 to serve the site page on.",
 )
 _HEADLESS = click.option(
-    "--headless", is_flag=True, help="Print the editor's URL; don't open a browser."
+    "--headless", is_flag=True, help="Print the site page's URL; don't open a browser."
 )
 
 
@@ -877,7 +877,7 @@ def init(ctx, name, calibration, size, force):
 @_HEADLESS
 @click.pass_context
 def new(ctx, name, field_spec, port, headless):
-    """Write a new site pack, then open the editor on it.
+    """Write a new site pack, then open the site page on it.
 
     The pack goes in sites/NAME/ beside the project's dotbot.toml when one is
     in use, else in ~/.dotbot/sites/NAME/, so `dotbot site use NAME` finds it
@@ -944,7 +944,7 @@ def _pack_of(ctx, site) -> tuple[str, Path]:
 @_HEADLESS
 @click.pass_context
 def edit(ctx, site, port, headless):
-    """Open the site editor on a site pack, at 127.0.0.1.
+    """Open the site page on a site pack, at 127.0.0.1.
 
     SITE is a site name or a pack folder's path; it defaults to the active
     site.
@@ -1012,7 +1012,7 @@ def turn(ctx, site, rotate, about, shift, anchor, calibrations, yes):
     keep their place on the floor with new numbers, and site.toml takes a
     new frame id. Each calibration of the site is saved again, under a new
     id, in the new frame, its coverage cut to the extent. Sends nothing: serve and push
-    the new calibrations once they look right. The site editor's Frame kind
+    the new calibrations once they look right. The site page's Frame kind
     does the same for the served calibration.
     """
     from dotbot import site_toml

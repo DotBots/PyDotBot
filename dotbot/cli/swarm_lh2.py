@@ -1032,7 +1032,7 @@ def _parse_shift(_ctx, _param, value):
         "station from the stored samples, and save a new file with a new id "
         "under ~/.dotbot/calibrations/<site>/. A spin calibration has no "
         "placements: it is moved as one rigid body instead, every station "
-        "with it, as the site editor places one."
+        "with it, as the site page places one."
     ),
 )
 @click.argument("calibration")
