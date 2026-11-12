@@ -113,9 +113,20 @@ describe("the serve sheet's send", () => {
   const ctx = { served: lib, started_with: null, next_start: null, persist_path: null } as unknown as EditorContext;
   const bot = (id: string) => ({ id, state: "Running", swarmit: { info: { info_version: 4, lh2_calibration_id: "aaaaaaaaaaaaaaaa" } } }) as unknown as UnifiedBot;
 
+  const tickAll = () => [A, B].forEach((id) => fireEvent.click(screen.getByLabelText(`Send to …${id.slice(-6)}`)));
+
+  it("leaves robots in their app unticked until chosen", () => {
+    const { deps } = fakeDeps();
+    render(<ServeSheet row={lib} served={lib} context={ctx} bots={[bot(A), bot(B)]} site="s" onClose={() => {}} onServed={() => {}} onStale={async () => ctx} onVerify={() => {}} deps={deps} />);
+    expect(screen.getByTestId("serve-send").textContent).toBe("Nothing to send");
+    fireEvent.click(screen.getByLabelText(`Send to …${A.slice(-6)}`));
+    expect(screen.getByTestId("serve-send").textContent).toBe("Stop 1 app and send to 1");
+  });
+
   it("on a refused push shows the error and offers no next step", async () => {
     const { deps } = fakeDeps({ pushFails: "push refused: no robot answered" });
     render(<ServeSheet row={lib} served={lib} context={ctx} bots={[bot(A), bot(B)]} site="s" onClose={() => {}} onServed={() => {}} onStale={async () => ctx} onVerify={() => {}} deps={deps} />);
+    tickAll();
     expect(screen.getByTestId("serve-send").textContent).toBe("Stop 2 apps and send to 2");
     await act(async () => void fireEvent.click(screen.getByTestId("serve-send")));
     expect(screen.getByTestId("serve-result").textContent).toContain("Not sent: push refused: no robot answered");
@@ -125,6 +136,7 @@ describe("the serve sheet's send", () => {
   it("after a send names the next step by whether the site is anchored", async () => {
     const { deps } = fakeDeps();
     render(<ServeSheet row={lib} served={lib} context={ctx} bots={[bot(A), bot(B)]} site="s" onClose={() => {}} onServed={() => {}} onStale={async () => ctx} onVerify={() => {}} deps={deps} />);
+    tickAll();
     await act(async () => void fireEvent.click(screen.getByTestId("serve-send")));
     expect(screen.getByTestId("serve-result").textContent).toContain("2 of 2 hold bench. Restarted 2 apps.");
     expect(screen.getByTestId("serve-verify").textContent).toBe("Anchor the frame");

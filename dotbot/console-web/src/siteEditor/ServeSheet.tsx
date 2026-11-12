@@ -37,7 +37,7 @@ export const ServeSheet: React.FC<{
   const [conflict, setConflict] = useState<string>("");
   const rows = pushRows(bots, row.id);
   const pushable = (r: PushRow) => r.holds !== "not reported" && r.holds !== "old firmware";
-  const [ticked, setTicked] = useState<Set<string>>(() => new Set(rows.filter((r) => pushable(r) && !r.current).map((r) => r.id)));
+  const [ticked, setTicked] = useState<Set<string>>(() => new Set(rows.filter((r) => pushable(r) && !r.current && !r.appStops).map((r) => r.id)));
   const cancelRef = useRef<HTMLButtonElement | null>(null);
   useEffect(() => cancelRef.current?.focus(), []);
   const busy = phase.kind === "busy";
