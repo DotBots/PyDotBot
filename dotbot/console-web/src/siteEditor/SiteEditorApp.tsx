@@ -88,8 +88,6 @@ const MAP_GAP = 8;
 const MAP_MARGIN = 12;
 /** How often the page checks whether site.toml changed on disk, ms. */
 export const FILE_POLL_MS = 2000;
-/** Where this browser keeps the last 3D camera. */
-export const CAMERA_KEY = "dotbot.siteEditor.camera";
 /** How long the camera takes between the 3D view and the top-down edit, ms. */
 export const TURN_MS = 500;
 
@@ -270,17 +268,9 @@ export const SiteEditorApp: React.FC = () => {
   const [servedCoverage, setServedCoverage] = useState<Coverage | null>(null);
   const [checks, setChecks] = useState<CheckRecord[]>([]);
   const [present, setPresent] = useState(false);
-  // The one map: always opens in 3D, on the camera this browser last left
+  // The one map: every load opens in View, in 3D, at the 3/4 preset
   const [stage, setStage] = useState<Stage>("3d");
-  const [roomCam, setRoomCam] = useState<RoomCam>(() => {
-    try {
-      const kept = JSON.parse(window.localStorage.getItem(CAMERA_KEY) ?? "null");
-      if (kept && Number.isFinite(kept.az) && Number.isFinite(kept.el)) return { az: kept.az, el: kept.el };
-    } catch {
-      // no storage, or nothing kept: the 3/4 view
-    }
-    return HOME;
-  });
+  const [roomCam, setRoomCam] = useState<RoomCam>(HOME);
   const [roomZoom, setRoomZoom] = useState<Zoom>(FIT);
   const [mapSize, setMapSize] = useState<Size>({ w: 900, h: 600 });
   // The centre's width in every view, set only to measure the kinds bar again; mapSize follows the 3D view only
@@ -1016,18 +1006,9 @@ export const SiteEditorApp: React.FC = () => {
   useEffect(() => {
     if (kind !== "view" && (stage === "3d" || stage === "fromTop")) enterEdit();
   }, [kind]);
-  // The last 3D camera, kept in this browser
+  // The last 3D camera, to come back to after editing
   useEffect(() => {
-    if (stage !== "3d") return;
-    lastCam.current = roomCam;
-    const t = window.setTimeout(() => {
-      try {
-        window.localStorage.setItem(CAMERA_KEY, JSON.stringify({ az: Math.round(roomCam.az * 10) / 10, el: Math.round(roomCam.el * 10) / 10 }));
-      } catch {
-        // no storage: the camera lasts this visit
-      }
-    }, 300);
-    return () => window.clearTimeout(t);
+    if (stage === "3d") lastCam.current = roomCam;
   }, [roomCam, stage]);
   const mapIn3d = presenting || stage !== "edit";
   /** A hand on the 3D view: any turn stops there, and the view is the 3D one,

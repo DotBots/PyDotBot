@@ -504,19 +504,37 @@ describe("the one map", () => {
     expect(screen.getByTestId("area-arena")).toBeTruthy();
   });
 
-  it("keeps the last 3D camera in this browser, and a preset resets the zoom", async () => {
+  it("a preset resets the zoom", async () => {
     stub();
-    const first = render(<SiteEditorApp />);
+    render(<SiteEditorApp />);
     await waitFor(() => expect(screen.getByTestId("room-view")).toBeTruthy());
     fireEvent.click(screen.getByLabelText("Zoom in"));
     expect(screen.getByTestId("room-fit").className).toBe("");
     fireEvent.click(preset("Front"));
     expect(screen.getByTestId("room-fit").className).toBe("on");
-    await waitFor(() => expect(JSON.parse(window.localStorage.getItem("dotbot.siteEditor.camera") ?? "{}")).toEqual({ az: 0, el: 10 }));
+  });
+
+  it("opens every load in View, 3D, at 3/4, whatever this browser kept, with the draft restored", async () => {
+    stub();
+    window.localStorage.setItem("dotbot.siteEditor.camera", JSON.stringify({ az: 0, el: 90 }));
+    window.localStorage.setItem("dotbot.siteEditor.mode", "edit");
+    const first = render(<SiteEditorApp />);
+    await toPlan();
+    keyDown("4");
+    fireEvent.click(screen.getByRole("tab", { name: "Outline" }));
+    fireEvent.click(screen.getByTestId("outline-area:field"));
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "arena" } });
+    fireEvent.keyDown(screen.getByLabelText("Name"), { key: "Enter" });
+    await waitFor(() => expect(screen.getByTestId("unsaved").textContent).toContain("1 unsaved"));
+    expect(screen.getByTestId("plan")).toBeTruthy();
     first.unmount();
     render(<SiteEditorApp />);
-    await waitFor(() => expect(screen.getByTestId("room-view")).toBeTruthy());
-    expect(preset("Front").getAttribute("aria-pressed")).toBe("true");
+    await waitFor(() => expect(screen.getByTestId("notice").textContent).toContain("restored from this browser"));
+    expect(screen.getByTestId("room-view")).toBeTruthy();
+    expect(screen.queryByTestId("plan")).toBeNull();
+    expect(screen.getByRole("tab", { name: /^View/ }).getAttribute("aria-selected")).toBe("true");
+    expect(preset("3/4").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByTestId("room-label-area-area:field").textContent).toBe("arena");
   });
 
   it("presents the same map full screen, and Edit · Esc or Esc goes back to the editor in 3D", async () => {
