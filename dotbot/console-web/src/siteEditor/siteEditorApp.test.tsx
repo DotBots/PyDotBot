@@ -273,21 +273,56 @@ describe("the anchor flow from the page", () => {
 });
 
 describe("rows look, buttons act", () => {
-  it("a row click selects its subject and shows it, in 3D, without a flow or a kind", async () => {
+  it("a row click selects its subject and picks its kind top-down, without a flow", async () => {
     fleet.bots = [holding("DE00000000002222", served.id)];
     stubFetch();
     render(<SiteEditorApp />);
     fireEvent.click(await screen.findByTestId("goal-floor"));
     expect(screen.getByTestId("inspector-floor")).toBeTruthy();
     expect(screen.getByTestId("goal-floor").getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getByTestId("room-view")).toBeTruthy();
-    expect(screen.getByRole("tab", { name: /^View/ }).getAttribute("aria-selected")).toBe("true");
+    await waitFor(() => expect(screen.getByTestId("plan")).toBeTruthy());
+    expect(screen.getByRole("tab", { name: /^Extent/ }).getAttribute("aria-selected")).toBe("true");
     // The floor is measured: nothing to do, so no button
     expect(screen.queryByTestId("act-floor")).toBeNull();
     fireEvent.click(screen.getByTestId("goal-anchor"));
     expect(screen.getByTestId("inspector-anchor")).toBeTruthy();
+    expect(screen.getByRole("tab", { name: /^Anchor/ }).getAttribute("aria-selected")).toBe("true");
     expect(screen.queryByTestId("anchor-panel")).toBeNull();
     expect(screen.getByTestId("act-anchor").textContent).toBe("Anchor with a robot…");
+  });
+
+  it("each row with a kind picks that kind on the map, on Select", async () => {
+    stubFetch({
+      "api/site": () =>
+        new Response(
+          JSON.stringify({ ...SITE, site: { ...SITE.site, walls: [{ name: "north", points: [[0, 0], [1060, 0]] }], objects: [{ type: "charger", name: "c1", x: 100, y: 100 }] }, text: TEXT }),
+          { status: 200 },
+        ),
+    });
+    render(<SiteEditorApp />);
+    const rows: [string, RegExp][] = [
+      ["goal-stations", /^Stations/],
+      ["goal-floor", /^Extent/],
+      ["goal-anchor", /^Anchor/],
+      ["goal-areas", /^Areas/],
+      ["goal-walls", /^Walls/],
+      ["goal-objects", /^Objects/],
+    ];
+    for (const [row, tab] of rows) {
+      fireEvent.click(await screen.findByTestId(row));
+      await waitFor(() => expect(screen.getByTestId("plan")).toBeTruthy());
+      expect(screen.getByRole("tab", { name: tab }).getAttribute("aria-selected")).toBe("true");
+      expect(screen.getByRole("button", { name: "Select" }).getAttribute("aria-pressed")).toBe("true");
+    }
+  });
+
+  it("on a page that cannot write, a row selects its subject in View", async () => {
+    stubFetch({ "api/context": () => new Response(JSON.stringify({ ...CONTEXT, can_write: false }), { status: 200 }) });
+    render(<SiteEditorApp />);
+    fireEvent.click(await screen.findByTestId("goal-stations"));
+    expect(screen.getByTestId("goal-stations").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByTestId("room-view")).toBeTruthy();
+    expect(screen.queryByTestId("plan")).toBeNull();
   });
 
   it("says anchoring needs a robot, and keeps its button off until one reports a position", async () => {

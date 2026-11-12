@@ -627,20 +627,20 @@ export const SiteEditorApp: React.FC = () => {
     if (go.sheet === "split") splitNow();
     setRightTab("inspect");
   };
-  /** A Checks row clicked: its subject selected and inspected, in 3D or
-   * top-down as the map is; nothing else changes. */
+  /** A Checks row clicked: its subject selected and inspected and, on a page
+   * that can write, its kind picked on the map, top-down. */
   const selectGoal = (g: Goal) => {
     if (!closeFlows()) return;
     setSelected(g.subject);
     setEdge(null);
     setRightTab("inspect");
-    // Walls and Objects open top-down on their drawing tool while there are none, else on Select
-    if (editable && draft && (g.id === "walls" || g.id === "objects")) {
-      const none = g.id === "walls" ? !draft.doc.walls.length && !draft.doc.obstacles.length : !draft.doc.objects.length;
-      setView("plan");
-      setKind(g.id);
-      setTool(none ? (g.id === "walls" ? "wall" : "charger") : "select");
-    }
+    const k = g.subject.length ? kindOfKey(g.subject[0]) : "view";
+    if (!editable || !draft || k === "view") return;
+    setView("plan");
+    setKind(k);
+    // Walls and Objects open on their drawing tool while there are none, else on Select
+    const none = k === "walls" ? !draft.doc.walls.length && !draft.doc.obstacles.length : k === "objects" ? !draft.doc.objects.length : false;
+    setTool(none ? (k === "walls" ? "wall" : "charger") : "select");
   };
   const blocking = problems.filter((p) => p.blocking);
 
