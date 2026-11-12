@@ -582,26 +582,6 @@ describe("the one map", () => {
     expect(screen.getByTestId("room-label-area-area:field").textContent).toBe("arena");
   });
 
-  it("presents the same map full screen, and Edit · Esc or Esc goes back to the editor in 3D", async () => {
-    stub();
-    render(<SiteEditorApp />);
-    await waitFor(() => expect(screen.getByTestId("room-view")).toBeTruthy());
-    fireEvent.click(screen.getByTestId("present"));
-    await waitFor(() => expect(screen.getByTestId("presbar")).toBeTruthy());
-    expect(screen.getByTestId("present-edit").textContent).toContain("Edit · Esc");
-    expect(screen.queryByText("Exit")).toBeNull();
-    fireEvent.click(screen.getByTestId("present-edit"));
-    await waitFor(() => expect(screen.queryByTestId("presbar")).toBeNull());
-    expect(screen.getByTestId("room-view")).toBeTruthy();
-    keyDown("f");
-    await waitFor(() => expect(screen.getByTestId("presbar")).toBeTruthy());
-    keyDown("2");
-    expect(screen.queryByTestId("plan")).toBeNull();
-    keyDown("Escape");
-    await waitFor(() => expect(screen.queryByTestId("presbar")).toBeNull());
-    expect(screen.getByTestId("room-view")).toBeTruthy();
-  });
-
   it("follows a drafted split: the canvas, the legend and the Coverage check all describe the draft", async () => {
     stub();
     render(<SiteEditorApp />);

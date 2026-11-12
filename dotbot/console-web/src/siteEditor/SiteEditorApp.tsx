@@ -50,12 +50,12 @@ import { FileView } from "./FileView";
 import { useFold } from "./fold";
 import { Icon, type IconName } from "./icons";
 import { Inspector } from "./Inspector";
-import { EDITOR_SHORTCUTS, KIND_KEY, KIND_LABEL, KINDS, keyAction, ORIGIN_HINT, PRESENT_KEY, SHARED_KEY, TOOL_ICON, TOOL_LABEL, TOOLS, type EditKind, type Tool } from "./keys";
+import { EDITOR_SHORTCUTS, KIND_KEY, KIND_LABEL, KINDS, keyAction, ORIGIN_HINT, SHARED_KEY, TOOL_ICON, TOOL_LABEL, TOOLS, type EditKind, type Tool } from "./keys";
 import { LibraryPane, type LibraryAction } from "./LibraryPane";
 import { coverageText, nameOf, residuals, when } from "./library";
 import { docFromPayload, docFromSite, movedDoc, siteModel, type AnchorSpot, type Doc, type Point } from "./model";
 import { saveBody } from "./save";
-import { pushOf, SERVED_HERE, sourceText, statusOf, statusText } from "./status";
+import { pushOf, SERVED_HERE, sourceText, statusOf } from "./status";
 import { StatusLine, StatusSide } from "./StatusLine";
 import { OutlinePane } from "./OutlinePane";
 import { DEFAULT_LAYERS, extentResized, isWhole, kindOfKey, PlanCanvas, type PlanLayers, type PlanPaint, type StationPose } from "./PlanCanvas";
@@ -266,7 +266,6 @@ export const SiteEditorApp: React.FC = () => {
   const [anchorFlow, setAnchorFlow] = useState<{ mode: AnchorWork["mode"]; works: Partial<Record<AnchorWork["mode"], AnchorWork>> }>({ mode: "anchor", works: {} });
   const [servedCoverage, setServedCoverage] = useState<Coverage | null>(null);
   const [checks, setChecks] = useState<CheckRecord[]>([]);
-  const [present, setPresent] = useState(false);
   // The one map: every load opens in View, in 3D, at the 3/4 preset
   const [stage, setStage] = useState<Stage>("3d");
   const [roomCam, setRoomCam] = useState<RoomCam>(HOME);
@@ -503,7 +502,6 @@ export const SiteEditorApp: React.FC = () => {
   const frameOpen = !!frameChange && (bots.length === 0 || frameHeld < bots.length);
   const editable = context?.can_write !== false;
   const noSite = !!context?.no_site;
-  const presenting = present && !noSite && !placeParam;
   const servedRowNow = rows.find((r) => r.id === servedId) ?? null;
   useEffect(() => {
     setServedCoverage(null);
@@ -552,37 +550,21 @@ export const SiteEditorApp: React.FC = () => {
       })
     : [];
   const verdict = verdictOf(goalList);
-  const startPresent = () => {
-    setMenu(false);
-    setDrawer(null);
-    if (stage === "edit" || stage === "toTop") {
-      stopTurn();
-      setKind("view");
-      setTool("select");
-      setView("plan");
-      setRoomCam(lastCam.current);
-      setStage("3d");
-    }
-    setPresent(true);
-  };
-  const stopPresent = () => setPresent(false);
   /** The Table or the File view, in place of the map, at once. */
   const openSheet = (v: View) => {
     stopTurn();
     if (stage === "3d" || stage === "fromTop") lastCam.current = stage === "3d" ? roomCam : lastCam.current;
-    setPresent(false);
     setStage("edit");
     setRoomCam(TOP_DOWN);
     setView(v);
   };
   useEffect(() => {
-    if (!presenting && !restoring) return;
+    if (!restoring) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       e.preventDefault();
       e.stopImmediatePropagation();
-      if (restoring) setRestoring(null);
-      else stopPresent();
+      setRestoring(null);
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
@@ -733,7 +715,7 @@ export const SiteEditorApp: React.FC = () => {
       () => {},
     );
   };
-  const frameGrabbable = kind === "frame" && editable && stage === "edit" && view === "plan" && !presenting && !!frameSource && tool !== "measure";
+  const frameGrabbable = kind === "frame" && editable && stage === "edit" && view === "plan" && !!frameSource && tool !== "measure";
   // The origin dragged on the plan shifts it, its turn handle turns the frame
   // about it: the turn panel opens on the move and follows it
   const onFrameDrag = (what: "shift" | "turn", from: Point, to: Point, keys: { alt: boolean; shift: boolean }, done: boolean) => {
@@ -772,7 +754,7 @@ export const SiteEditorApp: React.FC = () => {
   // calibration to move
   const [extentPending, setExtentPending] = useState<Rect | null>(null);
   const extentHandles: Handle[] | undefined =
-    kind === "frame" && editable && stage === "edit" && view === "plan" && !presenting && tool !== "measure" && !!draft?.doc.extent_mm
+    kind === "frame" && editable && stage === "edit" && view === "plan" && tool !== "measure" && !!draft?.doc.extent_mm
       ? frameSource
         ? HANDLES
         : ["e", "se", "s"]
@@ -1088,7 +1070,7 @@ export const SiteEditorApp: React.FC = () => {
   useEffect(() => {
     if (stage === "3d") lastCam.current = roomCam;
   }, [roomCam, stage]);
-  const mapIn3d = presenting || stage !== "edit";
+  const mapIn3d = stage !== "edit";
   /** A hand on the 3D view: any turn stops there, and the view is the 3D one,
    * not an edit on its way. */
   const grabMap = () => {
@@ -1206,14 +1188,6 @@ export const SiteEditorApp: React.FC = () => {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const ctrl = holds(e, "ctrl");
-      if (!ctrl && !e.altKey && !e.metaKey && !reviewing && !typingIn(e.target) && !noSite && e.key.toLowerCase() === PRESENT_KEY.toLowerCase()) {
-        e.preventDefault();
-        if (presenting) stopPresent();
-        else startPresent();
-        return;
-      }
-      // Presenting, the page takes no editing key
-      if (presenting) return;
       if (!editable && (ctrl || e.key.startsWith("Arrow") || e.key === "Delete" || e.key === "Backspace")) return;
       if (ctrl && e.key.toLowerCase() === "s" && !reviewing) {
         e.preventDefault();
@@ -1672,7 +1646,7 @@ export const SiteEditorApp: React.FC = () => {
   const leftProblems = blocking.length;
 
   return (
-    <div ref={seEl} className={`se${narrow ? " narrow" : ""}${presenting ? " present" : ""}`} data-theme={theme}>
+    <div ref={seEl} className={`se${narrow ? " narrow" : ""}`} data-theme={theme}>
       <TitleBar gap={10}>
         {headerFold < 7 && (
           <span className="selbl" data-testid="page-title" title={payload?.path} style={{ display: "flex", alignItems: "center", gap: 7, fontWeight: 600, fontSize: 13, flex: "none" }}>
@@ -1685,24 +1659,6 @@ export const SiteEditorApp: React.FC = () => {
               </>
             )}
           </span>
-        )}
-        {!noSite && (
-          <button
-            type="button"
-            data-testid="present"
-            className={`btn primary presentbtn${presenting ? " on" : ""}`}
-            aria-pressed={presenting}
-            aria-label={headerFold < 5 ? undefined : "Present"}
-            title={presenting ? `Back to editing (${PRESENT_KEY} or Esc)` : `The site in 3D, full screen, for a projector (${PRESENT_KEY})`}
-            onClick={() => (presenting ? stopPresent() : startPresent())}
-          >
-            <Icon name="present" />
-            {headerFold < 5 && (
-              <>
-                Present <span className="kbd">{PRESENT_KEY}</span>
-              </>
-            )}
-          </button>
         )}
         {width >= LEFT_FOLD_PX && headerFold < 3 && (
           <span className="live" title={live ? "Robots and Stop come from the controller that opened this page" : "Opened with dotbot site edit: no controller, no robots"}>
@@ -1921,8 +1877,7 @@ export const SiteEditorApp: React.FC = () => {
                 stationFit={shown ? Object.fromEntries(shown.stations.map((s) => [s.index, s.residual_mm])) : undefined}
                 coverageNote={coverageNote}
                 light={theme === "light"}
-                large={presenting}
-                insets={presenting ? { top: 84, bottom: 20 } : editInsets}
+                insets={editInsets}
                 cam={roomCam}
                 zoom={roomZoom}
                 onCam={(c) => {
@@ -1942,7 +1897,7 @@ export const SiteEditorApp: React.FC = () => {
                   setRightTab("inspect");
                 }}
                 selected={selected}
-                onOrigin={editable && !presenting ? () => setToast({ text: ORIGIN_HINT }) : undefined}
+                onOrigin={editable ? () => setToast({ text: ORIGIN_HINT }) : undefined}
               />
             ) : view === "plan" ? (
               <PlanCanvas
@@ -2059,19 +2014,6 @@ export const SiteEditorApp: React.FC = () => {
           ) : (
             <div style={{ margin: "auto", color: "var(--muted)", fontSize: 12 }}>{error ? "" : "Reading site.toml…"}</div>
           )}
-          {presenting && (
-            <div className="float presbar" data-testid="presbar">
-              <span className="dot" style={{ width: 12, height: 12, background: verdict.fails ? "var(--err)" : verdict.needs ? "var(--warn)" : "var(--ok)" }} />
-              <b>{verdict.title}</b>
-              <span className="muted" style={{ fontSize: 15 }}>
-                {statusText(status)}
-              </span>
-              <span className="sp" style={{ flex: 1 }} />
-              <button type="button" className="btn primary" data-testid="present-edit" onClick={stopPresent} title="Leave Present for editing, in 3D (Esc)">
-                <Icon name="select" /> Edit · <span className="kbd">Esc</span>
-              </button>
-            </div>
-          )}
           <div ref={kindsEl} className={`float kinds${KINDS_FOLDS[kindsFold]}`} data-testid="editing-switch" role="tablist" aria-label="Editing">
             {stage === "edit" || stage === "toTop" ? (
               <button type="button" className="btn primary sm" data-testid="done-editing" title="Back to the 3D view; the draft stays (Esc)" onClick={() => leaveEdit()}>
@@ -2120,7 +2062,7 @@ export const SiteEditorApp: React.FC = () => {
               robots report in the old origin until pushed
             </div>
           )}
-          {draft && !presenting && (stage !== "edit" || view === "plan") && (
+          {draft && (stage !== "edit" || view === "plan") && (
             <MapPresets
               below={kindsFold === KINDS_LAST}
               cam={stage === "edit" ? null : roomCam}
@@ -2135,18 +2077,6 @@ export const SiteEditorApp: React.FC = () => {
                       onFit: () => setRoomZoom(FIT),
                     }
               }
-            />
-          )}
-          {presenting && (
-            <MapPresets
-              cam={roomCam}
-              onPreset={onPreset}
-              zoom={{
-                fit: roomZoom.k === 1 && roomZoom.tx === 0 && roomZoom.ty === 0,
-                onIn: () => setRoomZoom((z) => zoomAt(z, 1.4, [mapSize.w / 2, mapSize.h / 2], mapSize)),
-                onOut: () => setRoomZoom((z) => zoomAt(z, 1 / 1.4, [mapSize.w / 2, mapSize.h / 2], mapSize)),
-                onFit: () => setRoomZoom(FIT),
-              }}
             />
           )}
           {stage === "edit" && view !== "plan" && (

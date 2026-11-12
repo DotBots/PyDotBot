@@ -51,7 +51,6 @@ const PATHS = {
   search: `<circle cx="11" cy="11" r="6"/><path d="M16 16l4 4"/>`,
   copy: `<rect x="8" y="8" width="11" height="11" rx="2"/><path d="M5 15V6a1 1 0 0 1 1-1h9"/>`,
   play: `<path d="M8 5.5v13l10.5-6.5z"/>`,
-  present: `<rect x="3" y="4.5" width="18" height="12" rx="1.5"/><path d="M12 16.5V20M8.5 20h7"/>`,
   compare: `<rect x="3.5" y="5" width="7" height="14" rx="1.2"/><rect x="13.5" y="5" width="7" height="14" rx="1.2"/>`,
   archive: `<rect x="3.5" y="4.5" width="17" height="4.5" rx="1"/><path d="M5 9v10.5h14V9M10 13h4"/>`,
   tag: `<path d="M3.5 12.5V4.5h8l9 9-8 8z"/><circle cx="8" cy="9" r="1.4"/>`,

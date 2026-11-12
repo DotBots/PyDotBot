@@ -160,7 +160,7 @@ export function robotsText(s: Status): string {
 /** "3 unsaved changes", "" with none. */
 export const unsavedText = (n: number) => (n ? `${n} unsaved change${n === 1 ? "" : "s"}` : "");
 
-/** The whole line as text, for the Present bar and for tests. */
+/** The whole line as text, for the status line and for tests. */
 export function statusText(s: Status): string {
   const tail = [unsavedText(s.unsaved), s.kind === "using" && s.fleet ? `robots: ${robotsText(s)}` : ""].filter(Boolean);
   const head = s.kind === "files" ? (s.id ? `Files only · the config names ${s.name}` : "Files only · no calibration named") : s.kind === "none" ? "No calibration in use" : `Using ${s.name}`;
