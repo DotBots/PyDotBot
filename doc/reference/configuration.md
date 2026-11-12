@@ -262,12 +262,16 @@ dev-corner = { x = 4000, y = 300,  w = 700,  h = 700, role = "corner" }
 | Key | Meaning |
 |---|---|
 | `anchor` | Prose saying where zero is on the real floor. No code reads it; it is how someone else finds zero in the room. |
-| `frame` | Optional: the frame's id, 8 hex digits. A calibration records the id of the frame it was made in, and one made in another frame is refused. Absent, the id is derived from the site's name and `anchor`; the site editor and `site turn` write it, when the note changes (so calibrations keep matching) or when the frame moves (so they stop). |
+| `frame` | Optional: the frame's id, 8 hex digits. A calibration records the id of the frame it was made in, and one made in another frame is refused. Absent, the id is derived from the site's name and `anchor`; the site page and `site turn` write it, when the note changes (so calibrations keep matching) or when the frame moves (so they stop). |
 | `extent_mm` | `[width, height]` of the floor. |
-| `lh2_error_limit_mm` | Optional: the predicted LH2 error a calibration should stay under on this floor, in mm (default 2). The site editor judges its error map and its "ready to run" verdict against it. |
+| `lh2_error_limit_mm` | Optional: the predicted LH2 error a calibration should stay under on this floor, in mm (default 2). The site page judges its error map and its "ready to run" verdict against it. |
 | `spin_radius_mm` | Optional: the radius of a spinning robot's photodiode circle measured on this floor, in mm (1 to 200). `calibrate-lh2 collect --spin` uses it unless `--spin-radius` is given; `site init` writes it. |
 | `stations.<serial>` | Optional: the site's LH2 base stations, each serial (8 upper-case hex digits) with its channel, 1 to 16, e.g. `[stations]` `"1A2B3C4D" = 3`. Two stations on one channel are refused. |
 | `areas.<name>` | A rectangle `{ x, y, w, h }` in mm, with an optional `role`. |
+| `[[walls]]` | Optional: lines robots cannot cross; see [below](#walls-obstacles-and-objects). |
+| `[[obstacles]]` | Optional: shapes robots cannot enter. |
+| `objects.<name>` | Optional: chargers, docks, landmarks and camera positions on the floor. |
+| `[[anchor_spots]]` | Optional: the measured spots the frame was anchored on; the site page writes them. |
 | `connection` | The site's usual broker and, optionally, swarm id; see [below](#a-sites-connection). |
 
 The active site is, in order: `--site`, `DOTBOT_SITE`, the `site` key of the
@@ -340,10 +344,50 @@ An area named `field`, `staging` or `corner` has that role; `role = "..."`
 gives one to any other name, and beats the one the name implies. An area with
 neither has no role.
 
-A site has **at most one field**; two is an error naming both. When no area
+A site has **at most one field**; two is an error naming both. The field and
+a staging area may touch but not overlap, since a point is in one or the
+other; an overlap is an error naming both and its size. When no area
 has the `field` role, the field is the first area that is neither staging nor
 corner, else the first area, else the whole extent. Areas keep the order they
 are declared in.
+
+### Walls, obstacles and objects
+
+Everything is in the site's frame, in whole millimetres:
+
+```toml
+anchor    = "the door corner, under the clock"
+extent_mm = [6000, 3000]
+
+[[walls]]
+name   = "bench edge"              # optional
+points = [[0, 1200], [800, 1200]]  # a polyline, at least 2 points
+
+[[obstacles]]
+name   = "pillar"                  # optional
+points = [[2400, 2400], [2600, 2400], [2600, 2600]]  # closed, at least 3 points
+
+[objects.charger-1]
+kind        = "charger"            # charger, dock, landmark or camera
+x           = 4800
+y           = 300
+heading_deg = 90.0                 # optional, default 0
+
+[[anchor_spots]]
+at_mm    = [500.0, 500.0]          # the spot, as measured with a tape
+error_mm = 1.8                     # how far the robot read there stayed from it
+```
+
+| Key | Meaning |
+|---|---|
+| `walls[].points` | A polyline robots cannot cross, `[x, y]` pairs, at least two. |
+| `obstacles[].points` | A polygon robots cannot enter, at least three points; the last joins the first. |
+| `walls[].name`, `obstacles[].name` | Optional labels. |
+| `objects.<name>.kind` | `charger`, `dock`, `landmark` or `camera` (a camera's position). |
+| `objects.<name>.x`, `.y` | Where it stands. |
+| `objects.<name>.heading_deg` | Optional: which way it faces, in degrees, as a robot's heading (default 0). |
+| `anchor_spots[].at_mm` | `[x, y]` of a tape-measured spot the frame was anchored on. |
+| `anchor_spots[].error_mm` | How far the robot read on that spot stayed from it once anchored, mm, 0 or more. |
 
 ### Where calibrations are found
 
@@ -362,9 +406,9 @@ site, and one recorded in another frame than the site's. Select the
 calibration's site with `--site`, or pick a calibration of the active site.
 
 Beside a site's calibrations in `~/.dotbot/calibrations/<site>/` are
-`archived/`, the files the site editor archived (out of its lists, still
-found by their full id or path), and `checks.toml`, the checks on a mark,
-only ever appended to. The site editor keeps the last saved versions of each
+`archived/`, the files the site page archived (out of its lists, still
+found by their full id or path), and `checks.toml`, the checks of a robot on
+a measured spot, only ever appended to. The site page keeps the last saved versions of each
 `site.toml`, and its named restore points, in `~/.dotbot/history/<site>/`.
 
 ### How calibration points were chosen
