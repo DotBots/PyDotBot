@@ -192,7 +192,7 @@ class SessionDriver:
             raise SessionError(f"push refused: {exc}") from exc
         await asyncio.to_thread(client.send_lh2_calibration, payload, check.send_to)
         stale = await asyncio.to_thread(
-            push_worklist, client, calibration, check.addresses, check.info_gens
+            push_worklist, client, calibration, check.targets, check.info_gens
         )
         if self._on_held is not None:
             held = dict(check.held)

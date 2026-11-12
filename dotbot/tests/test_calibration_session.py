@@ -93,13 +93,14 @@ class _FakeClient:
         self.pushed: list[bytes] = []
         self.entered = 0
         self.infos = {self.device: _info()}
+        self.running: set[str] = set()
 
     def send_lh2_calibration(self, payload: bytes, devices=None) -> None:
         self.pushed.append(payload)
         self.pushed_to = devices
         # The bot commits the push, resets and reports its site, id and stations.
         for addr, info in self.infos.items():
-            if devices is not None and addr not in devices:
+            if (devices is not None and addr not in devices) or addr in self.running:
                 continue
             if info is not None and info.info_version >= 4:
                 info.lh2_site_name, info.lh2_calibration_id = message_site(
@@ -113,7 +114,13 @@ class _FakeClient:
 
     def status(self):
         return {
-            addr: SimpleNamespace(info_gen=1, info=info)
+            addr: SimpleNamespace(
+                info_gen=1,
+                info=info,
+                status=SimpleNamespace(
+                    name="Running" if addr in self.running else "Bootloader"
+                ),
+            )
             for addr, info in self.infos.items()
         }
 
@@ -1253,3 +1260,25 @@ async def test_a_file_push_naming_every_robot_is_one_broadcast(monkeypatch, tmp_
     assert pushed["stale"] == []
     wanted = lighthouse2.pushed_id(saved)
     assert {i.lh2_calibration_id for i in client.infos.values()} == {wanted}
+
+
+@pytest.mark.asyncio
+async def test_a_fleet_push_does_not_wait_on_the_robots_left_in_their_app(
+    monkeypatch, tmp_path
+):
+    from dotbot.calibration import push
+
+    monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
+    monkeypatch.setattr(push, "PUSH_REJOIN_TIMEOUT", 0.2)
+    driver, client, _ = _driver()
+    client.infos["FEED"] = _info()
+    client.infos["BEEF"] = _info()
+    await _button_session(driver, "FEED")
+    saved = driver.session.saved
+    await driver.abandon()
+    client.running.add("BEEF")
+
+    pushed = await driver.push_file(saved, ["abcd", "beef", "feed"])
+
+    assert client.pushed_to is None
+    assert pushed["stale"] == []
