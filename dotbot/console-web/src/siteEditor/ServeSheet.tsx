@@ -1,19 +1,19 @@
 import React, { useEffect, useRef, useState } from "react";
 
-import { pushCalibrationFile } from "../api";
 import { Badge } from "../shared/Badge";
 import { pushRows, pushTwin, type PushRow } from "../shared/pushRows";
 import type { UnifiedBot } from "../types";
 import { HttpError, putServed } from "./api";
 import { Icon } from "./icons";
 import { coverageText, nameOf } from "./library";
+import { liveDeps, sendPlan, sendStoppingApps, tail, type SendDeps } from "./pushSend";
 import type { EditorContext, LibraryRow } from "./types";
 
 // Use one calibration: the controller switches to it now, it is sent to the
 // robots ticked, and a verification is offered after. One sheet, in order;
 // for the calibration already in use, the push alone.
 
-type Phase = { kind: "ask" } | { kind: "busy"; what: string } | { kind: "done"; used: boolean; sent: string[]; stale: string[]; error: string };
+type Phase = { kind: "ask" } | { kind: "busy"; what: string } | { kind: "done"; used: boolean; sent: string[]; stale: string[]; restarted: string[]; error: string };
 
 export const ServeSheet: React.FC<{
   row: LibraryRow;
@@ -27,7 +27,10 @@ export const ServeSheet: React.FC<{
   /** The controller's context now, when the sheet found it changed. */
   onStale: () => Promise<EditorContext>;
   onVerify?: () => void;
-}> = ({ row, served, context: given, bots, site, onClose, onServed, onStale, onVerify }) => {
+  /** Whether the site is anchored, which names the step after. */
+  anchored?: boolean;
+  deps?: SendDeps;
+}> = ({ row, served, context: given, bots, site, onClose, onServed, onStale, onVerify, anchored = false, deps = liveDeps }) => {
   const [context, setContext] = useState(given);
   const [persist, setPersist] = useState(false);
   const [phase, setPhase] = useState<Phase>({ kind: "ask" });
@@ -62,18 +65,13 @@ export const ServeSheet: React.FC<{
   const host = window.location.host;
   const specName = (spec: string) => (served && spec !== "none" && (served.id.startsWith(spec) || served.tag === spec) ? nameOf(served) : spec);
 
-  const go = async (send: boolean) => {
+  const go = async (sendToo: boolean) => {
     setConflict("");
-    if (inUse) {
-      setPhase({ kind: "busy", what: `Sending to ${n} robot${n === 1 ? "" : "s"}…` });
-      try {
-        const done = await pushCalibrationFile(row.id, [...ticked]);
-        setPhase({ kind: "done", used: true, sent: [...ticked], stale: done.stale, error: "" });
-      } catch (e) {
-        setPhase({ kind: "done", used: true, sent: [], stale: [], error: `Not sent: ${(e as Error).message}` });
-      }
-      return;
-    }
+    const send = async () => {
+      const done = await sendStoppingApps(row.id, name, sendPlan(rows, ticked), deps, (what) => setPhase({ kind: "busy", what }));
+      setPhase({ kind: "done", used: true, sent: done.sent, stale: done.stale, restarted: done.restarted, error: done.error });
+    };
+    if (inUse) return send();
     setPhase({ kind: "busy", what: "Switching…" });
     let ctx: EditorContext;
     try {
@@ -86,18 +84,12 @@ export const ServeSheet: React.FC<{
         setPhase({ kind: "ask" });
         return;
       }
-      setPhase({ kind: "done", used: false, sent: [], stale: [], error: (e as Error).message.replace(/^\d+: /, "") });
+      setPhase({ kind: "done", used: false, sent: [], stale: [], restarted: [], error: (e as Error).message.replace(/^\d+: /, "") });
       return;
     }
     onServed({ ...context, ...ctx }, persist);
-    if (!send || n === 0) return setPhase({ kind: "done", used: true, sent: [], stale: [], error: "" });
-    setPhase({ kind: "busy", what: `Sending to ${n} robot${n === 1 ? "" : "s"}…` });
-    try {
-      const done = await pushCalibrationFile(row.id, [...ticked]);
-      setPhase({ kind: "done", used: true, sent: [...ticked], stale: done.stale, error: "" });
-    } catch (e) {
-      setPhase({ kind: "done", used: true, sent: [], stale: [], error: `Not sent: ${(e as Error).message}` });
-    }
+    if (!sendToo || n === 0) return setPhase({ kind: "done", used: true, sent: [], stale: [], restarted: [], error: "" });
+    return send();
   };
 
   return (
@@ -190,7 +182,7 @@ export const ServeSheet: React.FC<{
                     {unreported === rows.length ? " On a simulator that is expected." : ""}
                   </div>
                 )}
-                <div className="note" style={{ marginTop: 6 }}>A robot takes a calibration in its bootloader, so a running app stops on each robot sent to. Robots not ticked keep what they have.</div>
+                <div className="note" style={{ marginTop: 6 }}>A robot takes a calibration in its bootloader: a running app is stopped first and started again after. Robots not ticked keep what they have.</div>
               </>
             )}
           </div>
@@ -198,14 +190,18 @@ export const ServeSheet: React.FC<{
         <div className="part">
           <div className="ph">
             <span className="stepn">3</span>
-            <span>Check the anchor with a robot on a measured spot</span>
+            <span>{anchored ? "Check the anchor with a robot on a measured spot" : "Anchor the frame with robots on measured spots"}</span>
           </div>
           <div className="pb">Offered once it is in use: park a robot on a spot you measured with a tape and read it against the map.</div>
         </div>
         {phase.kind === "done" && (
-          <div className={`callout ${phase.error ? "err" : phase.stale.length ? "warn" : "ok"}`} role="status" data-testid="serve-result" style={{ marginTop: 10 }}>
+          <div className={`callout ${phase.error ? "err" : phase.stale.length ? "warn" : "ok"}`} role="status" data-testid="serve-result" style={{ marginTop: 10, overflowWrap: "anywhere" }}>
             {phase.used && !inUse ? `Now using ${name}${persist ? ", kept for the next start" : ", until the controller restarts"}. ` : ""}
-            {phase.sent.length ? (phase.stale.length ? `Sent to ${phase.sent.length}; ${phase.stale.length} did not report it back yet: ${phase.stale.map((s) => `…${s.slice(-4)}`).join(", ")}.` : `Sent: all ${phase.sent.length} report it now.`) : phase.used && !phase.error ? "Robots keep what they had until it is sent." : ""}
+            {phase.sent.length
+              ? `${phase.sent.length - phase.stale.length} of ${phase.sent.length} hold ${name}${phase.stale.length ? `; not reported back yet: ${phase.stale.map(tail).join(", ")}` : ""}.${phase.restarted.length ? ` Restarted ${phase.restarted.length} app${phase.restarted.length === 1 ? "" : "s"}.` : ""}`
+              : phase.used && !phase.error
+                ? "Robots keep what they had until it is sent."
+                : ""}
             {phase.error ? ` ${phase.error}` : ""}
           </div>
         )}
@@ -225,9 +221,9 @@ export const ServeSheet: React.FC<{
           <button ref={cancelRef} type="button" className="btn" onClick={onClose} disabled={busy}>
             {phase.kind === "done" ? "Close" : "Cancel"}
           </button>
-          {phase.kind === "done" && phase.used && onVerify && (
+          {phase.kind === "done" && phase.used && !phase.error && onVerify && (
             <button type="button" className="btn primary" onClick={onVerify} data-testid="serve-verify">
-              Check the anchor
+              {anchored ? "Check the anchor" : "Anchor the frame"}
             </button>
           )}
           {phase.kind !== "done" && inUse && (

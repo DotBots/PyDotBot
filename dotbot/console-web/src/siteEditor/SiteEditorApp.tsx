@@ -2300,6 +2300,7 @@ export const SiteEditorApp: React.FC = () => {
             setServing(null);
             openAnchor(draft?.doc.anchor_spots.length ? "check" : "anchor");
           }}
+          anchored={!!draft?.doc.anchor_spots.length}
         />
       )}
       {pushing && live && (
