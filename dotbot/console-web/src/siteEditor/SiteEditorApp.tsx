@@ -157,11 +157,11 @@ function refusal(e: unknown): { message: string; dependents: string[] } | null {
 }
 
 /** The new zero of a frame move and the floor it leaves (from the new zero to
- * the saved floor's far edges, `saved` in the saved frame's mm), dashed over a
- * plan drawn in the frame `drawn` makes; everything else stays where it is. */
-function frameGhost(m: FrameMove, saved: [number, number], drawn: FrameMove | null) {
+ * the drafted floor's far edges, `floor` in the frame `drawn` makes), dashed
+ * over the plan drawn in that frame; everything else stays where it is. */
+function frameGhost(m: FrameMove, floor: [number, number], drawn: FrameMove | null) {
   const at = (q: Point) => onPlan(m, drawn, q);
-  const far = ([[0, 0], [saved[0], 0], [saved[0], saved[1]], [0, saved[1]]] as Point[]).map((c) => toNew(m, c));
+  const far = ([[0, 0], [floor[0], 0], [floor[0], floor[1]], [0, floor[1]]] as Point[]).map((c) => toNew(m, drawn ? toOld(drawn, c) : c));
   const extent: Point = [Math.max(1, ...far.map((c) => c[0])), Math.max(1, ...far.map((c) => c[1]))];
   return (p: PlanPaint) => {
     const corners = ([[0, 0], [extent[0], 0], [extent[0], extent[1]], [0, extent[1]]] as Point[]).map((c) => p.px(at(c)));
@@ -173,7 +173,7 @@ function frameGhost(m: FrameMove, saved: [number, number], drawn: FrameMove | nu
     const savedZero = toOld(m, [0, 0]);
     const aboutZero = Math.hypot(savedZero[0] - m.pivot[0], savedZero[1] - m.pivot[1]) < 0.5;
     return (
-      <g data-testid="frame-ghost" style={{ pointerEvents: "none" }}>
+      <g data-testid="frame-ghost" data-extent={`${Math.round(extent[0])}x${Math.round(extent[1])}`} style={{ pointerEvents: "none" }}>
         <polygon points={corners.map((c) => c.join(",")).join(" ")} fill="color-mix(in srgb, var(--accent) 5%, transparent)" stroke="var(--accent)" strokeWidth={1.5 * p.chrome} strokeDasharray={`${6 * p.chrome} ${4 * p.chrome}`} />
         <line x1={zero[0]} y1={zero[1]} x2={xEnd[0]} y2={xEnd[1]} stroke="var(--accent)" strokeWidth={1.8 * p.chrome} />
         <line x1={zero[0]} y1={zero[1]} x2={yEnd[0]} y2={yEnd[1]} stroke="var(--accent)" strokeWidth={1.8 * p.chrome} />
@@ -1881,11 +1881,11 @@ export const SiteEditorApp: React.FC = () => {
                       ? (p: PlanPaint) => (
                           <>
                             {anchorsOverlay(frameMove, anchors, measured)(p)}
-                            {!sameMove(frameMove, draft.frame?.move ?? null) ? frameGhost(frameMove, draft.base.extent_mm ?? [1000, 1000], draft.frame?.move ?? null)(p) : null}
+                            {!sameMove(frameMove, draft.frame?.move ?? null) ? frameGhost(frameMove, draft.doc.extent_mm ?? [1000, 1000], draft.frame?.move ?? null)(p) : null}
                           </>
                         )
                       : kind === "frame" && tool === "turn" && !sameMove(frameMove, draft.frame?.move ?? null)
-                        ? frameGhost(frameMove, draft.base.extent_mm ?? [1000, 1000], draft.frame?.move ?? null)
+                        ? frameGhost(frameMove, draft.doc.extent_mm ?? [1000, 1000], draft.frame?.move ?? null)
                         : undefined,
                 )}
                 onProbe={(at, px) => setProbe(at && px ? { at, px } : null)}
@@ -1893,10 +1893,13 @@ export const SiteEditorApp: React.FC = () => {
                 onFloorDrag={anchorOpen && anchors.length > 0 ? onFloorDrag : undefined}
                 frameHandles={
                   frameGrabbable
-                    ? {
-                        ...originOnPlan(tool === "turn" ? frameMove : (draft.frame?.move ?? NO_MOVE), draft.frame?.move ?? null),
-                        readout: frameDrag.current?.what === "turn" ? `turn ${frameMove.theta_deg}°` : `dx ${Math.round(frameMove.dx)}, dy ${Math.round(frameMove.dy)} mm`,
-                      }
+                    ? (() => {
+                        const o = originOnPlan(tool === "turn" ? frameMove : (draft.frame?.move ?? NO_MOVE), draft.frame?.move ?? null);
+                        // A drag reads from the drafted origin, the plan's zero; the panel keeps the move from the saved one
+                        const by = originOnPlan(frameMove, draft.frame?.move ?? null).at.map((v) => Math.round(v));
+                        const signed = (v: number) => (v > 0 ? `+${v}` : `${v}`);
+                        return { ...o, readout: frameDrag.current?.what === "turn" ? `turn ${frameMove.theta_deg}°` : `dx ${signed(by[0])}, dy ${signed(by[1])} mm` };
+                      })()
                     : undefined
                 }
                 onFrameDrag={frameGrabbable ? onFrameDrag : undefined}

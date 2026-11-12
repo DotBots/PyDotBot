@@ -875,14 +875,14 @@ describe("a move of the origin in the draft", () => {
 });
 
 /** Where frame mm `p` lands on the plan, as a pointer event's client point. */
-function planAt(p: [number, number]) {
+function planAt(p: [number, number], extent: [number, number] = [1060, 1220]) {
   const floor = screen.getByTestId("floor");
   const svg = floor.closest("svg")!;
   const [boxW, boxH] = [Number(svg.getAttribute("width")), Number(svg.getAttribute("height"))];
   const [fx, fy, fw, fh] = ["x", "y", "width", "height"].map((k) => Number(floor.getAttribute(k)));
   const m = /translate\(([-\d.e+]+)px, ([-\d.e+]+)px\) scale\(([-\d.e+]+)\)/.exec((svg.parentElement!.parentElement as HTMLElement).style.transform)!;
   const [tx, ty, sc] = [Number(m[1]), Number(m[2]), Number(m[3])];
-  return { clientX: (fx + (p[0] / 1060) * fw - boxW / 2) * sc + 400 + tx, clientY: (fy + (p[1] / 1220) * fh - boxH / 2) * sc + 300 + ty };
+  return { clientX: (fx + (p[0] / extent[0]) * fw - boxW / 2) * sc + 400 + tx, clientY: (fy + (p[1] / extent[1]) * fh - boxH / 2) * sc + 300 + ty };
 }
 
 describe("the origin moved on the plan", () => {
@@ -896,7 +896,7 @@ describe("the origin moved on the plan", () => {
     keyDown("1");
     fireEvent.pointerDown(await screen.findByTestId("origin-grip"), { button: 0, pointerId: 1, ...planAt([0, 0]) });
     fireEvent.pointerMove(screen.getByTestId("plan"), { pointerId: 1, ...planAt([123, 77]) });
-    expect(screen.getByTestId("frame-readout").textContent).toBe("dx 120, dy 80 mm");
+    expect(screen.getByTestId("frame-readout").textContent).toBe("dx +120, dy +80 mm");
     expect(screen.getByTestId("frame-ghost")).toBeTruthy();
     expect(screen.getByTestId("frame-turn")).toBeTruthy();
     fireEvent.pointerUp(screen.getByTestId("plan"), { pointerId: 1, ...planAt([123, 77]) });
@@ -906,6 +906,34 @@ describe("the origin moved on the plan", () => {
     expect(screen.queryByTestId("frame-readout")).toBeNull();
     keyDown("z", { ctrlKey: true });
     await waitFor(() => expect(screen.queryByTestId("status-unsaved")).toBeNull());
+  });
+
+  it("reads a drag from the drafted origin, and keeps the drafted floor's far edges in its preview", async () => {
+    const drafted = { ...moved, site: { ...SITE.site, extent_mm: [2490, 2500], areas: [{ ...SITE.site.areas[0], x: 290, y: 150 }] } };
+    stubFetch({ "api/frame": () => new Response(JSON.stringify(drafted), { status: 200 }) });
+    render(<SiteEditorApp />);
+    await toPlan();
+    keyDown("1");
+    keyDown("t");
+    for (const [label, v] of [
+      ["shift x", "-290"],
+      ["shift y", "-150"],
+    ]) {
+      const f = screen.getByLabelText(label);
+      fireEvent.change(f, { target: { value: v } });
+      fireEvent.keyDown(f, { key: "Enter" });
+    }
+    fireEvent.click(await screen.findByTestId("frame-apply"));
+    await waitFor(() => expect(screen.getByTestId("frame-in-draft")).toBeTruthy());
+    keyDown("v");
+    const ext: [number, number] = [2490, 2500];
+    fireEvent.pointerDown(await screen.findByTestId("origin-grip"), { button: 0, pointerId: 1, ...planAt([0, 0], ext) });
+    fireEvent.pointerMove(screen.getByTestId("plan"), { pointerId: 1, ...planAt([130, 140], ext) });
+    expect(screen.getByTestId("frame-readout").textContent).toBe("dx +130, dy +140 mm");
+    expect(screen.getByTestId("frame-ghost").getAttribute("data-extent")).toBe("2360x2360");
+    fireEvent.pointerUp(screen.getByTestId("plan"), { pointerId: 1, ...planAt([130, 140], ext) });
+    await waitFor(() => expect((screen.getByLabelText("shift x") as HTMLInputElement).value).toBe("-160"));
+    expect((screen.getByLabelText("shift y") as HTMLInputElement).value).toBe("-10");
   });
 
   it("turns the frame about the origin from the handle, in 0.5 degree steps or 15 with Shift", async () => {
