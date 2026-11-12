@@ -168,7 +168,7 @@ export const FramePanel: React.FC<FramePanelProps> = (props) => {
       <div className="h">
         <Icon name="check" size={14} /> {moves(move) ? "The origin can move there" : "Back to the saved origin"}
       </div>
-      Areas, walls, objects and the coverage keep their place on the floor; only their numbers change, and the extent grows to hold them
+      The extent moves with the origin at the same size; areas, walls, objects and the coverage keep their place on the floor, with new numbers
       {check.result.warnings.length ? `. ${check.result.warnings.map(plainWarning).join("; ")}` : ""}. Nothing is written until Save.
       <div className="acts">
         <button type="button" className="btn sm primary" onClick={() => props.onApply(move, check.result)} data-testid="frame-apply">
@@ -192,7 +192,7 @@ export const FramePanel: React.FC<FramePanelProps> = (props) => {
         </span>
       </div>
       <div className="ins-sub" style={{ marginTop: 8 }}>
-        To lay the frame on spots measured on the floor, use Anchor instead. Held in the draft with your other edits: areas, walls, objects and the coverage keep their place on the floor, with new numbers. The plan shows the new origin
+        To lay the frame on spots measured on the floor, use Anchor instead. Held in the draft with your other edits: the extent moves with the origin at the same size, and areas, walls, objects and the coverage keep their place on the floor, with new numbers; what ends up outside the extent is flagged in Checks. The plan shows the new origin
         dashed until it is in the draft. Save writes one new calibration and site.toml; robots report in the old origin until you push.
       </div>
       <span className="lbl" style={{ marginTop: 8 }}>Turn</span>

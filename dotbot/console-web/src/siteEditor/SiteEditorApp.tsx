@@ -57,8 +57,8 @@ import { saveBody } from "./save";
 import { pushOf, statusOf, statusText } from "./status";
 import { StatusLine, StatusSide } from "./StatusLine";
 import { OutlinePane } from "./OutlinePane";
-import { DEFAULT_LAYERS, isWhole, kindOfKey, PlanCanvas, type PlanLayers, type PlanPaint, type StationPose } from "./PlanCanvas";
-import { edgeMoved, handleAt, movedAll, removed, resized, type Handle } from "./plan";
+import { DEFAULT_LAYERS, extentResized, isWhole, kindOfKey, PlanCanvas, type PlanLayers, type PlanPaint, type StationPose } from "./PlanCanvas";
+import { edgeMoved, handleAt, HANDLES, movedAll, removed, resized, type Handle } from "./plan";
 import { ReviewSheet } from "./ReviewSheet";
 import { HOME, MapPresets, presetOf, RoomView } from "./RoomView";
 import { FIT, planCamFromRoom, planViewport, roomFit, roomZoomFromPlan, TOP_DOWN, turn, zoomAt, type Insets, type RoomCam, type Size, type Zoom } from "./mapView";
@@ -156,13 +156,11 @@ function refusal(e: unknown): { message: string; dependents: string[] } | null {
   }
 }
 
-/** The new zero of a frame move and the floor it leaves (from the new zero to
- * the drafted floor's far edges, `floor` in the frame `drawn` makes), dashed
- * over the plan drawn in that frame; everything else stays where it is. */
-function frameGhost(m: FrameMove, floor: [number, number], drawn: FrameMove | null) {
+/** The new zero of a frame move and the extent it carries at the drafted
+ * size `extent`, dashed over the plan drawn in the frame `drawn` makes;
+ * everything else stays where it is. */
+function frameGhost(m: FrameMove, extent: [number, number], drawn: FrameMove | null) {
   const at = (q: Point) => onPlan(m, drawn, q);
-  const far = ([[0, 0], [floor[0], 0], [floor[0], floor[1]], [0, floor[1]]] as Point[]).map((c) => toNew(m, drawn ? toOld(drawn, c) : c));
-  const extent: Point = [Math.max(1, ...far.map((c) => c[0])), Math.max(1, ...far.map((c) => c[1]))];
   return (p: PlanPaint) => {
     const corners = ([[0, 0], [extent[0], 0], [extent[0], extent[1]], [0, extent[1]]] as Point[]).map((c) => p.px(at(c)));
     const zero = p.px(at([0, 0]));
@@ -544,6 +542,7 @@ export const SiteEditorApp: React.FC = () => {
         servedHere: (context?.served?.source ?? "").startsWith("the site editor"),
         drawn: shown?.in_frame ? boxes : null,
         anchorDrafted: JSON.stringify(draft.doc.anchor_spots) !== JSON.stringify(baseOf(draft).anchor_spots),
+        spins: circles.map((c) => [c.x, c.y] as Point),
       })
     : [];
   const verdict = verdictOf(goalList);
@@ -734,6 +733,7 @@ export const SiteEditorApp: React.FC = () => {
   const onFrameDrag = (what: "shift" | "turn", from: Point, to: Point, keys: { alt: boolean; shift: boolean }, done: boolean) => {
     if (!draft) return;
     if (!frameDrag.current) {
+      setEdge(null);
       frameDrag.current = { what, base: tool === "turn" ? frameMove : (draft.frame?.move ?? NO_MOVE) };
       if (tool !== "turn") setTool("turn");
       setRightTab("inspect");
@@ -760,6 +760,71 @@ export const SiteEditorApp: React.FC = () => {
     nudgeTimer.current = window.setTimeout(() => commitFrame(frameMoveRef.current), 500);
   };
   useEffect(() => () => window.clearTimeout(nudgeTimer.current), []);
+
+  // The extent's handles in Extent edit: the right and bottom ones change its
+  // size, the top and left ones move that edge with the origin, which takes a
+  // calibration to move
+  const [extentPending, setExtentPending] = useState<Rect | null>(null);
+  const extentHandles: Handle[] | undefined =
+    kind === "frame" && editable && stage === "edit" && view === "plan" && !presenting && tool !== "measure" && !!draft?.doc.extent_mm
+      ? frameSource
+        ? HANDLES
+        : ["e", "se", "s"]
+      : undefined;
+  /** The extent resized to `r` (plan mm) put in the draft as one step: a new
+   * size, and from the top or left a move of the origin to `r`'s corner. */
+  const resizeExtent = (r: Rect) => {
+    if (!draft) return;
+    const size: [number, number] = [r[2] - r[0], r[3] - r[1]];
+    if (!r[0] && !r[1]) {
+      setExtentPending(null);
+      const now = draft.doc.extent_mm;
+      if (now && now[0] === size[0] && now[1] === size[1]) return;
+      setDraft((d) => (d ? step(d, { doc: { ...d.doc, extent_mm: size } }) : d));
+      return;
+    }
+    if (!frameSource) return setExtentPending(null);
+    const drawn = draft.frame?.move ?? null;
+    const m = originDragged(drawn ?? NO_MOVE, drawn, [0, 0], [r[0], r[1]], 0);
+    setExtentPending(r);
+    postFrame({
+      calibration: frameSource,
+      site: siteModel({ ...draft.doc, extent_mm: size }),
+      base: siteModel(draft.base),
+      start: drawn ? moveBody(drawn) : null,
+      move: moveBody(m),
+      stations: draft.boxes && draft.boxes.from === frameSource ? draft.boxes.boxes : null,
+    }).then(
+      (a) => {
+        setExtentPending(null);
+        if (!a.ok) return setNotice({ tone: "err", text: `The extent cannot go there: ${a.message.replace(/^calibration [0-9a-f]+: /, "")}` });
+        setFrameMove(m);
+        applyFrame(m, a.result);
+      },
+      () => setExtentPending(null),
+    );
+  };
+  // Arrow keys nudge a picked extent handle; a run of presses on the top or
+  // left goes in the draft as one step once they stop
+  const extentNudge = useRef<Rect | null>(null);
+  const nudgeExtent = (handle: Handle, dx: number, dy: number) => {
+    if (!draft?.doc.extent_mm) return;
+    const [w, h] = draft.doc.extent_mm;
+    const from = extentNudge.current ?? [0, 0, w, h];
+    const rr = { x: from[0], y: from[1], w: from[2] - from[0], h: from[3] - from[1] };
+    const [hx, hy] = handleAt(rr, handle);
+    const r = extentResized(from, handle, [hx + dx, hy + dy]);
+    if (!handle.includes("n") && !handle.includes("w")) return resizeExtent(r);
+    if (!frameSource) return;
+    extentNudge.current = r;
+    setExtentPending(r);
+    window.clearTimeout(nudgeTimer.current);
+    nudgeTimer.current = window.setTimeout(() => {
+      const done = extentNudge.current;
+      extentNudge.current = null;
+      if (done) resizeExtent(done);
+    }, 500);
+  };
 
   // The frame tools draw in the inspector, so a sheet open there gives way
   useEffect(() => {
@@ -1154,7 +1219,10 @@ export const SiteEditorApp: React.FC = () => {
         const dx = e.key === "ArrowLeft" ? -d : e.key === "ArrowRight" ? d : 0;
         const dy = e.key === "ArrowUp" ? -d : e.key === "ArrowDown" ? d : 0;
         const movable = selected.filter((k) => kindOfKey(k) === kind && !isWhole(k) && !k.startsWith("box:") && !k.startsWith("robot:"));
-        if (frameGrabbable && tool === "turn") {
+        if (edge && edge.key === "floor" && kind === "frame" && extentHandles?.includes(edge.handle)) {
+          e.preventDefault();
+          nudgeExtent(edge.handle, dx, dy);
+        } else if (frameGrabbable && tool === "turn") {
           e.preventDefault();
           nudgeOrigin(dx, dy);
         } else if (edge && edge.key.startsWith("box:") && kind === "stations") {
@@ -1904,6 +1972,9 @@ export const SiteEditorApp: React.FC = () => {
                     : undefined
                 }
                 onFrameDrag={frameGrabbable ? onFrameDrag : undefined}
+                extentHandles={extentHandles}
+                onExtentResize={extentHandles ? resizeExtent : undefined}
+                extentPending={extentPending}
                 onOrigin={editable && kind === "view" ? () => setToast({ text: ORIGIN_HINT }) : undefined}
                 onSelect={select}
                 onEdge={setEdge}

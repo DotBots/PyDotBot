@@ -156,3 +156,18 @@ describe("with nothing in use", () => {
     expect(goal(unserved([FREE]), "stations").action).toEqual({ label: "Place the spin in the site", go: { sheet: "newroom" } });
   });
 });
+
+describe("what the extent leaves outside", () => {
+  it("is a warning on the Extent check, naming the coverage and the measured spots", () => {
+    const doc = docFromSite({ anchor: "the door", extent_mm: [900, 1220], areas: [{ name: "field", x: 0, y: 0, w: 1060, h: 1220 }] });
+    const g = goals(inputs([], { doc, spins: [[100, 100], [1000, 600]] })).find((x) => x.id === "floor")!;
+    expect(g.state).toBe("warn");
+    expect(g.subs![0].text).toBe("outside the extent: area field, S0 and S1's coverage, 1 measured spot; robots there drop their positions");
+  });
+
+  it("stays ok when everything is inside", () => {
+    const g = goals(inputs([], { spins: [[100, 100]] })).find((x) => x.id === "floor")!;
+    expect(g.state).toBe("ok");
+    expect(g.subs).toBeUndefined();
+  });
+});

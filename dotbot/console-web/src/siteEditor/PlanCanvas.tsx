@@ -122,7 +122,8 @@ type Drag =
   | { type: "marquee"; from: Point; to: Point; base: string[] }
   | { type: "measure"; from: Point; to: Point }
   | { type: "floor"; from: Point; turn: boolean }
-  | { type: "frame"; what: "shift" | "turn"; from: Point };
+  | { type: "frame"; what: "shift" | "turn"; from: Point }
+  | { type: "extent"; handle: Handle };
 
 /** What an overlay drawn on the plan needs: frame mm to the box's pixels. */
 export interface PlanPaint {
@@ -188,6 +189,13 @@ interface PlanCanvasProps {
   /** The origin ("shift") or the turn handle ("turn") dragged: from the press
    * to each pointer position, plan mm, `done` on release. */
   onFrameDrag?: (what: "shift" | "turn", from: Point, to: Point, keys: { alt: boolean; shift: boolean }, done: boolean) => void;
+  /** In Extent edit, the extent's handles that resize it; the top and left
+   * ones move the origin too, so they come only with a calibration to move. */
+  extentHandles?: Handle[];
+  /** The extent resized to `rect` (plan mm) on release of a handle. */
+  onExtentResize?: (rect: Rect) => void;
+  /** An extent resize the page is still putting in the draft, drawn dashed. */
+  extentPending?: Rect | null;
   onShortcuts?: () => void;
   /** Bumped by the page to fit the floor again. */
   fitSignal?: number;
@@ -200,6 +208,19 @@ interface PlanCanvasProps {
 }
 
 const MIN_AREA_MM = 20;
+
+/** "+120", "-40", "0": a signed whole number of mm. */
+const signed = (v: number) => (v > 0 ? `+${Math.round(v)}` : `${Math.round(v)}`);
+
+/** The extent `r` (plan mm) with `handle` dragged to `p`, the far side
+ * staying on the floor, at least 10 mm a side. */
+export function extentResized(r: Rect, handle: Handle, p: Point): Rect {
+  const x0 = handle.includes("w") ? Math.min(p[0], r[2] - 10) : r[0];
+  const x1 = handle.includes("e") ? Math.max(p[0], r[0] + 10) : r[2];
+  const y0 = handle.includes("n") ? Math.min(p[1], r[3] - 10) : r[1];
+  const y1 = handle.includes("s") ? Math.max(p[1], r[1] + 10) : r[3];
+  return [Math.round(x0), Math.round(y0), Math.round(x1), Math.round(y1)];
+}
 
 /** "Floor, field and S0 coverage are the same rectangle". */
 export function sameRectangle(labels: string[]): string {
@@ -233,6 +254,7 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
   const [hover, setHover] = useState<Point | null>(null);
   const [boxPreview, setBoxPreview] = useState<{ index: number; rect: Rect } | null>(null);
   const [pairPreview, setPairPreview] = useState<Record<number, Rect> | null>(null);
+  const [extentPreview, setExtentPreview] = useState<Rect | null>(null);
   const [, setHoverBot] = useState<string | null>(null);
 
   const extent: [number, number] = doc.extent_mm ?? [2000, 2000];
@@ -421,6 +443,12 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
       props.onFloorDrag?.(drag.from, rawMm(e), drag.turn, false);
       return;
     }
+    if (drag.type === "extent") {
+      const s = snapped(e);
+      props.onSnap?.(s.to);
+      setExtentPreview(extentResized([0, 0, extent[0], extent[1]], drag.handle, s.point));
+      return;
+    }
     if (drag.type === "frame") {
       props.onFrameDrag?.(drag.what, drag.from, rawMm(e), { alt: e.altKey, shift: e.shiftKey }, false);
       return;
@@ -464,6 +492,8 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
     if (drag?.type === "floor" && e) props.onFloorDrag?.(drag.from, rawMm(e), drag.turn, true);
     if (drag?.type === "frame") props.onFrameDrag?.(drag.what, drag.from, e ? rawMm(e) : drag.from, { alt: !!e?.altKey, shift: !!e?.shiftKey }, true);
     if (drag?.type === "box" && boxPreview) props.onBoxEdit?.(boxPreview.index, boxPreview.rect);
+    if (drag?.type === "extent" && extentPreview) props.onExtentResize?.(extentPreview);
+    setExtentPreview(null);
     setBoxPreview(null);
     if (drag?.type === "handover" && pairPreview) props.onBoxesEdit?.(pairPreview);
     setPairPreview(null);
@@ -790,6 +820,66 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
           );
         })
       : null;
+  const extentShown = extentPreview ?? props.extentPending ?? null;
+  const extentGrips =
+    props.extentHandles && props.onExtentResize
+      ? props.extentHandles.map((h) => {
+          const r = extentShown ?? [0, 0, extent[0], extent[1]];
+          let [hx, hy] = px(handleAt({ x: r[0], y: r[1], w: r[2] - r[0], h: r[3] - r[1] }, h));
+          // The top-left corner is the origin's grip; its handle sits just outside it
+          if (h === "nw") [hx, hy] = [hx - 16 * chrome, hy - 16 * chrome];
+          const s = 9 * chrome;
+          const picked = props.edge?.key === "floor" && props.edge.handle === h;
+          const cursor = h === "n" || h === "s" ? "ns-resize" : h === "e" || h === "w" ? "ew-resize" : h === "nw" || h === "se" ? "nwse-resize" : "nesw-resize";
+          return (
+            <rect
+              key={`eh-${h}`}
+              data-testid={`extent-handle-${h}`}
+              x={hx - s / 2}
+              y={hy - s / 2}
+              width={s}
+              height={s}
+              rx={1.5 * chrome}
+              fill={picked ? "var(--accent)" : "var(--surface)"}
+              stroke="var(--accent)"
+              strokeWidth={1.5 * chrome}
+              style={{ cursor }}
+              onPointerDown={(e) => {
+                if (e.button !== 0) return;
+                e.stopPropagation();
+                capture(e);
+                props.onEdge({ key: "floor", handle: h });
+                setDrag({ type: "extent", handle: h });
+              }}
+            >
+              <title>
+                {h.includes("n") || h.includes("w")
+                  ? "Drag to move this edge, the opposite one staying on the floor: the origin moves with it. Snaps to 10 mm, Alt for free; click, then the arrow keys nudge it"
+                  : "Drag to resize the extent; the origin stays. Snaps to 10 mm, Alt for free; click, then the arrow keys nudge it"}
+              </title>
+            </rect>
+          );
+        })
+      : null;
+  const extentGhost = extentShown
+    ? (() => {
+        const [x0, y0] = px([extentShown[0], extentShown[1]]);
+        const [x1, y1] = px([extentShown[2], extentShown[3]]);
+        const [cx, cy] = px([(extentShown[0] + extentShown[2]) / 2, extentShown[3]]);
+        const shift = extentShown[0] || extentShown[1] ? ` · origin dx ${signed(extentShown[0])}, dy ${signed(extentShown[1])}` : "";
+        const t = `${extentShown[2] - extentShown[0]} × ${extentShown[3] - extentShown[1]} mm${shift}`;
+        const w = (shift ? 270 : 110) * chrome;
+        return (
+          <g data-testid="extent-ghost" data-rect={extentShown.join(",")} style={{ pointerEvents: "none" }}>
+            <rect x={x0} y={y0} width={x1 - x0} height={y1 - y0} fill="color-mix(in srgb, var(--accent) 5%, transparent)" stroke="var(--accent)" strokeWidth={1.5 * chrome} strokeDasharray={`${6 * chrome} ${4 * chrome}`} />
+            <rect x={cx - w / 2} y={cy + 7 * chrome} width={w} height={17 * chrome} rx={4 * chrome} fill="var(--accent)" />
+            <text data-testid="extent-size" x={cx} y={cy + 19.5 * chrome} fontSize={10.5 * chrome} textAnchor="middle" fill="#fff" fontFamily="var(--font-mono)" fontWeight={600}>
+              {t}
+            </text>
+          </g>
+        );
+      })()
+    : null;
   const boxPill = boxPreview
     ? (() => {
         const [x, y] = px([(boxPreview.rect[0] + boxPreview.rect[2]) / 2, boxPreview.rect[3]]);
@@ -943,7 +1033,7 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
           style={{ cursor: "move", pointerEvents: "all" }}
           onPointerDown={grab("shift")}
         >
-          <title>Drag to move the origin; everything on the floor stays put. Snaps to 10 mm, Alt for free; arrow keys nudge 10 mm, Alt 1 mm.</title>
+          <title>Drag to move the origin and the extent with it, same size; everything else on the floor stays put. Snaps to 10 mm, Alt for free; arrow keys nudge 10 mm, Alt 1 mm.</title>
         </circle>
         <circle
           data-testid="turn-grip"
@@ -1179,7 +1269,9 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
                 })}
               {props.overlay?.(paint, shownBoxes)}
               {handoverGrip}
+              {extentGhost}
               {frameGrips}
+              {extentGrips}
               {handles}
               {boxHandles}
               {boxPill}

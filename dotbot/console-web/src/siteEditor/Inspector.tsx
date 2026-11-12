@@ -445,7 +445,7 @@ export const Inspector: React.FC<InspectorProps> = (props) => {
     return (
       <div data-testid="inspector-floor">
         <Head kind="Extent" name={doc.extent_mm ? `${doc.extent_mm[0]} × ${doc.extent_mm[1]} mm` : "not measured"} swatch={<Icon name="frame" size={14} />} />
-        <div className="ins-sub">The rectangle positions are measured in. The origin is its top-left corner; x runs right, y down.</div>
+        <div className="ins-sub">The rectangle positions are measured in. The origin is its top-left corner; x runs right, y down. Moving the origin moves the extent with it; on the plan, its right and bottom handles change the size, its top and left ones move that edge and the origin with it.</div>
         <span className="lbl" style={{ marginTop: 8 }}>Size, mm</span>
         <div className="grid2">
           <NumField label="width" prefix="w" value={doc.extent_mm?.[0] ?? null} min={1} disabled={!editable} onApply={(w) => onEdit({ ...doc, extent_mm: [w, doc.extent_mm?.[1] ?? w] })} />

@@ -908,7 +908,7 @@ describe("the origin moved on the plan", () => {
     await waitFor(() => expect(screen.queryByTestId("status-unsaved")).toBeNull());
   });
 
-  it("reads a drag from the drafted origin, and keeps the drafted floor's far edges in its preview", async () => {
+  it("reads a drag from the drafted origin, and previews the extent at the drafted size", async () => {
     const drafted = { ...moved, site: { ...SITE.site, extent_mm: [2490, 2500], areas: [{ ...SITE.site.areas[0], x: 290, y: 150 }] } };
     stubFetch({ "api/frame": () => new Response(JSON.stringify(drafted), { status: 200 }) });
     render(<SiteEditorApp />);
@@ -930,7 +930,7 @@ describe("the origin moved on the plan", () => {
     fireEvent.pointerDown(await screen.findByTestId("origin-grip"), { button: 0, pointerId: 1, ...planAt([0, 0], ext) });
     fireEvent.pointerMove(screen.getByTestId("plan"), { pointerId: 1, ...planAt([130, 140], ext) });
     expect(screen.getByTestId("frame-readout").textContent).toBe("dx +130, dy +140 mm");
-    expect(screen.getByTestId("frame-ghost").getAttribute("data-extent")).toBe("2360x2360");
+    expect(screen.getByTestId("frame-ghost").getAttribute("data-extent")).toBe("2490x2500");
     fireEvent.pointerUp(screen.getByTestId("plan"), { pointerId: 1, ...planAt([130, 140], ext) });
     await waitFor(() => expect((screen.getByLabelText("shift x") as HTMLInputElement).value).toBe("-160"));
     expect((screen.getByLabelText("shift y") as HTMLInputElement).value).toBe("-10");
@@ -996,6 +996,72 @@ describe("the origin moved on the plan", () => {
     expect(screen.getByTestId("origin-hint")).toBeTruthy();
     keyDown("1");
     expect(screen.queryByTestId("origin-hint")).toBeNull();
-    expect(screen.getByTestId("origin-grip").querySelector("title")!.textContent).toContain("Drag to move the origin; everything on the floor stays put");
+    expect(screen.getByTestId("origin-grip").querySelector("title")!.textContent).toContain("Drag to move the origin and the extent with it, same size");
+  });
+});
+
+describe("the extent resized on the plan", () => {
+  const moved = { frame: "0badf00d", from_frame: "f0237ffd", site: SITE.site, base: SITE.site, stations: null, coverage: { 0: [0, 0, 1060, 1220], 1: [0, 0, 1060, 1220] }, warnings: [] };
+  const frames = (calls: { url: string; init?: RequestInit }[]) => calls.filter((c) => c.url === "api/frame").map((c) => JSON.parse(c.init!.body as string));
+  const HANDLE_IDS = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
+
+  it("shows its eight handles only in an Extent edit, on a page that can write", async () => {
+    stubFetch();
+    const first = render(<SiteEditorApp />);
+    await toPlan();
+    expect(screen.queryByTestId("extent-handle-e")).toBeNull();
+    keyDown("4");
+    expect(screen.queryByTestId("extent-handle-e")).toBeNull();
+    keyDown("1");
+    for (const h of HANDLE_IDS) expect(screen.getByTestId(`extent-handle-${h}`)).toBeTruthy();
+    first.unmount();
+    stubFetch({ "api/context": () => new Response(JSON.stringify({ ...CONTEXT, can_write: false }), { status: 200 }) });
+    render(<SiteEditorApp />);
+    await toPlan();
+    keyDown("1");
+    expect(screen.queryByTestId("extent-handle-e")).toBeNull();
+  });
+
+  it("resizes from the right edge as one draft change, the origin staying", async () => {
+    const calls = stubFetch();
+    render(<SiteEditorApp />);
+    await toPlan();
+    keyDown("1");
+    fireEvent.pointerDown(screen.getByTestId("extent-handle-e"), { button: 0, pointerId: 1, ...planAt([1060, 610]) });
+    fireEvent.pointerMove(screen.getByTestId("plan"), { pointerId: 1, ...planAt([1303, 610]) });
+    expect(screen.getByTestId("extent-size").textContent).toBe("1300 × 1220 mm");
+    fireEvent.pointerUp(screen.getByTestId("plan"), { pointerId: 1, ...planAt([1303, 610]) });
+    await waitFor(() => expect(screen.getByTestId("status-unsaved").textContent).toContain("1 unsaved change"));
+    expect(screen.getByTestId("floor").parentElement!.textContent).toContain("extent 1300 × 1220 mm");
+    expect(screen.queryByTestId("extent-ghost")).toBeNull();
+    expect(frames(calls)).toEqual([]);
+    keyDown("z", { ctrlKey: true });
+    await waitFor(() => expect(screen.queryByTestId("status-unsaved")).toBeNull());
+  });
+
+  it("resizes from the left edge by moving the origin with it, the right edge staying", async () => {
+    const calls = stubFetch({ "api/frame": () => new Response(JSON.stringify(moved), { status: 200 }) });
+    render(<SiteEditorApp />);
+    await toPlan();
+    keyDown("1");
+    fireEvent.pointerDown(screen.getByTestId("extent-handle-w"), { button: 0, pointerId: 1, ...planAt([0, 610]) });
+    fireEvent.pointerMove(screen.getByTestId("plan"), { pointerId: 1, ...planAt([123, 610]) });
+    expect(screen.getByTestId("extent-size").textContent).toBe("940 × 1220 mm · origin dx +120, dy 0");
+    fireEvent.pointerUp(screen.getByTestId("plan"), { pointerId: 1, ...planAt([123, 610]) });
+    await waitFor(() => expect(screen.getByTestId("status-unsaved").textContent).toContain("1 unsaved change"));
+    const [sent] = frames(calls);
+    expect(sent.move).toEqual({ theta_deg: 0, pivot: [120, 0], dx_mm: 120, dy_mm: 0 });
+    expect(sent.site.extent_mm).toEqual([940, 1220]);
+  });
+
+  it("nudges a picked handle with the arrow keys", async () => {
+    stubFetch();
+    render(<SiteEditorApp />);
+    await toPlan();
+    keyDown("1");
+    fireEvent.pointerDown(screen.getByTestId("extent-handle-s"), { button: 0, pointerId: 1, ...planAt([530, 1220]) });
+    fireEvent.pointerUp(screen.getByTestId("plan"), { pointerId: 1, ...planAt([530, 1220]) });
+    keyDown("ArrowDown");
+    await waitFor(() => expect(screen.getByTestId("floor").parentElement!.textContent).toContain("extent 1060 × 1230 mm"));
   });
 });

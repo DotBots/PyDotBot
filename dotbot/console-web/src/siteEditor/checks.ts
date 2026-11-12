@@ -3,7 +3,7 @@ import type { Boxes, Coverage } from "./coverage";
 import { coverageSay, moved, SPLIT_TIP } from "./coverage";
 import type { EditKind } from "./keys";
 import { nameOf, residuals, shortWhen } from "./library";
-import type { Doc } from "./model";
+import type { Doc, Point } from "./model";
 import { heldBy } from "./robots";
 import { roleOf, type Problem } from "./rules";
 import type { LibraryRow } from "./types";
@@ -86,6 +86,27 @@ export interface GoalInputs {
   drawn?: Boxes | null;
   /** The anchor spots differ from the file's: the draft holds an anchoring. */
   anchorDrafted?: boolean;
+  /** The calibration in use's spin centres, in the frame the plan draws. */
+  spins?: Point[];
+}
+
+/** What a moved or resized extent leaves outside it, as phrases: "S1's
+ * coverage", "2 measured spots"; empty when everything is inside. */
+export function outsideExtent(i: Pick<GoalInputs, "doc" | "drawn" | "served" | "spins">): string[] {
+  const ext = i.doc.extent_mm;
+  if (!ext) return [];
+  const inside = (x: number, y: number) => x >= 0 && y >= 0 && x <= ext[0] && y <= ext[1];
+  const boxes = i.drawn ?? (i.served ? i.served.stations.map((s) => ({ index: s.index, rect: s.box })) : []);
+  const out: string[] = [];
+  const areas = i.doc.areas.filter((a) => !inside(a.x, a.y) || !inside(a.x + a.w, a.y + a.h));
+  if (areas.length) out.push(areas.length === 1 ? `area ${areas[0].name}` : `${areas.length} areas`);
+  const cov = boxes.filter((b) => !inside(b.rect[0], b.rect[1]) || !inside(b.rect[2], b.rect[3]));
+  if (cov.length) out.push(`${cov.map((b) => `S${b.index}`).join(" and ")}'s coverage`);
+  const spins = (i.spins ?? []).filter((p) => !inside(p[0], p[1])).length;
+  if (spins) out.push(plural(spins, "measured spot"));
+  const spots = i.doc.anchor_spots.filter((s) => !inside(s.at[0], s.at[1])).length;
+  if (spots) out.push(plural(spots, "anchor spot"));
+  return out;
 }
 
 /** Beyond this a check again says the map moved off the floor. */
@@ -126,13 +147,24 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
 export function goals(i: GoalInputs): Goal[] {
   const out: Goal[] = [];
   const ext = i.doc.extent_mm;
+  const outside = outsideExtent(i);
   out.push({
     id: "floor",
     group: "room",
     title: "Extent",
-    state: ext ? "ok" : "fail",
+    state: !ext ? "fail" : outside.length ? "warn" : "ok",
     detail: ext ? `${ext[0]} × ${ext[1]} mm` : "not measured: robots' positions cannot be checked against it",
     action: ext ? undefined : { label: "Set the size", go: { kind: "frame", select: "floor" } },
+    subs: outside.length
+      ? [
+          {
+            id: "outside",
+            state: "warn",
+            text: `outside the extent: ${outside.join(", ")}; robots there drop their positions`,
+            action: { label: "Show the extent", go: { kind: "frame", select: "floor" } },
+          },
+        ]
+      : undefined,
     subject: ["floor"],
   });
 
