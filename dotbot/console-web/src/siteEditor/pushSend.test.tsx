@@ -72,6 +72,26 @@ describe("a send that stops the apps first", () => {
     expect(out.error).not.toContain(B.slice(0, 8) + " ");
   });
 
+  it("after a stop that timed out says how many apps stay stopped and names only them", async () => {
+    const { deps } = fakeDeps({ stuck: [B] });
+    const rows = [row(A, "Running"), row(B, "Running"), row(C, "Running")];
+    const out = await sendStoppingApps("cal1", "bench", sendPlan(rows, new Set([A, B, C])), deps, () => {});
+    expect(out.stopped).toEqual([A, C]);
+    expect(out.error).toContain("2 apps stay stopped");
+    expect(out.error).toContain(`\`dotbot swarm -d ${A},${C} start\``);
+  });
+
+  it("suggests a swarm-wide start only when every robot sent was running", async () => {
+    const { deps } = fakeDeps({ pushFails: "no robot answered" });
+    const rows = [row(A, "Running"), row(B, "Bootloader")];
+    const out = await sendStoppingApps("cal1", "bench", sendPlan(rows, new Set([A, B])), deps, () => {});
+    expect(out.error).toContain(`\`dotbot swarm -d ${A} start\``);
+    const all = fakeDeps({ pushFails: "no robot answered" });
+    const both = [row(A, "Running"), row(B, "Running")];
+    const out2 = await sendStoppingApps("cal1", "bench", sendPlan(both, new Set([A, B])), all.deps, () => {});
+    expect(out2.error).toContain("`dotbot swarm start`");
+  });
+
   it("leaves the apps stopped and says so when the push is refused", async () => {
     const { deps, calls } = fakeDeps({ pushFails: `push refused: in their app: ${A}, ${B}. Stop them first with \`dotbot swarm -d ${A},${B} stop\`.` });
     const rows = [row(A, "Running"), row(B, "Running"), row(C, "Bootloader")];

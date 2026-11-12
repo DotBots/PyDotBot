@@ -70,7 +70,8 @@ export async function sendStoppingApps(
 ): Promise<SendOutcome> {
   const { devices, inApp, running, fleet } = plan;
   const out: SendOutcome = { sent: [], stale: [], restarted: [], stopped: [], error: "" };
-  const restartHint = (ids: string[]) => ` Start them again from the console, or \`dotbot swarm${fleet ? "" : ` -d ${ids.join(",")}`} start\`.`;
+  const restartHint = (ids: string[]) =>
+    ` Start them again from the console, or \`dotbot swarm${fleet && ids.length === devices.length ? "" : ` -d ${ids.join(",")}`} start\`.`;
   if (inApp.length) {
     onStep(`Stopping ${plural(inApp.length, "app")}…`);
     try {
@@ -90,7 +91,8 @@ export async function sendStoppingApps(
       await deps.sleep(STOP_POLL_MS);
     }
     if (busy.length) {
-      out.error = `Not sent: still in their app after a stop: ${busy.map(tail).join(", ")}.${running.length ? restartHint(running) : ""}`;
+      out.stopped = running.filter((d) => !busy.includes(d));
+      out.error = `Not sent: still in their app after a stop: ${busy.map(tail).join(", ")}.${out.stopped.length ? ` ${plural(out.stopped.length, "app")} stay stopped.${restartHint(out.stopped)}` : ""}`;
       return out;
     }
   }
