@@ -652,6 +652,7 @@ async def test_the_routes_walk_a_session_from_start_to_push(
     assert pushed["stale"] == []
     assert client.pushed_to is None
 
+    client.infos["BEEF"] = _info()
     pushed = (
         await http.post(
             "/controller/calibration/session/push", json={"devices": ["abcd"]}
@@ -1234,3 +1235,21 @@ async def test_a_file_push_goes_only_to_the_named_robots(monkeypatch, tmp_path):
     assert client.infos["BEEF"].lh2_calibration_id == lighthouse2.pushed_id(saved)
     with pytest.raises(SessionError, match="nothing is ticked"):
         await driver.push_file(saved, [])
+
+
+@pytest.mark.asyncio
+async def test_a_file_push_naming_every_robot_is_one_broadcast(monkeypatch, tmp_path):
+    monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
+    driver, client, _ = _driver()
+    client.infos["FEED"] = _info()
+    client.infos["BEEF"] = _info()
+    await _button_session(driver, "FEED")
+    saved = driver.session.saved
+    await driver.abandon()
+
+    pushed = await driver.push_file(saved, ["abcd", "beef", "feed"])
+
+    assert client.pushed_to is None
+    assert pushed["stale"] == []
+    wanted = lighthouse2.pushed_id(saved)
+    assert {i.lh2_calibration_id for i in client.infos.values()} == {wanted}

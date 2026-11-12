@@ -179,6 +179,11 @@ class SessionDriver:
     ) -> list[str]:
         targets = sorted({d.upper() for d in devices}) if devices else None
         client = await asyncio.to_thread(self._ensure_client)
+        if targets is not None:
+            # Naming every robot the swarm reports is the fleet: one broadcast
+            known = {addr.upper() for addr in await asyncio.to_thread(client.status)}
+            if known and known <= set(targets):
+                targets = None
         try:
             check = await asyncio.to_thread(
                 gate_push, client, calibration, site_changed, targets
