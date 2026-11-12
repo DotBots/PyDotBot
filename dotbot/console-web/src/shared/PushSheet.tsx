@@ -7,8 +7,8 @@ import { PAGE_NAME } from "./pageName";
 import { confirmLabel, pushRows, pushTitle, pushTwin, type PushRow } from "./pushRows";
 
 // The console's push sheet: one saved calibration, the robots it could go
-// to, nothing ticked until the operator ticks them. A push resets each robot
-// it reaches, which stops a running app, and the title says so first.
+// to, nothing ticked until the operator ticks them. A robot takes a push only
+// in its bootloader, and the title says first which ticked ones will not.
 
 const mono = { fontFamily: "var(--font-mono)" } as const;
 
@@ -133,7 +133,7 @@ export const PushSheet: React.FC<{
             <span style={{ color: "var(--muted)" }}>holds</span>
             <Badge tone={r.current ? "ok" : r.holds === "not reported" ? "unknown" : r.holds === "old firmware" ? "warn" : "plain"}>{r.current ? `${r.holds}, this one` : r.holds}</Badge>
             <span style={{ flex: 1 }} />
-            {ticked.has(r.id) && r.appStops && <span style={{ color: "var(--s-Programming)", fontSize: 11 }}>app stops</span>}
+            {ticked.has(r.id) && r.appStops && <span style={{ color: "var(--s-Programming)", fontSize: 11 }}>in its app</span>}
           </label>
         ))}
         {unreported > 0 && (

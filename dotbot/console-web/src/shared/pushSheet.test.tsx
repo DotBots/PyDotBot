@@ -25,12 +25,12 @@ describe("the push sheet", () => {
     expect(screen.getByTestId("push-title").textContent).toBe("Push a1b41f12");
   });
 
-  it("names the apps a tick stops, in the title and the button", () => {
+  it("names the robots in their app that will not take it, in the title and the button", () => {
     render(<PushSheet calibrationId="a1b41f12aaaa0000" site="inria-2lh" bots={BOTS} onClose={() => {}} />);
     fireEvent.click(screen.getByLabelText("Push to …8E8AAD"));
     fireEvent.click(screen.getByLabelText("Push to …9455E2"));
-    expect(screen.getByTestId("push-title").textContent).toBe("Push a1b41f12 · this stops the running app on 2 robots");
-    expect(screen.getByTestId("push-confirm").textContent).toBe("Stop 2 apps and push");
+    expect(screen.getByTestId("push-title").textContent).toBe("Push a1b41f12 · 2 robots in their app will not take it");
+    expect(screen.getByTestId("push-confirm").textContent).toBe("Send to 2; 2 in their app will not take it");
   });
 
   it("reads each robot's state and held id, not reported where swarmit gives none", () => {

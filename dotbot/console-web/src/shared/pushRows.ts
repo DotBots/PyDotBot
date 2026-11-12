@@ -11,7 +11,7 @@ export interface PushRow {
   holds: string;
   /** Whether it already holds the calibration being pushed. */
   current: boolean;
-  /** A push resets the robot, so a running app stops. */
+  /** Running its app: it takes a push only once the app is stopped. */
   appStops: boolean;
 }
 
@@ -33,10 +33,10 @@ export function pushRows(bots: UnifiedBot[], calibrationId: string): PushRow[] {
     });
 }
 
-/** The sheet's title: what it pushes and what that stops. */
+/** The sheet's title: what it pushes and who in their app will not take it. */
 export function pushTitle(id8: string, rows: PushRow[], ticked: ReadonlySet<string>): string {
   const stops = rows.filter((r) => ticked.has(r.id) && r.appStops).length;
-  return stops ? `Push ${id8} · this stops the running app on ${stops} robot${stops === 1 ? "" : "s"}` : `Push ${id8}`;
+  return stops ? `Push ${id8} · ${stops} robot${stops === 1 ? "" : "s"} in their app will not take it` : `Push ${id8}`;
 }
 
 /** The confirm button's words; empty while nothing is ticked. */
@@ -44,7 +44,7 @@ export function confirmLabel(rows: PushRow[], ticked: ReadonlySet<string>): stri
   const n = rows.filter((r) => ticked.has(r.id)).length;
   if (!n) return "";
   const stops = rows.filter((r) => ticked.has(r.id) && r.appStops).length;
-  return stops ? `Stop ${stops} app${stops === 1 ? "" : "s"} and push` : `Push to ${n} robot${n === 1 ? "" : "s"}`;
+  return stops ? `Send to ${n}; ${stops} in their app will not take it` : `Push to ${n} robot${n === 1 ? "" : "s"}`;
 }
 
 /** The same push from a terminal. */
