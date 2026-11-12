@@ -62,7 +62,7 @@ import { DEFAULT_LAYERS, extentResized, isWhole, kindOfKey, PlanCanvas, type Pla
 import { edgeMoved, handleAt, HANDLES, movedAll, removed, resized, type Handle } from "./plan";
 import { ReviewSheet } from "./ReviewSheet";
 import { HOME, MapPresets, presetOf, RoomView } from "./RoomView";
-import { FIT, planCamFromRoom, planViewport, roomFit, roomZoomFromPlan, TOP_DOWN, turn, zoomAt, type Insets, type RoomCam, type Size, type Zoom } from "./mapView";
+import { EDIT_INSETS, FIT, planCamFromRoom, planFitCam, planViewport, roomFit, roomZoomFromPlan, TOP_DOWN, turn, zoomAt, type RoomCam, type Size, type Zoom } from "./mapView";
 import type { Camera } from "../zoom";
 import { coverageLabels, Readout, StationsLegend, stationsOverlay, stationsUnderlay } from "./StationsLayer";
 import { StationsPanel, type CoverageMode } from "./StationsPanel";
@@ -1031,7 +1031,8 @@ export const SiteEditorApp: React.FC = () => {
   };
   // The geometry both views share, for handing the zoom across
   const mapStations: [number, number, number][] = stationPoses.map((s) => [s.x, s.y, s.height]);
-  const editInsets: Insets = { top: 64, bottom: 64 };
+  const editInsets = EDIT_INSETS;
+  const isFit = (z: Zoom) => z.k === 1 && z.tx === 0 && z.ty === 0;
   const mapExtent: [number, number] = draft?.doc.extent_mm ?? [1000, 1000];
   const planFrame = () => planViewport(mapExtent, layers.stations ? stationPoses : []);
   /** Into the top-down edit: the camera turns straight down, then the plan
@@ -1044,7 +1045,9 @@ export const SiteEditorApp: React.FC = () => {
     const zoom = roomZoom;
     turnCam(roomCam, top, () => {
       const fit = roomFit(TOP_DOWN, mapExtent, mapStations, mapSize, editInsets);
-      setPlanCam((c) => ({ cam: planCamFromRoom(fit, zoom, mapSize, planFrame()), n: (c?.n ?? 0) + 1 }));
+      // A fitted 3D view lands on the plan's own fit, clear of the tool rail
+      const cam = isFit(zoom) ? planFitCam(mapSize, planFrame(), editInsets) : planCamFromRoom(fit, zoom, mapSize, planFrame());
+      setPlanCam((c) => ({ cam, n: (c?.n ?? 0) + 1 }));
       setRoomCam(TOP_DOWN);
       setStage("edit");
     });
@@ -1054,7 +1057,11 @@ export const SiteEditorApp: React.FC = () => {
   const leaveEdit = (to: RoomCam = lastCam.current) => {
     if (stage === "3d" || stage === "fromTop") return;
     const v = planView.current;
-    if (v && view === "plan") setRoomZoom(roomZoomFromPlan(roomFit(TOP_DOWN, mapExtent, mapStations, v.size, editInsets), v.cam, v.size, planFrame()));
+    if (v && view === "plan") {
+      const fitted = planFitCam(v.size, planFrame(), editInsets);
+      const same = Math.abs(v.cam.scale - fitted.scale) < 1e-6 && Math.abs(v.cam.tx - fitted.tx) < 0.5 && Math.abs(v.cam.ty - fitted.ty) < 0.5;
+      setRoomZoom(same ? FIT : roomZoomFromPlan(roomFit(TOP_DOWN, mapExtent, mapStations, v.size, editInsets), v.cam, v.size, planFrame()));
+    }
     setKind("view");
     setTool("select");
     setEdge(null);
@@ -1939,6 +1946,7 @@ export const SiteEditorApp: React.FC = () => {
                 layers={layers}
                 robots={bots}
                 fitSignal={fitSignal}
+                fitInsets={EDIT_INSETS}
                 stations={stationPoses}
                 camRequest={planCam}
                 onView={(cam, size) => (planView.current = { cam, size })}

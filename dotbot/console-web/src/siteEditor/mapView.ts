@@ -34,11 +34,18 @@ export interface Size {
   h: number;
 }
 
-/** Canvas kept clear at the top and bottom, px, for bars floating over it. */
+/** Canvas kept clear at the top and bottom, px, for bars floating over it;
+ * the plan's fit also keeps `left` and `right` clear. */
 export interface Insets {
   top: number;
   bottom: number;
+  left?: number;
+  right?: number;
 }
+
+/** Clear of the edit's bars, and on the plan of its tool rail, which floats
+ * over the canvas's left edge. */
+export const EDIT_INSETS: Insets = { top: 64, bottom: 64, left: 64 };
 
 const RAD = Math.PI / 180;
 
@@ -120,6 +127,20 @@ export function planViewport(extent: [number, number], stations: { x: number; y:
   const floor: Area = { x: 0, y: 0, w: extent[0], h: extent[1] };
   return withMargin({ x: x0, y: y0, w: x1 - x0, h: y1 - y0 }, siteViewMarginMm(floor));
 }
+
+/** The plan's fit: the whole viewport, as large as the canvas holds clear
+ * of `insets` left and right, centred between them. */
+export function planFitCam(size: Size, viewport: Area, insets: Insets): Camera {
+  const g = viewGeom(size.w, size.h, viewport);
+  const left = insets.left ?? 0;
+  const right = insets.right ?? 0;
+  const room = size.w - left - right - 2 * FIT_GAP_PX;
+  const scale = room > 0 && g.boxW > room ? room / g.boxW : 1;
+  return { scale, tx: (left - right) / 2, ty: 0 };
+}
+
+/** Kept between the plan's fit and an inset, px. */
+const FIT_GAP_PX = 8;
 
 /** A floor point to the plan's canvas px under `cam`. */
 export function planProject(cam: Camera, viewport: Area, size: Size, p: Point): Point {

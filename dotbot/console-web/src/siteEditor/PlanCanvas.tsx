@@ -25,7 +25,7 @@ import {
   type ViewGeom,
 } from "../zoom";
 import { coverageAt, movedHandover, handover as handoverOf } from "./coverage";
-import { contextBounds, contextStep, FLOOR_FILL, floorStep, planViewport, stationLabel } from "./mapView";
+import { contextBounds, contextStep, FLOOR_FILL, floorStep, planFitCam, planViewport, stationLabel, type Insets } from "./mapView";
 import { Icon } from "./icons";
 import { ORIGIN_HINT, type EditKind, type Tool } from "./keys";
 import { freshKey, freshName, numberedName, type Doc, type DocObject, type ObjectKind, type Point } from "./model";
@@ -199,6 +199,8 @@ interface PlanCanvasProps {
   onShortcuts?: () => void;
   /** Bumped by the page to fit the floor again. */
   fitSignal?: number;
+  /** Canvas the fit keeps clear for bars floating over it. */
+  fitInsets?: Insets;
   /** False hides the zoom, fit, scale and shortcuts, as for a projector. */
   chrome?: boolean;
   /** A camera the page sets, e.g. to match the 3D view; a new `n` applies it. */
@@ -263,6 +265,7 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
   const nearKey = framed.map((s) => `${Math.round(s.x)},${Math.round(s.y)}`).join(";");
   const viewport = useMemo(() => planViewport(extent, framed), [extent[0], extent[1], nearKey]);
   const geom: ViewGeom = useMemo(() => viewGeom(size.w, size.h, viewport), [size, viewport]);
+  const fitCam = () => (props.fitInsets ? planFitCam(size, viewport, props.fitInsets) : FRAME_CAMERA);
   const maxScale = Math.max(ZOOM_MAX_FLOOR, viewport.w > 0 ? ZOOM_MAX_PX_PER_MM / (geom.boxW / viewport.w) : 1);
   const perMm = pxPerMmAt(cam, viewport, geom);
   const chrome = 1 / cam.scale;
@@ -273,7 +276,7 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
   const lit = (key: string) => sel(key) || sel(wholeOf(key) ?? "");
 
   useEffect(() => {
-    if (props.fitSignal) setCam(FRAME_CAMERA);
+    if (props.fitSignal) setCam(fitCam());
   }, [props.fitSignal]);
   useEffect(() => {
     onViewRef.current?.(cam, size);
@@ -1346,7 +1349,7 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
           +
         </button>
       </div>
-      <button type="button" className="float fitbtn" title="Fit the extent" aria-label="Fit the extent" onClick={() => setCam(FRAME_CAMERA)}>
+      <button type="button" className="float fitbtn" title="Fit the extent" aria-label="Fit the extent" onClick={() => setCam(fitCam())}>
         <Icon name="fit" size={17} />
       </button>
       <div className="scale" data-testid="scale-bar" aria-hidden>
