@@ -202,8 +202,10 @@ def device_info(addr: str) -> dict:
         "image_version": "",
         "lh2_station_mask": mask,
         "lh2_flags": flags,
-        "lh2_site_name": FAKE_SITE if mask else "",
-        "lh2_calibration_id": FAKE_CALIBRATION_ID if mask else "",
+        "lh2_site_name": settings.get("site", FAKE_SITE) if mask else "",
+        "lh2_calibration_id": (
+            settings.get("calibration_id", FAKE_CALIBRATION_ID) if mask else ""
+        ),
         "lh2_summary": summary,
         "raw": "8f0104" + f"{seed:08x}" * 4,
     }
@@ -431,8 +433,16 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--controller", default="http://localhost:8000")
     parser.add_argument("--port", type=int, default=8001)
+    parser.add_argument("--site", default=FAKE_SITE, help="the site robots report")
+    parser.add_argument(
+        "--calibration-id",
+        default=FAKE_CALIBRATION_ID,
+        help="the LH2 calibration id calibrated robots report holding",
+    )
     args = parser.parse_args()
     settings["controller"] = args.controller
+    settings["site"] = args.site
+    settings["calibration_id"] = args.calibration_id
     # /events streams until the client goes away, so waiting for connections
     # to close on shutdown means Ctrl-C never returns.
     uvicorn.run(

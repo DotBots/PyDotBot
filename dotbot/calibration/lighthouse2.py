@@ -38,13 +38,13 @@ from dotbot.site import SITE_DEFAULT, Site
 CALIBRATION_DIR = Path.home() / ".dotbot"
 CALIBRATION_SUBDIR = "calibrations"
 CALIBRATION_TOML_GLOB = "calibration-*.toml"
-CALIBRATION_SCHEMA_VERSION = 4
+CALIBRATION_SCHEMA_VERSION = 5
 
-# [x_min, y_min, x_max, y_max] in frame mm: outside it a reported position is
-# implausible and the bot drops it. A site with a known extent supplies its
-# own fence; this is what a site without one falls back to.
-VALID_MM_DEFAULT = (0, 0, 10000, 10000)
-VALID_MM_MAX = 0xFFFFFFFF
+# [x_min, y_min, x_max, y_max] in frame mm: outside a station's coverage the
+# bot drops that station's fixes. A site with a known extent supplies its own;
+# this is what a site without one falls back to.
+COVERAGE_MM_DEFAULT = (0, 0, 10000, 10000)
+COVERAGE_MM_MAX = 0xFFFFFFFF
 
 LH2_BASESTATION_COUNT_MAX = 16
 
@@ -209,7 +209,7 @@ class TrackSample:
 class StationSolution:
     """One station's solved homography and how well it fits its own evidence.
 
-    `valid_mm` is where this station's fixes are believed, frame mm.
+    `coverage_mm` is where this station's fixes are believed, frame mm.
     """
 
     index: int
@@ -217,7 +217,7 @@ class StationSolution:
     points: int
     residual_mm: float
     solved_from: str = "direct"
-    valid_mm: tuple[int, int, int, int] = VALID_MM_DEFAULT
+    coverage_mm: tuple[int, int, int, int] = COVERAGE_MM_DEFAULT
 
     @property
     def matrix(self) -> np.ndarray:
@@ -249,7 +249,6 @@ class Calibration:
     # The file records the site's name and anchor only, so a site read back
     # from one carries no extent and no areas.
     site: Site = field(default_factory=Site)
-    valid_mm: tuple[int, int, int, int] = VALID_MM_DEFAULT
     placements: list[Placement] = field(default_factory=list)
     stations: list[StationSolution] = field(default_factory=list)
     tracks: list[TrackSample] = field(default_factory=list)
@@ -259,6 +258,8 @@ class Calibration:
     robot: str = ROBOT_DEFAULT
     # The id of the free-frame spin calibration this one was moved from
     placed_from: str = ""
+    # The id of the calibration this one is an edit of, its rectangles changed
+    edited_from: str = ""
     path: Optional[Path] = None
     # The id the file on disk declares, when this came from one. A mismatch
     # with `id` means the file was hand-edited into a different calibration.
@@ -271,6 +272,13 @@ class Calibration:
     @property
     def id8(self) -> str:
         return self.id[:8]
+
+    @property
+    def coverage_mm(self) -> tuple[int, int, int, int]:
+        """The union of the stations' coverage, the default with no station."""
+        if not self.stations:
+            return COVERAGE_MM_DEFAULT
+        return union_rect(st.coverage_mm for st in self.stations)
 
     def station(self, index: int) -> Optional[StationSolution]:
         for station in self.stations:
@@ -399,15 +407,15 @@ def homography_as_float32(matrix: Sequence[Sequence[float]]) -> bytes:
     return struct.pack("<9f", *flat)
 
 
-def valid_mm_as_bytes(valid_mm: Sequence[int]) -> bytes:
+def coverage_mm_as_bytes(coverage_mm: Sequence[int]) -> bytes:
     """`[x_min, y_min, x_max, y_max]` as four little-endian uint32."""
-    values = [int(v) for v in valid_mm]
+    values = [int(v) for v in coverage_mm]
     if len(values) != 4:
-        raise ValueError(f"valid_mm takes four values, got {len(values)}")
+        raise ValueError(f"coverage_mm takes four values, got {len(values)}")
     if any(v < 0 or v > 0xFFFFFFFF for v in values):
-        raise ValueError(f"valid_mm values must fit a uint32, got {values}")
+        raise ValueError(f"coverage_mm values must fit a uint32, got {values}")
     if values[0] > values[2] or values[1] > values[3]:
-        raise ValueError(f"valid_mm is [x_min, y_min, x_max, y_max], got {values}")
+        raise ValueError(f"coverage_mm is [x_min, y_min, x_max, y_max], got {values}")
     return struct.pack("<4I", *values)
 
 
@@ -482,8 +490,13 @@ def station_mask(calibration: Calibration) -> int:
 
 
 def station_label(index: int) -> str:
-    """How a station is named to an operator: its index and its channel."""
-    return f"station {index} (channel {index + 1})"
+    """How a station is named to an operator: S and its index, 0 to 15."""
+    return f"S{index}"
+
+
+def station_setup_label(index: int) -> str:
+    """A station as it is mounted: its name and the channel it is set to."""
+    return f"S{index} · channel {index + 1}"
 
 
 def pushable_stations(calibration: Calibration) -> list[StationSolution]:
@@ -523,7 +536,7 @@ def calibration_messages(calibration: Calibration) -> list[bytes]:
     return [
         struct.pack("<II", mask, station.index)
         + homography_as_float32(station.homography)
-        + valid_mm_as_bytes(station.valid_mm)
+        + coverage_mm_as_bytes(station.coverage_mm)
         + site_fields
         for station in stations
     ]
@@ -582,7 +595,6 @@ def canonical_serialisation(calibration: Calibration) -> str:
     lines = [
         f"schema_version={CALIBRATION_SCHEMA_VERSION}",
         f"site.name={calibration.site.name}",
-        "validity.valid_mm=" + ",".join(toml_num(v) for v in calibration.valid_mm),
     ]
     for placement in calibration.placements:
         key = f"placement.{placement.index}"
@@ -605,7 +617,9 @@ def canonical_serialisation(calibration: Calibration) -> str:
         lines.append(f"{key}.solved_from={station.solved_from}")
         lines.append(f"{key}.points={station.points}")
         lines.append(f"{key}.residual_mm={toml_num(station.residual_mm)}")
-        lines.append(f"{key}.valid_mm=" + ",".join(str(v) for v in station.valid_mm))
+        lines.append(
+            f"{key}.coverage_mm=" + ",".join(str(v) for v in station.coverage_mm)
+        )
         lines.append(
             f"{key}.homography="
             + ";".join(",".join(toml_num(v) for v in row) for row in station.homography)
@@ -676,7 +690,7 @@ def toml_escape(text: str) -> str:
 
 
 def render_calibration(calibration: Calibration) -> str:
-    """The schema 4 file, as text."""
+    """The schema 5 file, as text."""
     site = calibration.site
     out = [
         f"schema_version = {CALIBRATION_SCHEMA_VERSION}",
@@ -690,14 +704,14 @@ def render_calibration(calibration: Calibration) -> str:
         out.append(f'tag = "{toml_escape(calibration.tag)}"')
     if calibration.placed_from:
         out.append(f'placed_from = "{calibration.placed_from}"')
+    if calibration.edited_from:
+        out.append(f'edited_from = "{calibration.edited_from}"')
     out += [
         "",
         "[site]",
         f'name = "{site.name}"',
         f'anchor = "{toml_escape(site.anchor)}"',
-        "",
-        "[validity]",
-        f"valid_mm = {_toml_int_list(calibration.valid_mm)}",
+        *([f'frame = "{site.frame}"'] if site.frame else []),
     ]
     for placement in calibration.placements:
         out += [
@@ -743,7 +757,7 @@ def render_calibration(calibration: Calibration) -> str:
             f'solved_from = "{station.solved_from}"',
             f"points = {station.points}",
             f"residual_mm = {toml_num(station.residual_mm)}",
-            f"valid_mm = {_toml_int_list(station.valid_mm)}",
+            f"coverage_mm = {_toml_int_list(station.coverage_mm)}",
             f"homography = {toml_matrix(station.homography)}",
         ]
     for link in sorted(calibration.links, key=lambda k: (k.a, k.b)):
@@ -761,9 +775,10 @@ def render_calibration(calibration: Calibration) -> str:
 
 
 def read_calibration_file(path: Path) -> Calibration:
-    """Parse a schema 4 calibration file.
+    """Parse a schema 5 calibration file.
 
-    A file of any other schema version is rejected: schema 3 carries one
+    A file of any other schema version is rejected: schema 4 names a
+    station's coverage `valid_mm` and repeats their union, schema 3 carries one
     fence for every station and keys circles by robot alone, schema 2
     homographies were solved on another camera point, and schema 1 has no
     site.
@@ -789,8 +804,8 @@ def read_calibration_file(path: Path) -> Calibration:
     site = Site(
         name=site_data.get("name", SITE_DEFAULT),
         anchor=site_data.get("anchor", ""),
+        frame=site_data.get("frame"),
     )
-    valid_mm = tuple(data.get("validity", {}).get("valid_mm", VALID_MM_DEFAULT))
 
     placements = []
     for raw in data.get("placement", []):
@@ -820,9 +835,9 @@ def read_calibration_file(path: Path) -> Calibration:
 
     stations = []
     for raw in data.get("station", []):
-        if "valid_mm" not in raw:
+        if "coverage_mm" not in raw:
             raise ValueError(
-                f"{path}: station {raw.get('index')} has no valid_mm, which "
+                f"{path}: station {raw.get('index')} has no coverage_mm, which "
                 f"schema {CALIBRATION_SCHEMA_VERSION} requires"
             )
         stations.append(
@@ -832,7 +847,7 @@ def read_calibration_file(path: Path) -> Calibration:
                 points=int(raw.get("points", 0)),
                 residual_mm=float(raw.get("residual_mm", 0.0)),
                 solved_from=raw.get("solved_from", "direct"),
-                valid_mm=_checked_rect(raw["valid_mm"], path),
+                coverage_mm=_checked_rect(raw["coverage_mm"], path),
             )
         )
 
@@ -859,11 +874,10 @@ def read_calibration_file(path: Path) -> Calibration:
         )
         for raw in data.get("link", [])
     ]
-    _check_stations(stations, links, _checked_rect(valid_mm, path), path)
+    _check_stations(stations, links, path)
 
     calibration = Calibration(
         site=site,
-        valid_mm=valid_mm,
         placements=placements,
         stations=stations,
         tracks=tracks,
@@ -872,6 +886,7 @@ def read_calibration_file(path: Path) -> Calibration:
         tag=metadata.get("tag", ""),
         robot=metadata.get("robot", ROBOT_DEFAULT),
         placed_from=str(metadata.get("placed_from", "")),
+        edited_from=str(metadata.get("edited_from", "")),
         path=path,
     )
     calibration.stored_id = str(metadata.get("id", ""))
@@ -879,31 +894,26 @@ def read_calibration_file(path: Path) -> Calibration:
 
 
 def _checked_rect(values, path) -> tuple[int, int, int, int]:
-    """A `valid_mm` read from `path`, refused unless it is a uint32 rectangle."""
+    """A `coverage_mm` read from `path`, refused unless it is a uint32 rectangle."""
     rect = tuple(int(v) for v in values)
     if (
         len(rect) != 4
-        or any(v < 0 or v > VALID_MM_MAX for v in rect)
+        or any(v < 0 or v > COVERAGE_MM_MAX for v in rect)
         or rect[0] >= rect[2]
         or rect[1] >= rect[3]
     ):
         raise ValueError(
-            f"{path}: valid_mm {list(values)} is not [x_min, y_min, x_max, y_max] "
+            f"{path}: coverage_mm {list(values)} is not [x_min, y_min, x_max, y_max] "
             "with x_min < x_max and y_min < y_max, in 0 to 2^32-1"
         )
     return rect
 
 
-def _check_stations(stations, links, valid_mm, path) -> None:
-    """The schema 4 rules between stations, links and the fence."""
+def _check_stations(stations, links, path) -> None:
+    """The schema 5 rules between stations and links."""
     indices = [s.index for s in stations]
     if len(set(indices)) != len(indices):
         raise ValueError(f"{path}: a station index appears twice: {indices}")
-    if stations and union_rect(s.valid_mm for s in stations) != valid_mm:
-        raise ValueError(
-            f"{path}: [validity] valid_mm {list(valid_mm)} is not the union of "
-            f"the station rectangles {list(union_rect(s.valid_mm for s in stations))}"
-        )
     joint = [s for s in stations if s.solved_from.startswith("conics")]
     if len(joint) > 1 and not links:
         raise ValueError(
@@ -941,6 +951,10 @@ def calibration_folders(
     if site.pack_calibrations is not None:
         folders.insert(0, (site.pack_calibrations, ""))
     return folders
+
+
+# The folder beside a site's calibrations that archived ones move into
+ARCHIVED = "archived"
 
 
 def resolve_calibration_spec(
@@ -995,6 +1009,12 @@ def resolve_calibration_spec(
         found = unique("tag", tags, files) or unique("id prefix", ids, files)
         if found is not None:
             return found
+    # An archived file is found by its full id only, never by a prefix or tag
+    if re.fullmatch(r"[0-9a-fA-F]{16}", spec):
+        for folder, prefix in folders:
+            for path in sorted(folder.glob(prefix + ARCHIVED + "/" + glob)):
+                if str(metadata(path).get("id", "")).lower() == spec_lower:
+                    return path
     searched = " or ".join(
         str(folder / prefix.rstrip("/")) for folder, prefix in folders
     )
@@ -1020,9 +1040,10 @@ def calibration_age_days(
 
 
 def check_calibration_site(file_site: Site, site: Site, path: Optional[Path]) -> None:
-    """Refuse a calibration made in another site, or against another anchor.
+    """Refuse a calibration made in another site, or in another frame.
 
-    Anchors are compared only when both are recorded.
+    Frames are compared by id, an id recorded or derived from the name and
+    anchor, and only when both sides name their frame.
     """
     where = path or "the calibration"
     if file_site.name != site.name:
@@ -1031,11 +1052,16 @@ def check_calibration_site(file_site: Site, site: Site, path: Optional[Path]) ->
             f"select site {file_site.name!r} (--site or DOTBOT_SITE) or pick a "
             f"calibration of {site.name!r}"
         )
-    if file_site.anchor and site.anchor and file_site.anchor != site.anchor:
+    if (
+        file_site.frame_known
+        and site.frame_known
+        and file_site.frame_id != site.frame_id
+    ):
         raise ValueError(
-            f"{where} records the anchor {file_site.anchor!r}, but site "
-            f"{site.name!r} has {site.anchor!r}: its frame is another one, so "
-            "recalibrate or correct the site's anchor"
+            f"{where} is in frame {file_site.frame_id} "
+            f"({file_site.anchor or 'no note'!s}), but site {site.name!r} is in "
+            f"frame {site.frame_id}: re-express the calibration in the site's "
+            "frame, or recalibrate"
         )
 
 
@@ -1080,13 +1106,13 @@ class LighthouseManager:
         self,
         placements: Optional[Sequence[Placement]] = None,
         site: Optional[Site] = None,
-        valid_mm: Sequence[int] = VALID_MM_DEFAULT,
+        coverage_mm: Sequence[int] = COVERAGE_MM_DEFAULT,
         robot: str = ROBOT_DEFAULT,
         extra_lh_num: int = 0,
     ):
         self.placements: list[Placement] = list(placements or [])
         self.site = site or Site()
-        self.valid_mm = tuple(int(v) for v in valid_mm)
+        self.coverage_mm = tuple(int(v) for v in coverage_mm)
         self.robot = robot
         self.extra_lh_num = extra_lh_num
         self.stations: list[StationSolution] = []
@@ -1124,7 +1150,7 @@ class LighthouseManager:
             homography=[[float(v) for v in row] for row in homography],
             points=len(camera_points),
             residual_mm=residual,
-            valid_mm=self.valid_mm,
+            coverage_mm=self.coverage_mm,
         )
 
     def solve(self) -> list[StationSolution]:
@@ -1214,7 +1240,6 @@ class LighthouseManager:
         now = datetime.datetime.now(datetime.timezone.utc)
         return Calibration(
             site=self.site,
-            valid_mm=self.valid_mm,
             placements=self.placements,
             stations=self.stations or [],
             created_at=now.strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -1264,7 +1289,7 @@ def reframe_calibration(
 
     Every placement's points are turned about the first placement's first
     point, so the placements keep their geometry relative to one another, and
-    then shifted. The validity fence becomes the new site's extent.
+    then shifted. Every station's coverage becomes the new site's extent.
     """
     if not calibration.placements or not calibration.placements[0].points_mm:
         raise ValueError("calibration has no placement points to reframe")
@@ -1280,7 +1305,7 @@ def reframe_calibration(
     manager = LighthouseManager(
         placements=placements,
         site=site,
-        valid_mm=site.valid_mm or VALID_MM_DEFAULT,
+        coverage_mm=site.extent_rect_mm or COVERAGE_MM_DEFAULT,
         robot=calibration.robot,
     )
     manager.solve()

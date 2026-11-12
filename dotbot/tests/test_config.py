@@ -330,7 +330,7 @@ def test_two_fields_are_refused_naming_both():
 def test_an_explicit_role_frees_a_role_name_for_another_area():
     areas = _areas(
         'field = { x = 0, y = 0, w = 2000, h = 2000, role = "staging" }\n'
-        'main = { x = 0, y = 0, w = 500, h = 500, role = "field" }\n'
+        'main = { x = 2000, y = 0, w = 500, h = 500, role = "field" }\n'
     )
     assert set(areas) == {"field", "main"}
 

@@ -168,7 +168,7 @@ def test_push_sends_the_messages_and_lists_the_worklist(monkeypatch, calibration
     # Device info is read once for the gate and never polled after the push.
     assert fleet.refreshed == [None]
     assert "2 robot(s) hold another id" in result.output
-    assert "Still not on 9b12f56f (1), push again: LAGGARD" in result.output
+    assert "Still not on ce4b7890 (1), push again: LAGGARD" in result.output
 
 
 def test_a_push_checked_for_named_robots_goes_to_exactly_them(calibration_file):
@@ -234,7 +234,7 @@ def test_push_to_another_site_is_refused_without_site_changed(
     moved = _push(monkeypatch, fleet, str(calibration_file), "--site-changed")
     assert moved.exit_code == 0, moved.output
     assert len(fleet.pushed) == 1
-    assert "Every robot reports 9b12f56f." in moved.output
+    assert "Every robot reports ce4b7890." in moved.output
 
 
 @pytest.mark.parametrize("version", [1, 2, 3])
@@ -271,7 +271,8 @@ def test_reframe_writes_a_new_file_in_the_target_site(
     with open(written[0], "rb") as handle:
         data = tomllib.load(handle)
     assert data["site"] == {"name": "inria-aio-c", "anchor": "floor top-left corner"}
-    assert data["validity"]["valid_mm"] == [0, 0, 12000, 20000]
+    assert "validity" not in data
+    assert data["station"][0]["coverage_mm"] == [0, 0, 12000, 20000]
     assert data["placement"][0]["points_mm"][0] == [5047.0, 7018.5]
     assert data["metadata"]["id"] != FIXTURE_ID
     assert data["metadata"]["id"] in result.output

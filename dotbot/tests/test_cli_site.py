@@ -68,7 +68,7 @@ def test_a_site_table_becomes_its_anchor_extent_and_areas():
     site = site_from_table("c405-arena", table)
     assert site.anchor == "the arena top-left corner, C405"
     assert site.extent_mm == (2000, 4000)
-    assert site.valid_mm == (0, 0, 2000, 4000)
+    assert site.extent_rect_mm == (0, 0, 2000, 4000)
     assert site.registry().resolve("field").as_dict() == {
         "x": 0,
         "y": 0,
@@ -123,7 +123,7 @@ def test_an_area_named_after_a_role_has_it_unless_it_declares_another():
         # the field, wherever it is declared
         (
             "staging = { x = 0, y = 0, w = 10, h = 10 }\n"
-            'main = { x = 5, y = 5, w = 10, h = 10, role = "field" }\n',
+            'main = { x = 10, y = 0, w = 10, h = 10, role = "field" }\n',
             "main",
         ),
         # no field: the first area that is neither staging nor a corner

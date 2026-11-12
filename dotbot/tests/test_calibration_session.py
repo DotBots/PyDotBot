@@ -93,13 +93,14 @@ class _FakeClient:
         self.pushed: list[bytes] = []
         self.entered = 0
         self.infos = {self.device: _info()}
+        self.running: set[str] = set()
 
     def send_lh2_calibration(self, payload: bytes, devices=None) -> None:
         self.pushed.append(payload)
         self.pushed_to = devices
         # The bot commits the push, resets and reports its site, id and stations.
         for addr, info in self.infos.items():
-            if devices is not None and addr not in devices:
+            if (devices is not None and addr not in devices) or addr in self.running:
                 continue
             if info is not None and info.info_version >= 4:
                 info.lh2_site_name, info.lh2_calibration_id = message_site(
@@ -113,7 +114,13 @@ class _FakeClient:
 
     def status(self):
         return {
-            addr: SimpleNamespace(info_gen=1, info=info)
+            addr: SimpleNamespace(
+                info_gen=1,
+                info=info,
+                status=SimpleNamespace(
+                    name="Running" if addr in self.running else "Bootloader"
+                ),
+            )
             for addr, info in self.infos.items()
         }
 
@@ -388,7 +395,7 @@ async def test_four_points_carry_a_residual_per_station_and_no_expected_error(
 
 
 @pytest.mark.asyncio
-async def test_save_writes_a_schema_4_file_under_the_site_directory(
+async def test_save_writes_a_schema_5_file_under_the_site_directory(
     monkeypatch, tmp_path
 ):
     monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
@@ -401,7 +408,7 @@ async def test_save_writes_a_schema_4_file_under_the_site_directory(
     path = tmp_path / "calibrations" / "c405-arena" / saved["path"].split("/")[-1]
     assert path.exists()
     body = path.read_text(encoding="utf-8")
-    assert "schema_version = 4" in body
+    assert "schema_version = 5" in body
     assert f'id = "{saved["id"]}"' in body
     assert saved["id8"] == saved["id"][:8]
 
@@ -432,6 +439,20 @@ async def test_push_sends_the_float32_messages_and_returns_the_stale_worklist(
     assert pushed["bytes"] == len(client.pushed[0]) == 84
     # The robot now reports the pushed id, so nothing is left to re-push.
     assert pushed["stale"] == []
+
+
+@pytest.mark.asyncio
+async def test_a_push_reports_what_each_robot_holds(monkeypatch, tmp_path):
+    monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
+    driver, _, _ = _driver()
+    reported: list = []
+    driver._on_held = reported.append
+    await driver.start(["arena:corners"])
+    await _walk(driver)
+    await driver.save()
+    await driver.push()
+    (held,) = reported
+    assert held and set(held.values()) == {driver.session.saved_id}
 
 
 @pytest.mark.asyncio
@@ -638,6 +659,7 @@ async def test_the_routes_walk_a_session_from_start_to_push(
     assert pushed["stale"] == []
     assert client.pushed_to is None
 
+    client.infos["BEEF"] = _info()
     pushed = (
         await http.post(
             "/controller/calibration/session/push", json={"devices": ["abcd"]}
@@ -650,6 +672,46 @@ async def test_the_routes_walk_a_session_from_start_to_push(
         "session": None
     }
     assert (await http.get("/controller/calibration/session/state")).json() is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "method, path",
+    [
+        ("post", "/controller/calibration/session/push"),
+        ("post", "/controller/calibration/push"),
+        ("post", "/controller/calibration/session"),
+        ("get", "/controller/calibration/session/state"),
+        ("delete", "/controller/calibration/session"),
+    ],
+)
+@pytest.mark.parametrize(
+    "headers",
+    [{"Origin": "http://example.org"}, {"Sec-Fetch-Site": "cross-site"}],
+)
+async def test_another_sites_page_cannot_reach_the_session(rest, method, path, headers):
+    http, _, client = rest
+    response = await getattr(http, method)(path, headers=headers)
+    assert response.status_code == 403
+    assert client.pushed == []
+
+
+@pytest.mark.asyncio
+async def test_a_console_off_loopback_reaches_the_session(rest):
+    from httpx import ASGITransport, AsyncClient
+
+    from dotbot.server import api
+
+    lan = AsyncClient(
+        transport=ASGITransport(app=api, client=("192.168.1.30", 51000)),
+        base_url="http://bench-host:8000",
+    )
+    response = await lan.post(
+        "/controller/calibration/session/push",
+        headers={"Origin": "http://bench-host:8000", "Sec-Fetch-Site": "same-origin"},
+    )
+    # Past the guard: refused by the session itself, which has nothing saved
+    assert response.status_code == 409
 
 
 @pytest.mark.asyncio
@@ -1159,3 +1221,64 @@ def test_a_push_to_an_empty_robot_list_is_refused():
 
     with pytest.raises(PushRefused, match="no robot named"):
         gate_push(_FakeClient(), SimpleNamespace(), devices=[])
+
+
+@pytest.mark.asyncio
+async def test_a_file_push_goes_only_to_the_named_robots(monkeypatch, tmp_path):
+    from dotbot.calibration.session import SessionError
+
+    monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
+    driver, client, _ = _driver()
+    client.infos["FEED"] = _info()
+    client.infos["BEEF"] = _info()
+    await _button_session(driver, "FEED")
+    saved = driver.session.saved
+    await driver.abandon()
+
+    pushed = await driver.push_file(saved, ["beef"])
+
+    assert client.pushed_to == ["BEEF"]
+    assert pushed["id"] == saved.id and pushed["stale"] == []
+    assert client.infos["BEEF"].lh2_calibration_id == lighthouse2.pushed_id(saved)
+    with pytest.raises(SessionError, match="nothing is ticked"):
+        await driver.push_file(saved, [])
+
+
+@pytest.mark.asyncio
+async def test_a_file_push_naming_every_robot_is_one_broadcast(monkeypatch, tmp_path):
+    monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
+    driver, client, _ = _driver()
+    client.infos["FEED"] = _info()
+    client.infos["BEEF"] = _info()
+    await _button_session(driver, "FEED")
+    saved = driver.session.saved
+    await driver.abandon()
+
+    pushed = await driver.push_file(saved, ["abcd", "beef", "feed"])
+
+    assert client.pushed_to is None
+    assert pushed["stale"] == []
+    wanted = lighthouse2.pushed_id(saved)
+    assert {i.lh2_calibration_id for i in client.infos.values()} == {wanted}
+
+
+@pytest.mark.asyncio
+async def test_a_fleet_push_does_not_wait_on_the_robots_left_in_their_app(
+    monkeypatch, tmp_path
+):
+    from dotbot.calibration import push
+
+    monkeypatch.setattr(lighthouse2, "CALIBRATION_DIR", tmp_path)
+    monkeypatch.setattr(push, "PUSH_REJOIN_TIMEOUT", 0.2)
+    driver, client, _ = _driver()
+    client.infos["FEED"] = _info()
+    client.infos["BEEF"] = _info()
+    await _button_session(driver, "FEED")
+    saved = driver.session.saved
+    await driver.abandon()
+    client.running.add("BEEF")
+
+    pushed = await driver.push_file(saved, ["abcd", "beef", "feed"])
+
+    assert client.pushed_to is None
+    assert pushed["stale"] == []

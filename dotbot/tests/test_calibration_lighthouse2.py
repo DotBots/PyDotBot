@@ -1,4 +1,4 @@
-"""Tests for the LH2 calibration solve, the schema 4 file and the identity.
+"""Tests for the LH2 calibration solve, the schema 5 file and the identity.
 
 Synthetic captures are built by inverting one chosen station matrix, so the
 correspondences are exactly consistent and the solver's own error is the only
@@ -250,17 +250,17 @@ def _saved(monkeypatch, tmp_path, tag=None, **kwargs):
     return manager, manager.save_calibration(tag=tag)
 
 
-def test_save_writes_schema_4_into_the_site_directory(monkeypatch, tmp_path):
+def test_save_writes_schema_5_into_the_site_directory(monkeypatch, tmp_path):
     _, path = _saved(monkeypatch, tmp_path)
 
     assert path.parent == tmp_path / "calibrations" / "default"
     parsed = tomllib.loads(path.read_text())
-    assert parsed["schema_version"] == 4
+    assert parsed["schema_version"] == 5
     assert parsed["site"]["name"] == "default"
     assert parsed["site"]["anchor"] == ""
     assert "frame" not in parsed
     assert "false_origin_mm" not in parsed["site"]
-    assert parsed["validity"]["valid_mm"] == [0, 0, 10000, 10000]
+    assert "validity" not in parsed
     assert parsed["metadata"]["robot"] == "dotbot-v3"
     assert len(parsed["metadata"]["id"]) == 16
     assert path.name.endswith(f"-{parsed['metadata']['id'][:8]}.toml")
@@ -271,6 +271,7 @@ def test_save_writes_schema_4_into_the_site_directory(monkeypatch, tmp_path):
     )
     assert len(parsed["station"]) == 1
     assert parsed["station"][0]["solved_from"] == "direct"
+    assert parsed["station"][0]["coverage_mm"] == [0, 0, 10000, 10000]
     assert "calibration_distance_mm" not in parsed["metadata"]
     assert "num_lh_stations" not in parsed["metadata"]
     assert "calibration" not in parsed
@@ -292,7 +293,7 @@ def test_schema_3_round_trips_and_re_solves_to_the_same_matrices_and_id(
     assert loaded.placements[0].points_mm == manager.placements[0].points_mm
 
     re_solved = LighthouseManager(
-        placements=loaded.placements, site=loaded.site, valid_mm=loaded.valid_mm
+        placements=loaded.placements, site=loaded.site, coverage_mm=loaded.coverage_mm
     )
     re_solved.solve()
     assert re_solved.stations[0].homography == loaded.stations[0].homography
@@ -322,7 +323,7 @@ def test_points_from_round_trips_through_the_file(monkeypatch, tmp_path):
 def test_points_from_written_as_a_string_is_rejected(tmp_path):
     path = tmp_path / "calibration-2026-01-01T00-00-00Z-deadbeef.toml"
     path.write_text(
-        "schema_version = 4\n[[placement]]\nindex = 0\npoints_mm = []\n"
+        "schema_version = 5\n[[placement]]\nindex = 0\npoints_mm = []\n"
         'points_from = "over dev-corner"\n',
         encoding="utf-8",
     )
@@ -357,7 +358,7 @@ def test_schema_1_file_is_rejected(tmp_path):
 def test_a_file_carrying_a_frame_table_is_rejected(tmp_path):
     path = tmp_path / "calibration-2026-01-01T00-00-00Z-deadbeef.toml"
     path.write_text(
-        'schema_version = 4\n[frame]\nname = "inria-aio-c"\n', encoding="utf-8"
+        'schema_version = 5\n[frame]\nname = "inria-aio-c"\n', encoding="utf-8"
     )
     with pytest.raises(ValueError, match=r"\[frame\] is not a table"):
         read_calibration_file(path)
@@ -412,7 +413,7 @@ def test_calibration_id_moves_when_a_point_or_a_matrix_moves(monkeypatch, tmp_pa
     assert calibration.id != before
 
     calibration = read_calibration_file(path)
-    calibration.valid_mm = (0, 0, 5000, 5000)
+    calibration.stations[0].coverage_mm = (0, 0, 5000, 5000)
     assert calibration.id != before
 
 
@@ -444,7 +445,7 @@ def test_resolve_prefers_an_actual_path(monkeypatch, tmp_path):
 
 def test_resolve_by_exact_tag(monkeypatch, tmp_path):
     _, path = _saved(
-        monkeypatch, tmp_path, tag="arena-relay", valid_mm=(0, 0, 1000, 1000)
+        monkeypatch, tmp_path, tag="arena-relay", coverage_mm=(0, 0, 1000, 1000)
     )
     root = tmp_path / "calibrations"
 
@@ -457,7 +458,7 @@ def test_resolve_by_exact_tag(monkeypatch, tmp_path):
 def test_resolve_by_tag_accepts_the_stored_slug(monkeypatch, tmp_path):
     """A tag typed with spaces/punctuation still resolves by its stored slug."""
     _, path = _saved(
-        monkeypatch, tmp_path, tag="Arena Relay!", valid_mm=(0, 0, 1000, 1000)
+        monkeypatch, tmp_path, tag="Arena Relay!", coverage_mm=(0, 0, 1000, 1000)
     )
     root = tmp_path / "calibrations"
     calibration = read_calibration_file(path)
@@ -468,8 +469,12 @@ def test_resolve_by_tag_accepts_the_stored_slug(monkeypatch, tmp_path):
 
 
 def test_an_ambiguous_tag_lists_every_match(monkeypatch, tmp_path):
-    _, first = _saved(monkeypatch, tmp_path, tag="shared", valid_mm=(0, 0, 1000, 1000))
-    _, second = _saved(monkeypatch, tmp_path, tag="shared", valid_mm=(0, 0, 2000, 2000))
+    _, first = _saved(
+        monkeypatch, tmp_path, tag="shared", coverage_mm=(0, 0, 1000, 1000)
+    )
+    _, second = _saved(
+        monkeypatch, tmp_path, tag="shared", coverage_mm=(0, 0, 2000, 2000)
+    )
     root = tmp_path / "calibrations"
 
     with pytest.raises(
@@ -487,9 +492,9 @@ def test_an_ambiguous_tag_lists_every_match(monkeypatch, tmp_path):
 def test_a_tag_wins_over_an_id_prefix_only_on_an_exact_match(monkeypatch, tmp_path):
     """A spec that reads as both resolves the tag, exactly; otherwise the prefix."""
     _, tagged = _saved(
-        monkeypatch, tmp_path, tag="deadbeef", valid_mm=(0, 0, 1000, 1000)
+        monkeypatch, tmp_path, tag="deadbeef", coverage_mm=(0, 0, 1000, 1000)
     )
-    _, other = _saved(monkeypatch, tmp_path, valid_mm=(0, 0, 2000, 2000))
+    _, other = _saved(monkeypatch, tmp_path, coverage_mm=(0, 0, 2000, 2000))
     root = tmp_path / "calibrations"
     other_id = read_calibration_file(other).id
 
@@ -663,11 +668,11 @@ def test_the_package_default_site_names_no_lab():
     assert site.anchor == ""
     assert site.extent_mm is None
     assert site.areas == {}
-    assert site.valid_mm is None
+    assert site.extent_rect_mm is None
 
 
 def test_a_site_extent_is_the_plausibility_fence():
-    assert C405.valid_mm == (0, 0, 2000, 4000)
+    assert C405.extent_rect_mm == (0, 0, 2000, 4000)
     assert C405.extent.as_dict() == {
         "x": 0,
         "y": 0,
@@ -708,7 +713,7 @@ def test_the_calibration_messages_are_pinned(tmp_path):
     assert all(len(m) == 84 for m in messages)
 
 
-def test_a_file_without_site_or_validity_takes_the_defaults_swarmit_takes(tmp_path):
+def test_a_file_without_site_takes_the_defaults_swarmit_takes(tmp_path):
     from dotbot.calibration.lighthouse2 import calibration_messages
     from dotbot.tests.lh2_wire_fixture import (
         DEFAULTS_FIXTURE_ID,
@@ -740,16 +745,16 @@ def test_a_message_carries_the_matrix_as_float32_and_the_site_fields(tmp_path):
     # station 8's own rectangle, not the union
     assert struct.unpack_from("<4I", message, 44) == (800, 0, 3330, 4000)
     assert message[60:76] == b"c405-arena" + bytes(6)
-    assert message[76:84] == bytes.fromhex("9b12f56f622f0fb6")
-    assert lighthouse2.message_site(message) == ("c405-arena", "9b12f56f622f0fb6")
+    assert message[76:84] == bytes.fromhex("ce4b7890ba1fabef")
+    assert lighthouse2.message_site(message) == ("c405-arena", "ce4b7890ba1fabef")
 
 
 def _stations_2_and_8(tmp_path):
     calibration = _wire_fixture(tmp_path)
     two, eight = calibration.stations
     calibration.stations = [
-        replace(two, index=2, valid_mm=(0, 0, 3330, 2500)),
-        replace(eight, index=8, valid_mm=(1200, 10, 3330, 4000)),
+        replace(two, index=2, coverage_mm=(0, 0, 3330, 2500)),
+        replace(eight, index=8, coverage_mm=(1200, 10, 3330, 4000)),
     ]
     calibration.stored_id = ""
     return calibration
@@ -757,7 +762,7 @@ def _stations_2_and_8(tmp_path):
 
 def test_stations_2_and_8_encode_byte_for_byte_as_the_frozen_layout(tmp_path):
     """0xA3 payload: mask u32 @0, index u32 @4, float32 H[3][3] @8, this
-    station's u32 valid_mm[4] @44, site_name[16] @60, calibration_id[8] @76."""
+    station's u32 coverage_mm[4] @44, site_name[16] @60, calibration_id[8] @76."""
     import struct
 
     from dotbot.calibration.lighthouse2 import calibration_messages
@@ -770,7 +775,7 @@ def test_stations_2_and_8_encode_byte_for_byte_as_the_frozen_layout(tmp_path):
             (0x0104).to_bytes(4, "little")
             + station.index.to_bytes(4, "little")
             + b"".join(struct.pack("<f", v) for row in station.homography for v in row)
-            + b"".join(v.to_bytes(4, "little") for v in station.valid_mm)
+            + b"".join(v.to_bytes(4, "little") for v in station.coverage_mm)
             + b"c405-arena".ljust(16, b"\x00")
             + bytes.fromhex(calibration.id[:16])
         )
@@ -837,7 +842,7 @@ def test_reframe_shifts_the_points_resolves_and_keeps_the_residual(tmp_path):
     reframed = reframe_calibration(source, floor, (5000.0, 7000.0))
 
     assert reframed.site.name == "inria-aio-c"
-    assert reframed.valid_mm == (0, 0, 12000, 20000)
+    assert reframed.coverage_mm == (0, 0, 12000, 20000)
     assert reframed.id != source.id
     for (x0, y0), (x1, y1) in zip(
         source.placements[0].points_mm, reframed.placements[0].points_mm

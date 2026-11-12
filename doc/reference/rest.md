@@ -53,6 +53,25 @@ DotBot id; `{application}` is `0` (DotBot) or `1` (SailBot).
 | `GET` | `/controller/cameras` | Registered overhead cameras currently serving a layer |
 | `GET` | `/controller/cameras/{area}/stream` | That area's camera, warped into its raster, as `multipart/x-mixed-replace` JPEG |
 
+Calibration, used by the console and the site page (a page from another
+site is refused):
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/controller/calibration/session` | Open a calibration session with marks over a set of points |
+| `GET` | `/controller/calibration/session/state` | The session, or `null` |
+| `POST` | `/controller/calibration/session/save` | Solve the session and write its file |
+| `POST` | `/controller/calibration/session/push` | Send the session's file to the robots |
+| `DELETE` | `/controller/calibration/session` | Abandon the session, writing nothing |
+| `POST` | `/controller/calibration/push` | Send a saved file, by id, tag or path, to exactly the robots named |
+| `POST` | `/controller/calibration/spin` | Spin robots in place (`devices`, none for every robot that can), solve their circles and save a calibration; `append` adds a round to a free spin. Returns once the robots are checked; the run goes on as `calibration_spin` stream events |
+| `GET` | `/controller/calibration/spin` | The spin run, or `null` |
+| `DELETE` | `/controller/calibration/spin` | Forget a finished spin run; its file stays |
+
+The site page's own routes are under `/controller/site-editor/api/`. Any
+page of the controller's origin may read them; they write only for a client
+on the controller's machine addressing it as `127.0.0.1` or `localhost`.
+
 Two WebSocket endpoints: `/controller/ws/stream` pushes the fleet's state (a
 snapshot, then merge-patch deltas, each answered with `{"ack": seq}`), and
 `/controller/ws/dotbots` takes `move_raw` / `rgb_led` / `waypoints` commands as

@@ -77,6 +77,8 @@ class PushCheck:
     running: list[str] = field(default_factory=list)
     stale: list[str] = field(default_factory=list)
     info_gens: dict[str, int] = field(default_factory=dict)
+    # The calibration id each robot's device info reports, "" for none
+    held: dict[str, str] = field(default_factory=dict)
     fleet: bool = False
 
     @property
@@ -147,6 +149,7 @@ def check_push(status: Mapping[str, Any], calibration: Calibration) -> PushCheck
         if int(getattr(info, "info_version", 0)) < DEVICE_INFO_VERSION_MIN:
             check.old_firmware.append(addr)
             continue
+        check.held[addr] = _reported_id(info)
         site = getattr(info, "lh2_site_name", "") or ""
         if site and site != calibration.site.name:
             check.other_site[addr] = site

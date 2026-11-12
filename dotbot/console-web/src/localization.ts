@@ -3,6 +3,7 @@ import type {
   CameraDetection,
   RegisteredCamera,
   Site,
+  SiteCalibration,
   UnifiedBot,
 } from "./types";
 
@@ -77,18 +78,35 @@ export interface StationRow {
   label: string;
 }
 
-/** One row per solved station: how many points and how well it fits them. */
-export function stationRows(session: CalibrationSession | null): StationRow[] {
-  if (!session) return [];
+/** One row per solved station: the session's, else the served calibration's. */
+export function stationRows(
+  session: CalibrationSession | null,
+  served: SiteCalibration | null = null,
+): StationRow[] {
+  if (!session) {
+    return (served?.stations ?? []).map((s) => ({
+      index: s.index,
+      label:
+        (s.residual_mm === null ? "" : `residual ${s.residual_mm.toFixed(1)} mm · `) +
+        `coverage x ${s.box[0]}-${s.box[2]}, y ${s.box[1]}-${s.box[3]}`,
+    }));
+  }
   return session.stations.map((s) => ({
     index: s.index,
     label: `${s.points} points · residual ${s.residual_mm.toFixed(1)} mm`,
   }));
 }
 
-/** "2 seen · 2 solved", counting the ones a homography could not be fit to. */
-export function stationsSummary(session: CalibrationSession | null): string {
-  if (!session) return "no calibration loaded";
+/** "2 seen · 2 solved" in a session; otherwise what the controller serves. */
+export function stationsSummary(
+  session: CalibrationSession | null,
+  served: SiteCalibration | null = null,
+): string {
+  if (!session && served) {
+    const n = served.stations?.length ?? 0;
+    return `serving ${served.id.slice(0, 8)}` + (n ? ` · ${n} station${n === 1 ? "" : "s"}` : "");
+  }
+  if (!session) return "no calibration served";
   const seen = session.stations.length + session.unsolved.length;
   return `${seen} seen · ${session.stations.length} solved`;
 }

@@ -997,7 +997,6 @@ async def test_reverse_proxy_middleware_connect_error(monkeypatch):
 
     import dotbot.server as server_module
 
-    monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setattr(server_module.httpx, "AsyncClient", mock_async_client)
 
     client = TestClient(api)
@@ -1384,6 +1383,10 @@ async def test_get_controller_site():
         "field": "field",
         "calibration": None,
         "spin_radius_mm": None,
+        "lh2_error_limit_mm": None,
+        "walls": [],
+        "obstacles": [],
+        "objects": [],
     }
 
 
@@ -1411,12 +1414,16 @@ async def test_get_controller_site_carries_the_loaded_calibration_span():
         "id": calibration.id,
         "tag": "demo",
         "created_at": "2026-09-10T09:12:00Z",
+        "site": "c405-arena",
+        "anchor": "",
         "placements": [
             {
                 "points_mm": [[750, 750], [1250, 750], [750, 1250], [1250, 1250]],
                 "points_from": {"kind": "square", "area": None, "side_mm": 500},
             }
         ],
+        "stations": [],
+        "circles": [],
     }
 
 
@@ -1428,6 +1435,7 @@ def test_the_site_payload_reads_back_as_the_same_site():
         anchor="north-west corner",
         extent_mm=(5000, 4000),
         spin_radius_mm=53.0,
+        lh2_error_limit_mm=1.5,
         areas={
             "pen": Area(0, 0, 10, 10, "pen", "corner"),
             "main": Area(5, 5, 10, 10, "main", "field"),
@@ -1460,6 +1468,10 @@ async def test_get_controller_site_with_nothing_measured():
         "field": None,
         "calibration": None,
         "spin_radius_mm": None,
+        "lh2_error_limit_mm": None,
+        "walls": [],
+        "obstacles": [],
+        "objects": [],
     }
 
 
@@ -2624,3 +2636,18 @@ async def test_a_lost_robot_is_still_served_by_address_and_takes_commands():
         "/controller/dotbots/2/0/rgb_led", json={"red": 1, "green": 2, "blue": 3}
     )
     assert response.status_code == 200
+
+
+def test_a_served_spin_calibration_carries_its_stations_and_circles():
+    from dotbot.calibration import conics
+    from dotbot.models import DotBotCalibrationSpanModel
+    from dotbot.tests.test_calibration_conics import CENTRES, track_samples
+
+    calibration, _, _ = conics.solve_calibration(
+        track_samples(CENTRES), Site(name="lab"), tag="spin"
+    )
+    model = DotBotCalibrationSpanModel.from_calibration(calibration)
+    (station,) = model.stations
+    assert station.index == 0 and station.box == list(calibration.coverage_mm)
+    assert len(model.circles) == len(CENTRES)
+    assert {c.station for c in model.circles} == {0}

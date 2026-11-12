@@ -175,9 +175,27 @@ describe("the station rows", () => {
     ).toBe("2 seen · 1 solved");
   });
 
-  it("has nothing to say with no session", () => {
+  it("says the controller serves none with no session and no calibration", () => {
     expect(stationRows(null)).toEqual([]);
-    expect(stationsSummary(null)).toBe("no calibration loaded");
+    expect(stationsSummary(null)).toBe("no calibration served");
+  });
+
+  it("reads the served calibration when no session is open", () => {
+    const served = {
+      id: "4640cfde014c7232",
+      tag: "r3",
+      created_at: "",
+      placements: [],
+      stations: [
+        { index: 0, residual_mm: 1.1, box: [0, 0, 1060, 1220] as [number, number, number, number] },
+        { index: 1, residual_mm: null, box: [0, 0, 1060, 1220] as [number, number, number, number] },
+      ],
+    };
+    expect(stationsSummary(null, served)).toBe("serving 4640cfde · 2 stations");
+    expect(stationRows(null, served)).toEqual([
+      { index: 0, label: "residual 1.1 mm · coverage x 0-1060, y 0-1220" },
+      { index: 1, label: "coverage x 0-1060, y 0-1220" },
+    ]);
   });
 });
 

@@ -57,20 +57,20 @@ CONFIG_MAGIC_BY_ROLE = {
 }
 CONFIG_MANIFEST_NAME = "config-manifest.json"
 # swarmit_config_t, little-endian and packed: magic, has_net_id, net_id,
-# station_mask, sixteen 3x3 float32 matrices by slot, sixteen valid_mm[4] by
+# station_mask, sixteen 3x3 float32 matrices by slot, sixteen coverage_mm[4] by
 # slot, site_name[16], calibration_id[8]; 872 bytes. Every byte the
 # calibration does not set is 0xFF, the erase state the firmware reads as
 # "absent"; slots outside the mask are ignored.
 LH2_MATRIX_BYTES = 3 * 3 * 4
-LH2_VALID_MM_BYTES = 4 * 4
+LH2_COVERAGE_MM_BYTES = 4 * 4
 LH2_MAX_HOMOGRAPHIES = 16
 SWARMIT_CONFIG_MASK_OFFSET = 12
 SWARMIT_CONFIG_MATRICES_OFFSET = SWARMIT_CONFIG_MASK_OFFSET + 4
-SWARMIT_CONFIG_VALID_MM_OFFSET = (
+SWARMIT_CONFIG_COVERAGE_MM_OFFSET = (
     SWARMIT_CONFIG_MATRICES_OFFSET + LH2_MAX_HOMOGRAPHIES * LH2_MATRIX_BYTES
 )
 SWARMIT_CONFIG_SITE_OFFSET = (
-    SWARMIT_CONFIG_VALID_MM_OFFSET + LH2_MAX_HOMOGRAPHIES * LH2_VALID_MM_BYTES
+    SWARMIT_CONFIG_COVERAGE_MM_OFFSET + LH2_MAX_HOMOGRAPHIES * LH2_COVERAGE_MM_BYTES
 )
 SWARMIT_CONFIG_SITE_BYTES = 16 + 8
 SWARMIT_CONFIG_BYTES = SWARMIT_CONFIG_SITE_OFFSET + SWARMIT_CONFIG_SITE_BYTES
@@ -187,11 +187,11 @@ def load_calibration_file(path: Path):
 def swarmit_config_page(net_id_value: int, calibration=None) -> bytes:
     """The sandbox host's whole config page, `swarmit_config_t`."""
     from dotbot.calibration.lighthouse2 import (
+        coverage_mm_as_bytes,
         homography_as_float32,
         pushable_stations,
         site_fields_as_bytes,
         station_mask,
-        valid_mm_as_bytes,
     )
 
     page = bytearray(b"\xff" * SWARMIT_CONFIG_BYTES)
@@ -208,9 +208,12 @@ def swarmit_config_page(net_id_value: int, calibration=None) -> bytes:
             page[offset : offset + LH2_MATRIX_BYTES] = homography_as_float32(
                 station.homography
             )
-            offset = SWARMIT_CONFIG_VALID_MM_OFFSET + station.index * LH2_VALID_MM_BYTES
-            page[offset : offset + LH2_VALID_MM_BYTES] = valid_mm_as_bytes(
-                station.valid_mm
+            offset = (
+                SWARMIT_CONFIG_COVERAGE_MM_OFFSET
+                + station.index * LH2_COVERAGE_MM_BYTES
+            )
+            page[offset : offset + LH2_COVERAGE_MM_BYTES] = coverage_mm_as_bytes(
+                station.coverage_mm
             )
         page[SWARMIT_CONFIG_SITE_OFFSET:] = site_fields_as_bytes(calibration)
     return bytes(page)

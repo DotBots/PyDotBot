@@ -7,6 +7,7 @@ import {
   PlannedMission,
   RegisteredCamera,
   Site,
+  SpinRun,
   UnifiedBot,
   shortId,
 } from "./types";
@@ -62,6 +63,7 @@ interface TestbedRailProps {
   onClearWaypoints: (ids: string[]) => void;
   site: Site | null;
   session: CalibrationSession | null;
+  spin?: SpinRun | null;
   cameras?: RegisteredCamera[];
   cameraDetections?: Record<string, CameraDetection>;
   calibrationBusy: boolean;
@@ -146,12 +148,16 @@ export function deriveMissions(bots: UnifiedBot[], planned: PlannedMission[]): M
 export const TestbedRail: React.FC<TestbedRailProps> = (props) => {
   // ?rail=testbed|missions|localization picks which tab is on top.
   const railParam = new URLSearchParams(window.location.search).get("rail");
+  // ?push=<calibration> opens Localization with the push sheet on that file
+  const pushParam = new URLSearchParams(window.location.search).get("push");
+  // ?spin opens Localization on the spin card, from the site editor's link
+  const spinParam = new URLSearchParams(window.location.search).has("spin");
   const mode = props.collapsed ? "collapsed" : "panel";
   const expand = () => props.setCollapsed(false);
   const [top, setTop] = useState<"testbed" | "missions" | "localization">(
     railParam === "missions"
       ? "missions"
-      : railParam === "localization"
+      : railParam === "localization" || pushParam || spinParam
         ? "localization"
         : "testbed",
   );
@@ -565,6 +571,9 @@ export const TestbedRail: React.FC<TestbedRailProps> = (props) => {
               onCalibrate={props.onCalibrate}
               selection={props.selection}
               onPush={props.onPushCalibration}
+              pushOnOpen={pushParam}
+              spin={props.spin}
+              spinOnOpen={spinParam}
             />
           )}
         </div>

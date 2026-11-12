@@ -18,7 +18,7 @@ import socket
 import time
 import webbrowser
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Mapping, Optional, Tuple, Union
 
 import serial
 import uvicorn
@@ -38,6 +38,7 @@ from dotbot import (
     SIMULATOR_INIT_STATE_DEFAULT,
     SWARMIT_URL_DEFAULT,
     addr_to_hex,
+    pydotbot_version,
 )
 from dotbot.adapter import (
     DotBotSimulatorAdapter,
@@ -69,6 +70,7 @@ from dotbot.models import (
     DotBotLH2Position,
     DotBotModel,
     DotBotQueryModel,
+    DotBotSiteModel,
     DotBotStatus,
 )
 from dotbot.poses import device_pose, robot_body, robot_models, robot_pose
@@ -270,6 +272,13 @@ class ControllerSettings:
     controller_http_host: str = CONTROLLER_HTTP_HOST_DEFAULT
     site: Optional[Site] = None
     lh2_calibration: Optional[str] = None
+    # Where `lh2_calibration` came from ("the command line", a config file)
+    lh2_calibration_source: str = ""
+    # The calibration a restart serves: the config's, without the command line
+    lh2_calibration_next: Optional[str] = None
+    lh2_calibration_next_source: str = ""
+    # The file a "serve at the next start" from the site editor writes to
+    lh2_calibration_persist_path: Optional[str] = None
     lh2_calibration_max_age_days: int = LH2_CALIBRATION_MAX_AGE_DAYS
     stale_after_s: float = STALE_AFTER_S
     lost_after_s: float = LOST_AFTER_S
@@ -404,6 +413,15 @@ class Controller:
         # Released held batches the robot has not advertised yet, by batch id
         self.released_batches: Dict[str, int] = {}
         self.site = settings.site or Site()
+        # What this run started serving, and from where, for the editor
+        self._started_with = (
+            {
+                "spec": settings.lh2_calibration,
+                "source": settings.lh2_calibration_source,
+            }
+            if settings.lh2_calibration
+            else None
+        )
         self.calibration = None
         self.lh2_calibration = []
         if settings.lh2_calibration:
@@ -426,6 +444,10 @@ class Controller:
                 "Pass --lh2-calibration <path|id> or set [run.controller] lh2_calibration."
             )
         self._solved_stations = {station.index for station in self.lh2_calibration}
+        # The calibration id each robot reported holding through swarmit's
+        # device info, "" for none; robots never read are absent
+        self.held_calibrations: Dict[str, str] = {}
+        self._held_warned: set[str] = set()
         # The stations each robot holds that the calibration does not solve
         self._unsolved_held: Dict[str, frozenset[int]] = {}
         self._unsolved_warned: frozenset[int] = frozenset()
@@ -440,6 +462,9 @@ class Controller:
             client_factory=self._swarmit_client,
             notify=self._notify_calibration_session,
             site=self.site,
+            on_held=self.note_held_calibrations,
+            spin_client_factory=self._spin_client,
+            notify_spin=self._notify_calibration_spin,
         )
         self.api = api
         if settings.csv_data_output is not None:
@@ -450,6 +475,123 @@ class Controller:
         self._dotbot_twins: Dict[str, DotBotTwin] = {}
         self._dotbot_twin_timestamps: Dict[str, float] = {}
         api.controller = self
+
+    def editor_context(self) -> dict:
+        """What the site editor says about the controller that opened it."""
+        settings = self.settings
+        cal = self.calibration
+        served = None
+        if cal is not None:
+            served = {
+                "id": cal.id,
+                "id8": cal.id8,
+                "tag": cal.tag,
+                "created_at": cal.created_at,
+                "spec": settings.lh2_calibration,
+                "source": settings.lh2_calibration_source or "unknown",
+            }
+        next_start = None
+        if settings.lh2_calibration_next:
+            next_start = {
+                "spec": settings.lh2_calibration_next,
+                "source": settings.lh2_calibration_next_source or "unknown",
+            }
+        return {
+            "mode": "controller",
+            "served": served,
+            "next_start": next_start,
+            "started_with": getattr(self, "_started_with", None),
+            "frame_change": getattr(self, "_frame_change", None),
+            "persist_path": settings.lh2_calibration_persist_path,
+            "controller": {
+                "version": pydotbot_version(),
+                "port": settings.controller_http_port,
+            },
+        }
+
+    def serve(self, spec: str, persist: bool = False) -> dict:
+        """Serve the calibration `spec` names from now on, and with `persist`
+        also at the next start; ValueError when it does not resolve or is not
+        in the site's frame. Robots keep what they hold until a push."""
+        from dotbot.calibration.lighthouse2 import check_calibration_site
+
+        calibration = load_calibration(spec, site=self.site)
+        check_calibration_site(calibration.site, self.site, calibration.path)
+        before = self.calibration.id[:8] if self.calibration is not None else None
+        if self.calibration is not None:
+            # Robots hold the frame served before the first unpushed change
+            held = getattr(self, "_frame_change", None) or {
+                "from_id": self.calibration.id,
+                "from_frame": self.calibration.site.frame_id,
+            }
+            self._frame_change = (
+                {
+                    "from_id": held["from_id"],
+                    "to_id": calibration.id,
+                    "from_frame": held["from_frame"],
+                    "to_frame": calibration.site.frame_id,
+                }
+                if calibration.site.frame_id != held["from_frame"]
+                else None
+            )
+        settings = self.settings
+        if persist:
+            if not settings.lh2_calibration_persist_path:
+                raise ValueError("this controller has no config file to write to")
+            from pathlib import Path
+
+            from dotbot.cli._config_write import set_value
+
+            set_value(
+                Path(settings.lh2_calibration_persist_path),
+                ("run", "controller", "lh2_calibration"),
+                calibration.id8,
+            )
+            settings.lh2_calibration_next = calibration.id8
+            settings.lh2_calibration_next_source = settings.lh2_calibration_persist_path
+        self.calibration = calibration
+        self.lh2_calibration = calibration.stations
+        self._solved_stations = {st.index for st in calibration.stations}
+        self._held_warned.clear()
+        settings.lh2_calibration = calibration.id8
+        settings.lh2_calibration_source = "the site page" + (
+            "" if persist else ", for this run"
+        )
+        self.logger.info(
+            "Calibration served from the site page",
+            calibration_id=calibration.id,
+            before=before,
+            persist=persist,
+        )
+        model = DotBotSiteModel.from_site(self.site, calibration)
+        self.set_event("site", "site", model.model_dump(mode="json"))
+        return self.editor_context()
+
+    def note_held_calibrations(self, held: Mapping[str, str]) -> None:
+        """Record the calibration ids robots report holding, by address."""
+        for address, calibration_id in held.items():
+            self.held_calibrations[address.upper()] = calibration_id
+            self._held_warned.discard(address.upper())
+
+    def _sends_homographies(self, address: str) -> bool:
+        """Whether a robot missing a served station gets the served homographies.
+
+        Only one that reports no calibration id, or was never read: a robot
+        reporting an id holds that whole calibration, boxes included, and
+        homographies alone would leave it holding a mix of two.
+        """
+        held = self.held_calibrations.get(address.upper(), "")
+        if not held:
+            return True
+        if held != self.calibration.id and address.upper() not in self._held_warned:
+            self._held_warned.add(address.upper())
+            self.logger.warning(
+                "Robot holds another calibration; push the served one to it",
+                source=address,
+                held=held[:8],
+                served=self.calibration.id[:8],
+            )
+        return False
 
     def _warn_calibration_age(self, max_age_days: int) -> None:
         """Warn when the calibration is older than `max_age_days` (0: never)."""
@@ -938,7 +1080,11 @@ class Controller:
                 dotbot.calibrated >> station.index & 0x01
                 for station in self.lh2_calibration
             )
-            if is_fully_calibrated is False and self.lh2_calibration:
+            if (
+                is_fully_calibrated is False
+                and self.lh2_calibration
+                and self._sends_homographies(source)
+            ):
                 # Send calibration to new dotbot if the localization system is calibrated
                 self.logger.info("Send calibration data", payload=self.lh2_calibration)
                 for station in self.lh2_calibration:
@@ -1117,11 +1263,130 @@ class Controller:
             password=self.settings.mqtt_password,
         )
 
+    def _spin_client(self, radius_mm: float):
+        """The swarmit client of a spin; on a simulator, robots that turn in
+        place where they stand."""
+        if self.settings.adapter in ("dotbot-simulator", "sailbot-simulator"):
+            from dotbot.calibration.simulated import SimulatedSpinClient
+
+            def positions():
+                return {
+                    address: (bot.lh2_position.x, bot.lh2_position.y)
+                    for address, bot in list(self.dotbots.items())
+                    if bot.lh2_position is not None
+                }
+
+            return SimulatedSpinClient(positions, radius_mm)
+        return self._swarmit_client()
+
+    async def _notify_calibration_spin(self, state):
+        """A `calibration_spin` event per step of a spin; null when none."""
+        self.set_event("calibration_spin", "calibration_spin", state)
+
     def _outstanding_point(self):
         """The index and frame coordinates the session is capturing, for the simulator."""
         session = self.calibration_session.session
         point = session.outstanding if session else None
         return None if point is None else (point.index, point.mm)
+
+    def use_site(self, name: str, pack, persist: bool = False) -> dict:
+        """Take the site pack at `pack` as this controller's site, from now
+        on and with `persist` also at the next start. The calibration served
+        stays only if it is in the new site's frame. ValueError when the pack
+        does not read, or a calibration session or a spin is running."""
+        from pathlib import Path
+
+        from dotbot.calibration.lighthouse2 import check_calibration_site
+        from dotbot.site import site_from_table
+        from dotbot.site_packs import read_pack
+
+        driver = self.calibration_session
+        if driver.session is not None:
+            raise ValueError(
+                "a calibration session is open; save or abandon it before switching site"
+            )
+        if driver.spin is not None and driver.spin.phase in ("spinning", "solving"):
+            raise ValueError("a spin is running; wait for it before switching site")
+        site = site_from_table(name, read_pack(Path(pack)), Path(pack))
+        settings = self.settings
+        if persist:
+            if not settings.lh2_calibration_persist_path:
+                raise ValueError("this controller has no config file to write to")
+            from dotbot.cli._config_write import set_value
+
+            set_value(Path(settings.lh2_calibration_persist_path), ("site",), name)
+        dropped = None
+        if self.calibration is not None:
+            try:
+                check_calibration_site(
+                    self.calibration.site, site, self.calibration.path
+                )
+            except ValueError:
+                dropped = self.calibration.id8
+                self.calibration = None
+                self.lh2_calibration = []
+                self._solved_stations = set()
+                self._frame_change = None
+                settings.lh2_calibration = None
+                settings.lh2_calibration_source = None
+        self.site = site
+        settings.site = site
+        driver.site = site
+        driver.spin = None
+        simulator = getattr(self.adapter, "simulator", None)
+        if hasattr(simulator, "use_site"):
+            simulator.use_site(site)
+        model = DotBotSiteModel.from_site(site, self.calibration)
+        self.set_event("site", "site", model.model_dump(mode="json"))
+        self.set_event("calibration_spin", "calibration_spin", None)
+        self.logger.info("Site switched from the site page", site=name, dropped=dropped)
+        return {"site": name, "pack": str(pack), "dropped": dropped}
+
+    def reload_site(self) -> None:
+        """Read the site's pack again: the map (a `site` event), the
+        calibration session and a running simulator take the change at once.
+        A pack that no longer reads leaves the site as it was."""
+        from dotbot.calibration.lighthouse2 import check_calibration_site
+        from dotbot.site import site_from_table
+        from dotbot.site_packs import read_pack
+
+        if self.site.pack is None:
+            return
+        try:
+            site = site_from_table(
+                self.site.name, read_pack(self.site.pack), self.site.pack
+            )
+            model = DotBotSiteModel.from_site(site, self.calibration)
+        except Exception as exc:  # noqa: BLE001
+            self.logger.warning(
+                "Site pack no longer reads; keeping the site as it was",
+                pack=str(self.site.pack),
+                error=str(exc),
+            )
+            return
+        if self.calibration is not None:
+            try:
+                check_calibration_site(
+                    self.calibration.site, site, self.calibration.path
+                )
+            except ValueError as exc:
+                self.logger.warning(
+                    "Site reloaded against its calibration", error=str(exc)
+                )
+            if site.extent_rect_mm != self.site.extent_rect_mm:
+                self.logger.warning(
+                    "Site extent changed; robots keep the fence of the calibration "
+                    "they hold until a new one is pushed",
+                    site=site.name,
+                )
+        self.site = site
+        self.settings.site = site
+        self.calibration_session.site = site
+        simulator = getattr(self.adapter, "simulator", None)
+        if hasattr(simulator, "use_site"):
+            simulator.use_site(site)
+        self.set_event("site", "site", model.model_dump(mode="json"))
+        self.logger.info("Site reloaded from its pack", site=site.name)
 
     async def _notify_calibration_session(self, state):
         """A `calibration_session` event per session state change.

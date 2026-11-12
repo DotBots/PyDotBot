@@ -1,5 +1,8 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
+import { PAGE_NAME } from "./shared/pageName";
+import { PushSheet } from "./shared/PushSheet";
+import { SpinCard } from "./SpinCard";
 import {
   calibrationCoverage,
   camerasSummary,
@@ -16,6 +19,7 @@ import type {
   CameraDetection,
   RegisteredCamera,
   Site,
+  SpinRun,
   UnifiedBot,
 } from "./types";
 
@@ -82,6 +86,12 @@ interface LocalizationPanelProps {
   selection: ReadonlySet<string>;
   /** Push the saved calibration: to `stale` when given, else by the selection rule. */
   onPush: (stale?: string[]) => void;
+  /** A calibration to open the push sheet on, as the site editor's link names it. */
+  pushOnOpen?: string | null;
+  /** The spin run the controller reports, if any. */
+  spin?: SpinRun | null;
+  /** Opened from the site editor's "Spin robots" link. */
+  spinOnOpen?: boolean;
 }
 
 const TARGETS: { value: PushTarget; text: string; title: string }[] = [
@@ -156,8 +166,20 @@ export const LocalizationPanel: React.FC<LocalizationPanelProps> = ({
   onCalibrate,
   selection,
   onPush,
+  pushOnOpen = null,
+  spin = null,
+  spinOnOpen = false,
 }) => {
-  const coverage = calibrationCoverage(bots, session?.saved_id ?? "");
+  const [pushing, setPushing] = useState<string | null>(pushOnOpen);
+  const spinRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (spinOnOpen) spinRef.current?.scrollIntoView?.({ block: "start" });
+  }, [spinOnOpen]);
+  // The fleet is compared with what the controller serves, or with what
+  // this session saved, which is what a push would send.
+  const served = site?.calibration ?? null;
+  const compared = session?.saved_id || served?.id || "";
+  const coverage = calibrationCoverage(bots, compared);
   const [target, setTarget] = useState<PushTarget>(loadPushTarget);
   const chooseTarget = (next: PushTarget) => {
     setTarget(next);
@@ -165,7 +187,7 @@ export const LocalizationPanel: React.FC<LocalizationPanelProps> = ({
   };
   const plan = pushPlan(target, selection, bots.length, coverage.stale, session?.saved_id ?? "");
   const pushDisabled = busy || plan.blocked !== "";
-  const rows = stationRows(session);
+  const rows = stationRows(session, served);
   const cameraRows = cameraStatusRows(cameras, cameraDetections);
 
   return (
@@ -191,7 +213,7 @@ export const LocalizationPanel: React.FC<LocalizationPanelProps> = ({
           </div>
           <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 3 }}>
             {coverage.unknown
-              ? "save a calibration in this session to compare the fleet against it"
+              ? `the controller serves none; serve one in ${PAGE_NAME}, or calibrate below, to compare the fleet against it`
               : coverageLabel(coverage)}
           </div>
           {coverage.stale.length > 0 && (
@@ -240,11 +262,36 @@ export const LocalizationPanel: React.FC<LocalizationPanelProps> = ({
           )}
         </Section>
 
+        {served && (
+          <Section title="Push a calibration">
+            <div style={{ fontSize: 11.5, color: "var(--muted)", lineHeight: 1.5 }}>
+              Send a saved file to the robots you tick; nothing is ticked for you.
+            </div>
+            <div
+              role="button"
+              tabIndex={0}
+              data-testid="push-open"
+              onClick={() => setPushing(served.id)}
+              onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && setPushing(served.id)}
+              style={{ ...actionButton(false, false), marginTop: 8 }}
+              title="Choose the robots to push the served calibration to"
+            >
+              Push {served.id.slice(0, 8)} to robots…
+            </div>
+          </Section>
+        )}
+
+        <div ref={spinRef}>
+          <Section title="Spin robots, no marks">
+            <SpinCard spin={spin} bots={bots} selection={selection} />
+          </Section>
+        </div>
+
         <Section title="Stations">
-          <div style={{ fontSize: 13 }}>{stationsSummary(session)}</div>
+          <div style={{ fontSize: 13 }}>{stationsSummary(session, served)}</div>
           {rows.map((row) => (
             <div key={row.index} style={{ ...mono, fontSize: 11, color: "var(--muted)", marginTop: 4 }}>
-              station {row.index} · {row.label}
+              S{row.index} · {row.label}
             </div>
           ))}
         </Section>
@@ -268,6 +315,15 @@ export const LocalizationPanel: React.FC<LocalizationPanelProps> = ({
         </Section>
       </div>
 
+      {pushing && (
+        <PushSheet
+          calibrationId={pushing}
+          tag={served && pushing.startsWith(served.id.slice(0, 8)) ? served.tag : undefined}
+          site={site?.name ?? ""}
+          bots={bots}
+          onClose={() => setPushing(null)}
+        />
+      )}
       <div
         style={{
           flex: "none",

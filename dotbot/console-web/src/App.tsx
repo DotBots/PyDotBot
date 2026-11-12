@@ -62,6 +62,9 @@ import {
 import { ShortcutsPanel } from "./ShortcutsPanel";
 import { StepCard } from "./StepCard";
 import { TestbedControls } from "./TestbedControls";
+import { CalibrationChip } from "./shared/CalibrationChip";
+import { TitleBar } from "./shared/TitleBar";
+import { servedChip } from "./shared/served";
 import { TestbedAction, targetsOf } from "./testbed";
 import { useTestbedConfirm } from "./testbedConfirm";
 import { DoneMission, TestbedRail } from "./TestbedRail";
@@ -133,8 +136,11 @@ function robotsNotice(ids: string[], what: string): string {
   return `${ids.length} robot${ids.length === 1 ? "" : "s"} ${what}: ${names.join(", ")}${more}`;
 }
 
+// Links from the site editor open in this tab rather than a new one
+if (typeof window !== "undefined" && !window.name) window.name = "dotbot-console";
+
 export const App: React.FC = () => {
-  const { bots, site, cameras, cameraDetections, session, setSession, viewport, wsUp } =
+  const { bots, site, cameras, cameraDetections, session, setSession, spin, viewport, wsUp } =
     useFleet();
   // ?theme=dark|light presets the theme (handy for dev/screenshots).
   const [theme, setTheme] = useState<"dark" | "light">(() =>
@@ -181,7 +187,11 @@ export const App: React.FC = () => {
   const calibration = useCalibration(setSession, selection);
   // What the list and grid compare each robot against; `now` follows the fleet's updates.
   const fleetCtx = useMemo<FleetContext>(
-    () => ({ calibrationId: session?.saved_id ?? "", site, now: Date.now() / 1000 }),
+    () => ({
+      calibrationId: session?.saved_id || site?.calibration?.id || "",
+      site,
+      now: Date.now() / 1000,
+    }),
     [session?.saved_id, site, bots],
   );
   const preselRef = useRef(false);
@@ -908,22 +918,9 @@ export const App: React.FC = () => {
         fontSize: 13,
       }}
     >
-      {/* Title bar */}
-      <div
-        style={{
-          height: 44,
-          flex: "none",
-          display: "flex",
-          alignItems: "center",
-          gap: 14,
-          padding: "0 16px",
-          background: "var(--surface)",
-          borderBottom: "1px solid var(--hairline)",
-        }}
-      >
-        <div style={{ fontWeight: 700, letterSpacing: ".3px", fontSize: 15 }}>DotBots</div>
-        <div style={{ width: 1, height: 20, background: "var(--hairline)" }} />
+      <TitleBar>
         <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--muted)" }}>{window.location.host}</span>
+        <CalibrationChip chip={servedChip(site?.calibration)} compact />
         {conn && (
           <>
             <div style={{ width: 1, height: 20, background: "var(--hairline)" }} />
@@ -1018,7 +1015,7 @@ export const App: React.FC = () => {
             </div>
           ))}
         </div>
-      </div>
+      </TitleBar>
 
       {/* Body row: testbed rail + view area */}
       <div style={{ position: "relative", flex: 1, overflow: "hidden", display: "flex" }}>
@@ -1051,6 +1048,7 @@ export const App: React.FC = () => {
           onClearWaypoints={onClearWaypoints}
           site={site}
           session={session}
+          spin={spin}
           cameras={cameras}
           cameraDetections={cameraDetections}
           calibrationBusy={calibration.busy}

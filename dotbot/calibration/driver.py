@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Callable, Sequence
 
+from dotbot.calibration.lighthouse2 import calibration_payload
 from dotbot.calibration.points import field_corners, resolve_placement_points
 from dotbot.calibration.push import PushRefused, gate_push, push_worklist
 from dotbot.calibration.session import (
@@ -22,6 +23,7 @@ from dotbot.calibration.session import (
     SessionError,
     placement_dict,
 )
+from dotbot.calibration.spin_run import SpinRefused, SpinRun, run_spin, spin_robots
 from dotbot.logger import LOGGER
 from dotbot.site import Site
 
@@ -45,9 +47,13 @@ class SessionDriver:
         notify: Callable[[dict | None], Any],
         site: Site | None = None,
         stream_factory: Callable[[Any, Callable], Any] | None = None,
+        on_held: Callable[[dict[str, str]], None] | None = None,
+        spin_client_factory: Callable[[float], Any] | None = None,
+        notify_spin: Callable[[dict | None], Any] | None = None,
     ):
         self._client_factory = client_factory
         self._notify = notify
+        self._on_held = on_held
         self._stream_factory = stream_factory or _default_stream
         self.site = site or Site()
         self.session: CalibrationSession | None = None
@@ -57,6 +63,12 @@ class SessionDriver:
         self._lock = asyncio.Lock()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._expiry_watch: asyncio.Task | None = None
+        self._spin_client_factory = spin_client_factory or (
+            lambda _radius: client_factory()
+        )
+        self._notify_spin = notify_spin
+        self.spin: SpinRun | None = None
+        self._spin_task: asyncio.Task | None = None
 
     # -- state
 
@@ -136,36 +148,59 @@ class SessionDriver:
 
         No devices, None or empty, is the whole swarm, as for flash and start.
         """
-        targets = sorted({d.upper() for d in devices}) if devices else None
         async with self._lock:
             session = self._require()
             payload = session.push_payload()
-            client = await asyncio.to_thread(self._ensure_client)
             try:
-                try:
-                    check = await asyncio.to_thread(
-                        gate_push, client, session.saved, site_changed, targets
-                    )
-                except PushRefused as exc:
-                    raise SessionError(f"push refused: {exc}") from exc
-                await asyncio.to_thread(
-                    client.send_lh2_calibration, payload, check.send_to
-                )
-                stale = await asyncio.to_thread(
-                    push_worklist,
-                    client,
-                    session.saved,
-                    check.addresses,
-                    check.info_gens,
-                )
+                stale = await self._send(session.saved, payload, site_changed, devices)
             finally:
                 await asyncio.to_thread(self._listen_for_buttons)
             await self._emit()
-            return {
-                "id": session.saved_id,
-                "bytes": len(payload),
-                "stale": stale,
-            }
+            return {"id": session.saved_id, "bytes": len(payload), "stale": stale}
+
+    async def push_file(
+        self, calibration: Any, devices: list[str], site_changed: bool = False
+    ) -> dict:
+        """Send a saved calibration file, not the session's, to `devices`
+        only, with the same checks; report who is still stale."""
+        if not devices:
+            raise SessionError("name the robots to push to; nothing is ticked")
+        async with self._lock:
+            payload = calibration_payload(calibration)
+            try:
+                stale = await self._send(calibration, payload, site_changed, devices)
+            finally:
+                if self.session is not None:
+                    await asyncio.to_thread(self._listen_for_buttons)
+            return {"id": calibration.id, "bytes": len(payload), "stale": stale}
+
+    async def _send(
+        self, calibration, payload: bytes, site_changed, devices
+    ) -> list[str]:
+        targets = sorted({d.upper() for d in devices}) if devices else None
+        client = await asyncio.to_thread(self._ensure_client)
+        if targets is not None:
+            # Naming every robot the swarm reports is the fleet: one broadcast
+            known = {addr.upper() for addr in await asyncio.to_thread(client.status)}
+            if known and known <= set(targets):
+                targets = None
+        try:
+            check = await asyncio.to_thread(
+                gate_push, client, calibration, site_changed, targets
+            )
+        except PushRefused as exc:
+            raise SessionError(f"push refused: {exc}") from exc
+        await asyncio.to_thread(client.send_lh2_calibration, payload, check.send_to)
+        stale = await asyncio.to_thread(
+            push_worklist, client, calibration, check.targets, check.info_gens
+        )
+        if self._on_held is not None:
+            held = dict(check.held)
+            for addr in check.targets:
+                if addr not in stale:
+                    held[addr] = calibration.id
+            self._on_held(held)
+        return stale
 
     async def abandon(self) -> dict:
         """Drop the session; nothing captured is written anywhere."""
@@ -174,6 +209,87 @@ class SessionDriver:
             self.session = None
             await self._emit()
             return {"session": None}
+
+    # -- a spin
+
+    def spin_state(self) -> dict | None:
+        return None if self.spin is None else self.spin.as_dict()
+
+    async def _emit_spin(self) -> None:
+        if self._notify_spin is not None:
+            await self._notify_spin(self.spin_state())
+
+    async def start_spin(
+        self,
+        devices: list[str] | None = None,
+        tag: str = "",
+        append: str | None = None,
+        radius_mm: float | None = None,
+    ) -> dict:
+        """Check the robots, then spin, solve and save in the background,
+        a `calibration_spin` event per step; SessionError when it cannot start."""
+        from dotbot.calibration.lighthouse2 import load_calibration
+        from dotbot.calibration.multi_station import appendable_rounds
+        from dotbot.robots import ROBOT_DEFAULT, robot_geometry
+
+        if self.spin is not None and self.spin.phase in ("spinning", "solving"):
+            raise SessionError("a spin is running; wait for it to finish")
+        if self.session is not None:
+            raise SessionError(
+                "a calibration session with marks is open; save or abandon it first"
+            )
+        site = self.site
+        earlier, round_, base = [], 0, None
+        if append:
+            try:
+                base = load_calibration(append, site=site.name)
+                round_ = appendable_rounds(base)
+            except ValueError as exc:
+                raise SessionError(str(exc)) from exc
+            earlier = base.tracks
+        radius = radius_mm or site.spin_radius_mm
+        if radius is None:
+            radius = robot_geometry(ROBOT_DEFAULT).spin_radius_mm
+        try:
+            client = await asyncio.to_thread(self._spin_client_factory, radius)
+            await asyncio.to_thread(client.__enter__)
+        except Exception as exc:  # noqa: BLE001
+            raise SessionError(f"could not reach the swarm: {exc}") from exc
+        try:
+            robots = await asyncio.to_thread(spin_robots, client, devices)
+        except Exception as exc:  # noqa: BLE001
+            await asyncio.to_thread(client.__exit__, None, None, None)
+            if isinstance(exc, SpinRefused):
+                raise SessionError(f"spin refused, nothing moved:\n{exc}") from exc
+            raise SessionError(f"could not reach the swarm: {exc}") from exc
+        run = SpinRun(
+            site=site.name,
+            robots=robots.robots,
+            radius_mm=float(radius),
+            tag=tag or (base.tag if base is not None else ""),
+            append=base.id8 if base is not None else None,
+            round=round_,
+        )
+        self.spin = run
+        loop = asyncio.get_running_loop()
+
+        def changed() -> None:
+            if self.spin is run:
+                asyncio.run_coroutine_threadsafe(self._emit_spin(), loop)
+
+        self._spin_task = asyncio.create_task(
+            asyncio.to_thread(run_spin, run, client, robots, site, earlier, changed)
+        )
+        await self._emit_spin()
+        return run.as_dict()
+
+    async def dismiss_spin(self) -> dict:
+        """Forget a finished spin; a running one is refused."""
+        if self.spin is not None and self.spin.phase in ("spinning", "solving"):
+            raise SessionError("a spin is running; Stop the robots to end it")
+        self.spin = None
+        await self._emit_spin()
+        return {"spin": None}
 
     # -- the robot's own trigger
 

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   controllerStreamUrl,
   fetchCalibrationSession,
+  fetchSpin,
   fetchCameras,
   fetchDevicePoses,
   fetchSite,
@@ -17,6 +18,7 @@ import {
   RobotBody,
   BotState,
   CalibrationSession,
+  SpinRun,
   LH2Position,
   LinkState,
   missionReport,
@@ -187,6 +189,7 @@ export function useFleet(): {
   cameraDetections: Record<string, CameraDetection>;
   session: CalibrationSession | null;
   setSession: (session: CalibrationSession | null) => void;
+  spin: SpinRun | null;
   viewport: Area;
   wsUp: boolean;
 } {
@@ -201,6 +204,7 @@ export function useFleet(): {
     Record<string, CameraDetection>
   >({});
   const [session, setSession] = useState<CalibrationSession | null>(null);
+  const [spin, setSpin] = useState<SpinRun | null>(null);
   const [wsUp, setWsUp] = useState(false);
 
   const rebuild = useCallback(() => {
@@ -242,6 +246,9 @@ export function useFleet(): {
     fetchCalibrationSession()
       .then(setSession)
       .catch(() => {});
+    fetchSpin()
+      .then(setSpin)
+      .catch(() => {});
   }, [rebuild]);
 
   // The fleet itself, over the controller stream: a snapshot on connect,
@@ -254,6 +261,11 @@ export function useFleet(): {
         rebuildNextFrame();
       } else if (event.event === "calibration_session") {
         setSession((event.data as CalibrationSession | null) ?? null);
+      } else if (event.event === "site" && event.data) {
+        // The site editor saved or served: the map and the chip follow at once
+        setSite(event.data as Site);
+      } else if (event.event === "calibration_spin") {
+        setSpin((event.data as SpinRun | null) ?? null);
       } else if (event.event === "camera_detection" && event.data) {
         const detection = event.data as CameraDetection;
         setCameraDetections((prev) => withDetection(prev, detection));
@@ -296,6 +308,7 @@ export function useFleet(): {
     cameraDetections,
     session,
     setSession,
+    spin,
     viewport,
     wsUp,
   };

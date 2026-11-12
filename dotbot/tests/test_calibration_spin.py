@@ -555,7 +555,7 @@ def test_collect_spin_solves_two_stations_and_prints_the_report(monkeypatch, lab
     _, fleet = _two_station_fleet([a, b], centres)
     result = _collect(monkeypatch, lab, fleet)
     assert result.exit_code == 0, result.output
-    assert "station 0 (channel 1) - station 1 (channel 2):" in result.output
+    assert "S0 - S1:" in result.output
     assert "predicted error (100 mm cells)" in result.output
     path = Path(re.search(r"Calibration saved to (\S+)", result.output).group(1))
     saved = lighthouse2.read_calibration_file(path)
@@ -572,7 +572,7 @@ def test_collect_spin_refuses_an_island_until_it_is_dropped(monkeypatch, lab):
     _, fleet = _two_station_fleet([a, b, far], centres)
     result = _collect(monkeypatch, lab, fleet)
     assert result.exit_code != 0
-    assert "station 8 (channel 9) is not tied to the others" in result.output
+    assert "S8 is not tied to the others" in result.output
     assert "no calibration written" in result.output
     _, fleet = _two_station_fleet([a, b, far], centres)
     result = _collect(monkeypatch, lab, fleet, "--drop-station", "8")
@@ -942,7 +942,7 @@ def test_append_a_round_ties_a_station_the_first_round_left_out(monkeypatch, lab
     _, fleet = _two_station_fleet([a, b], own_a + own_b + overlap[:1])
     result = _collect(monkeypatch, lab, fleet)
     assert result.exit_code != 0
-    assert "station 1 (channel 2) is not tied" in result.output
+    assert "S1 is not tied" in result.output
     _, fleet = _two_station_fleet([a, b], own_a + own_b + overlap[:1])
     result = _collect(monkeypatch, lab, fleet, "--drop-station", "1", "--tag", "r0")
     assert result.exit_code == 0, result.output
@@ -954,7 +954,7 @@ def test_append_a_round_ties_a_station_the_first_round_left_out(monkeypatch, lab
     result = _collect(monkeypatch, lab, fleet, "--append", "r0")
     assert result.exit_code == 0, result.output
     assert "Appending round 1 to" in result.output
-    assert "station 0 (channel 1) - station 1 (channel 2):" in result.output
+    assert "S0 - S1:" in result.output
     second = Path(re.search(r"Calibration saved to (\S+)", result.output).group(1))
     assert second != first and first.exists()
     saved = lighthouse2.read_calibration_file(second)
@@ -1055,9 +1055,11 @@ def test_show_prints_the_stations_links_and_error_map(monkeypatch, lab):
     shown = CliRunner().invoke(swarm_lh2.cmd, ["show", "two"], obj={"config": lab})
     assert shown.exit_code == 0, shown.output
     assert "over 1 round(s)" in shown.output
-    assert "station 1 (channel 2): " in shown.output
-    assert "station 0 (channel 1) - station 1 (channel 2):" in shown.output
-    assert "predicted error (100 mm cells): worst" in shown.output
+    assert "S1: " in shown.output
+    assert "S0 - S1:" in shown.output
+    assert "predicted error (100 mm cells), station kept: worst" in shown.output
+    assert shown.output.startswith("provenance:\n  site ")
+    assert "who gives the fix: " in shown.output
 
 
 def test_show_prints_a_corner_calibration_without_an_error_map(lab, tmp_path):
@@ -1067,7 +1069,7 @@ def test_show_prints_a_corner_calibration_without_an_error_map(lab, tmp_path):
     path.write_text(FIXTURE_TOML, encoding="utf-8")
     shown = CliRunner().invoke(swarm_lh2.cmd, ["show", str(path)], obj={"config": lab})
     assert shown.exit_code == 0, shown.output
-    assert "station 2 (channel 3): 4 marked points" in shown.output
+    assert "S2: 4 marked points" in shown.output
     assert "predicted error" not in shown.output
 
 
@@ -1131,7 +1133,7 @@ def test_show_next_round_says_where_to_spin(monkeypatch, lab):
     )
     assert shown.exit_code == 0, shown.output
     assert "next round, 3 spin(s), in this calibration's frame:" in shown.output
-    assert shown.output.count("mm, seen by station ") == 3
+    assert shown.output.count("mm, seen by S") == 3
 
 
 def test_show_next_round_refuses_a_calibration_a_round_cannot_join(lab, tmp_path):
@@ -1181,7 +1183,7 @@ def test_place_moves_a_spin_calibration_onto_another_through_a_station(
 
     result = _place(lab, "second", "--to-calibration", target.id8)
     assert result.exit_code != 0
-    assert "share stations 0 (channel 1), 1 (channel 2)" in result.output
+    assert "share S0, S1" in result.output
 
     result = _place(lab, "second", "--to-calibration", target.id8, "--station", "0")
     assert result.exit_code == 0, result.output
@@ -1196,8 +1198,8 @@ def test_place_moves_a_spin_calibration_onto_another_through_a_station(
     placed = lighthouse2.read_calibration_file(_saved(result))
     assert placed.site.name == "spun" and placed.site.anchor == target.site.anchor
     assert placed.placed_from == source.id and placed.tag == "second-spun"
-    assert placed.valid_mm == target.valid_mm
-    assert {s.valid_mm for s in placed.stations} == {target.valid_mm}
+    assert placed.coverage_mm == target.coverage_mm
+    assert {s.coverage_mm for s in placed.stations} == {target.coverage_mm}
     # both put any floor point either station sees at the same place
     floor = np.array([c for c in grid if a.sees(c) and b.sees(c)], dtype=float)
     for st in (a, b):

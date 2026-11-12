@@ -54,3 +54,12 @@ def no_swarm_server(monkeypatch):
     monkeypatch.setattr("dotbot.swarm_serve.watch", lambda *a, **k: None)
     monkeypatch.setattr("dotbot.swarm_serve.port_taken", lambda *a: False)
     return start
+
+
+@pytest.fixture(autouse=True)
+def no_user_site_history(monkeypatch, tmp_path_factory):
+    """Keep the site.toml versions a test's save writes out of ~/.dotbot."""
+    from dotbot import site_history
+
+    root = tmp_path_factory.mktemp("history")
+    monkeypatch.setattr(site_history, "history_dir", lambda site: root / site)

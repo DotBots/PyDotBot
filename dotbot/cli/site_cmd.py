@@ -7,10 +7,10 @@ A site pack is a folder holding `site.toml` and optionally `calibrations/`
 (`dotbot.site_packs`). `add` copies one into ~/.dotbot/sites/, where every
 folder finds it; `init` writes one around a spin calibration's robots; `use`
 makes a site the active one; `list` and `show` read; `export` writes one as a
-zip. The same folders can be shared with git, cp or unzip.
+zip; `new` and `edit` open the site page on a pack; `turn` turns one on
+the floor. The same folders can be shared with git, cp or unzip.
 """
 
-import json
 import os
 import re
 import shutil
@@ -43,7 +43,8 @@ _GIT_PREFIXES = ("git@", "git://", "ssh://", "git+")
     name="site",
     help=(
         "The places you work in: add a site pack, switch with use, "
-        "list / show, export one to share."
+        "list / show, export one to share, new / edit to draw one, turn it on "
+        "the floor."
     ),
 )
 def cmd():
@@ -659,31 +660,104 @@ def _parse_size(_ctx, _param, value):
     return (width, height)
 
 
-def _render_site_pack(site, source_id8: str) -> str:
-    def area(name: str, note: str) -> str:
-        a = site.registry().resolve(name)
-        key = json.dumps(name) if "+" in name else name
-        return f"[areas.{key}]   # {note}\nx = {a.x}\ny = {a.y}\nw = {a.w}\nh = {a.h}\n"
+def _editor_socket(port: int):
+    """A socket listening on 127.0.0.1:`port` for the editor, once its page
+    is known to be built."""
+    import socket
 
-    width, height = site.extent_mm
-    return (
-        f"# Site {site.name}: written by `dotbot site init` from spin calibration\n"
-        f"# {source_id8}. The frame's zero is the anchor, x right, y down, mm.\n"
-        "\n"
-        f"anchor = {json.dumps(site.anchor)}\n"
-        f"extent_mm = [{width}, {height}]\n"
-        + (
-            f"spin_radius_mm = {float(site.spin_radius_mm)}   # as the robots spun\n"
-            if site.spin_radius_mm is not None
-            else ""
+    from dotbot.site_editor import EDITOR_DIR, EDITOR_PAGE
+
+    if not (EDITOR_DIR / EDITOR_PAGE).is_file():
+        raise click.ClickException(
+            f"the site page is not built ({EDITOR_DIR / EDITOR_PAGE} is "
+            "missing). From a PyDotBot checkout, build it with: npm --prefix "
+            "dotbot/console-web install && npm --prefix dotbot/console-web run "
+            "build"
         )
-        + "\n"
-        + area("field", "where the robots spun, grown by a robot's footprint")
-        + "\n"
-        + area("staging", "where robots park, along the field's bottom edge")
-        + "\n"
-        + area("field+staging", "the field and staging together")
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.bind(("127.0.0.1", port))
+    except OSError as exc:
+        sock.close()
+        raise click.ClickException(f"cannot listen on 127.0.0.1:{port}: {exc}") from exc
+    sock.listen()
+    return sock
+
+
+def _configured_calibration(ctx, name: str) -> dict | None:
+    """The calibration `[run.controller] lh2_calibration` names for site
+    `name`, resolved to its id when the file is found."""
+    from dotbot.calibration.lighthouse2 import (
+        read_calibration_file,
+        resolve_calibration_path,
     )
+    from dotbot.config import resolve_source
+
+    try:
+        found = resolve_source(
+            "lh2_calibration",
+            section="run.controller",
+            config=(ctx.obj or {}).get("config"),
+        )
+    except ConfigError:
+        return None
+    if not found.value:
+        return None
+    out = {"spec": str(found.value), "source": found.source}
+    try:
+        cal = read_calibration_file(
+            resolve_calibration_path(str(found.value), site=name)
+        )
+    except (OSError, ValueError) as exc:
+        return {**out, "error": str(exc)}
+    return {**out, "id": cal.id, "id8": cal.id8, "tag": cal.tag}
+
+
+def _serve_editor(
+    name: str, pack: Path, sock, headless: bool, configured: dict | None = None
+) -> None:
+    """Serve the editor on `pack` from `sock` until Ctrl-C or Done."""
+    import threading
+    import webbrowser
+
+    import uvicorn
+
+    from dotbot.calibration.lighthouse2 import calibration_root
+    from dotbot.site_editor import EditorState, create_app
+
+    url = f"http://127.0.0.1:{sock.getsockname()[1]}/"
+    state = EditorState(name, pack, [calibration_root() / name])
+    server = None
+
+    def done():
+        server.should_exit = True
+
+    app = create_app(
+        state,
+        on_done=done,
+        context=lambda: {"mode": "standalone", "configured": configured},
+    )
+    server = uvicorn.Server(uvicorn.Config(app, log_level="warning"))
+    click.echo(f"Editing site {name} ({pack / PACK_FILE})")
+    click.echo(f"Site page at {url} - Ctrl-C or Done to stop")
+    if not headless:
+        threading.Thread(target=webbrowser.open, args=(url,), daemon=True).start()
+    try:
+        server.run(sockets=[sock])
+    finally:
+        sock.close()
+
+
+_PORT = click.option(
+    "--port",
+    type=click.IntRange(0, 65535),
+    default=0,
+    show_default="a free port",
+    help="Port on 127.0.0.1 to serve the site page on.",
+)
+_HEADLESS = click.option(
+    "--headless", is_flag=True, help="Print the site page's URL; don't open a browser."
+)
 
 
 @cmd.command()
@@ -726,20 +800,17 @@ def init(ctx, name, calibration, size, force):
     and the calibration, re-expressed in the site, under
     ~/.dotbot/calibrations/NAME/, its tag suffixed with -NAME.
     """
-    from dotbot.calibration.conics import self_defined_site
     from dotbot.calibration.lighthouse2 import (
         read_calibration_file,
         resolve_calibration_path,
-        site_name_as_bytes,
-        write_calibration,
     )
     from dotbot.cli._swarm_inject import swarm_connection
+    from dotbot.site_new import NewSiteRefused, check_new_name, write_new_site
 
     obj = ctx.obj or {}
     config = obj.get("config")
     try:
-        check_site_name(name)
-        site_name_as_bytes(name)  # the push carries the name to the robots
+        check_new_name(name)
         existing = resolve_site_entry(config, name)
     except (ValueError, ConfigError) as exc:
         raise click.ClickException(str(exc)) from exc
@@ -761,14 +832,16 @@ def init(ctx, name, calibration, size, force):
         except ValueError:
             path = resolve_calibration_path(calibration)
         source = read_calibration_file(path)
-        site, placed = self_defined_site(source, name, size)
-    except ValueError as exc:
+        written = write_new_site(
+            target.parent, name, "spin", size_mm=size, source=source, force=True
+        )
+    except (ValueError, NewSiteRefused) as exc:
         raise click.ClickException(str(exc)) from exc
-    saved = write_calibration(placed)
-    target.mkdir(parents=True, exist_ok=True)
-    (target / PACK_FILE).write_text(
-        _render_site_pack(site, source.id8), encoding="utf-8"
-    )
+    from dotbot.site import site_from_table
+    from dotbot.site_packs import read_pack
+
+    site = site_from_table(name, read_pack(written.pack), written.pack)
+    placed, saved = written.calibration, written.calibration_path
     field, staging = site.areas["field"], site.areas["staging"]
     click.echo(f"Wrote site {name} to {target / PACK_FILE}")
     click.echo(
@@ -789,3 +862,250 @@ def init(ctx, name, calibration, size, force):
         f"--lh2-calibration {placed.id8} "
         "--headless"
     )
+
+
+@cmd.command()
+@click.argument("name")
+@click.option(
+    "--field",
+    "field_spec",
+    default="2m",
+    show_default=True,
+    help="The starter field, as for `dotbot config init`: 2m, 2x3m, 1500mm.",
+)
+@_PORT
+@_HEADLESS
+@click.pass_context
+def new(ctx, name, field_spec, port, headless):
+    """Write a new site pack, then open the site page on it.
+
+    The pack goes in sites/NAME/ beside the project's dotbot.toml when one is
+    in use, else in ~/.dotbot/sites/NAME/, so `dotbot site use NAME` finds it
+    at once. It starts as `dotbot config init` starts a site: a field with
+    floor round it and a staging strip below. It is not made the active site.
+    """
+    from dotbot.calibration.lighthouse2 import site_name_as_bytes
+    from dotbot.cli.config_cmd import default_site_toml, parse_field_size
+    from dotbot.site_packs import site_homes
+
+    config = (ctx.obj or {}).get("config")
+    try:
+        check_site_name(name)
+        site_name_as_bytes(name)  # the push carries the name to the robots
+        existing = resolve_site_entry(config, name)
+    except (ValueError, ConfigError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    if existing is not None:
+        raise click.ClickException(
+            f"site {name} already exists ({existing.pack}); open it with "
+            f"`dotbot site edit {name}`, or pick another name"
+        )
+    field_mm = parse_field_size(field_spec)
+    _, home = site_homes(config)[0]
+    target = home / name
+    if target.exists():
+        raise click.ClickException(f"{target} already exists")
+    sock = _editor_socket(port)
+    target.mkdir(parents=True)
+    (target / PACK_FILE).write_text(default_site_toml(field_mm))
+    click.echo(f"Wrote {target / PACK_FILE}")
+    _serve_editor(name, target, sock, headless)
+    click.echo(f"Work in it with `dotbot site use {name}`, or --site {name}.")
+
+
+def _pack_of(ctx, site) -> tuple[str, Path]:
+    """The name and pack folder SITE names: a site name or a pack's path,
+    by default the active site."""
+    from dotbot.site_packs import is_pack_path, pack_at
+
+    if site is not None and is_pack_path(site):
+        try:
+            entry = pack_at(site)
+        except ConfigError as exc:
+            raise click.ClickException(str(exc)) from exc
+        return entry.name, entry.pack
+    if site is None:
+        active = active_site(ctx)
+        if active.entry is not None:
+            return active.name, active.entry.pack
+        site = active.name
+    entry = _catalog(ctx).get(site)
+    if entry is None:
+        raise click.ClickException(
+            f"unknown site {site!r}; `dotbot site list` names the known ones, "
+            "and `dotbot site new` makes one"
+        )
+    return site, entry.pack
+
+
+@cmd.command()
+@click.argument("site", required=False)
+@_PORT
+@_HEADLESS
+@click.pass_context
+def edit(ctx, site, port, headless):
+    """Open the site page on a site pack, at 127.0.0.1.
+
+    SITE is a site name or a pack folder's path; it defaults to the active
+    site.
+    """
+    name, pack = _pack_of(ctx, site)
+    sock = _editor_socket(port)
+    _serve_editor(name, pack, sock, headless, _configured_calibration(ctx, name))
+
+
+def _parse_point(_ctx, _param, value):
+    if value is None:
+        return None
+    try:
+        x, y = (float(v) for v in value.split(","))
+    except ValueError as exc:
+        raise click.BadParameter("takes two numbers in mm, `x,y`") from exc
+    return (x, y)
+
+
+@cmd.command()
+@click.argument("site", required=False)
+@click.option(
+    "--rotate",
+    type=float,
+    default=0.0,
+    help=(
+        "Degrees the site turns on the floor; positive turns x toward y, "
+        "clockwise as drawn."
+    ),
+)
+@click.option(
+    "--about",
+    callback=_parse_point,
+    default=None,
+    help="The point it turns about, `x,y` in mm. Defaults to the middle of the extent.",
+)
+@click.option(
+    "--shift",
+    callback=_parse_point,
+    default=None,
+    help="Where zero moves, `x,y` in mm of the frame as it is now.",
+)
+@click.option(
+    "--anchor",
+    default=None,
+    help="A new note on where zero is in the room; the old one stays otherwise.",
+)
+@click.option(
+    "--calibration",
+    "calibrations",
+    multiple=True,
+    help=(
+        "A calibration to re-express, by id or tag; repeat for more. Defaults "
+        "to every calibration in the site's frame."
+    ),
+)
+@click.option(
+    "--yes", "-y", is_flag=True, help="Do not ask when zero is a mark on the floor."
+)
+@click.pass_context
+def turn(ctx, site, rotate, about, shift, anchor, calibrations, yes):
+    """Turn a site's frame on the floor or move its zero, as a new frame.
+
+    The extent moves with zero and keeps its size; areas, walls and objects
+    keep their place on the floor with new numbers, and site.toml takes a
+    new frame id. Each calibration of the site is saved again, under a new
+    id, in the new frame, its coverage cut to the extent. Sends nothing: serve and push
+    the new calibrations once they look right. The site page's Frame kind
+    does the same for the served calibration.
+    """
+    from dotbot import site_toml
+    from dotbot.calibration import site_frame, site_turn
+    from dotbot.calibration.placement import site_tags
+    from dotbot.calibration.station_boxes import coverage_warnings, push_line
+    from dotbot.site import site_from_table
+    from dotbot.site_editor import _write_atomic
+    from dotbot.site_placement import files as pack_files
+
+    shift = shift or (0.0, 0.0)
+    name, pack = _pack_of(ctx, site)
+    path = pack / PACK_FILE
+    text = path.read_text(encoding="utf-8")
+    try:
+        current = site_from_table(name, read_pack(pack), pack)
+    except ConfigError as exc:
+        raise click.ClickException(str(exc)) from exc
+    pivot = about or site_turn.default_pivot(current)
+    note = current.anchor if anchor is None else anchor
+    files = pack_files(pack)
+    found = site_turn.in_frame(current, files)
+    if calibrations:
+        sources = []
+        for spec in calibrations:
+            hits = [
+                c
+                for c in found
+                if c.id.startswith(spec.lower()) or (c.tag and c.tag == spec)
+            ]
+            if len(hits) != 1:
+                raise click.ClickException(
+                    f"{spec!r} names {len(hits) or 'no'} calibration"
+                    f"{'s' if len(hits) > 1 else ''} in site {name}'s frame"
+                )
+            sources.append(hits[0])
+    else:
+        sources = found
+    try:
+        planned = site_turn.plan_turn(
+            sources,
+            current,
+            rotate,
+            pivot,
+            note,
+            taken_tags=site_tags(name, files),
+            shift=shift,
+        )
+    except site_turn.TurnRefused as exc:
+        offer = (
+            site_frame.largest_shift(sources[0], current, rotate, pivot, shift)
+            if sources and (shift[0] or shift[1])
+            else None
+        )
+        hint = (
+            f"; the largest legal shift that way is --shift {offer[0]},{offer[1]}"
+            if offer
+            else ""
+        )
+        raise click.ClickException(f"{exc}{hint}") from exc
+    marks = site_turn.anchor_marks(current, found)
+    for line in marks:
+        click.echo(f"warning: {line}", err=True)
+    if marks and not yes and not click.confirm("Move it anyway?", default=False):
+        raise click.Abort()
+    try:
+        saved = site_turn.save_turn(
+            planned,
+            text,
+            note,
+            lambda new: _write_atomic(path, new),
+            site_turn.floor_move(rotate, pivot, shift),
+        )
+    except site_toml.SiteTomlError as exc:
+        raise click.ClickException(str(exc)) from exc
+    frame = planned[0].site.frame
+    click.echo(
+        f"Moved site {name}'s frame: turn {rotate:g} deg about "
+        f"({pivot[0]:g}, {pivot[1]:g}) mm, zero shifted ({shift[0]:g}, {shift[1]:g}) mm; "
+        f"frame {current.frame_id} -> {frame}"
+    )
+    for source, (cal, where) in zip(sources, saved):
+        click.echo(f"  {source.id8} -> {cal.id8}, saved to {where}")
+        notes = site_turn.cut_notes(
+            source, site_turn.floor_move(rotate, pivot, shift), current.extent_mm
+        )
+        for line in (
+            site_turn.outside_warnings(cal, current) + notes + coverage_warnings(cal)
+        ):
+            click.echo(f"warning: {line}", err=True)
+    click.echo(
+        "Robots report in the old frame until they hold the new calibration; "
+        "data already logged stays in the old frame. Push:"
+    )
+    for cal, _ in saved:
+        click.echo(f"  {push_line(cal)}")

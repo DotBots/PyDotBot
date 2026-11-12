@@ -111,6 +111,13 @@ stations both see **ties** them into one frame. This is experimental; the
 [`swarm` reference](../cli/swarm.md#spin-calibration-experimental) has every
 flag.
 
+The console runs the same spin without a terminal: its Localization tab spins
+the selected robots (or every robot on the `calibrate-spin` app), shows each
+robot's reads arriving and what the solve kept and left out, and hands the
+result to the [site page](site-page.md#a-new-site) to place in the site.
+It does not flash: robots on another app are named, and the spin refuses
+until they run `calibrate-spin`.
+
 1. **Collect.** Spread the robots about 250 mm apart over the area, where the
    stations overlap, and spin them:
 
@@ -206,30 +213,45 @@ and when robots hold calibrations for stations it did not solve. A moved
 station keeps its channel, so age is the only reminder that one might have
 moved.
 
+The [site page](site-page.md) shows the same on its map, with which
+station gives each robot its fix and the predicted error there, and its
+**Anchor** checks compare a robot's position with a taped spot and keep
+the result.
+
 A calibration belongs to the site it was made in. The controller refuses one
-from another site, and one whose recorded anchor differs from the site's. To
+from another site, and one recorded in another frame than the site's. To
 move a calibration into another site's frame without capturing again, use
-`dotbot swarm calibrate-lh2 reframe`.
+`dotbot swarm calibrate-lh2 reframe`, or **Place in this room** in the site
+editor for a spin in its own frame.
+
+## Upgrading from schema 4
+
+Calibration files are schema 5: each `[[station]]` names its rectangle
+`coverage_mm`, where schema 4 called it `valid_mm`, and the file no longer
+repeats the stations' union in a `[validity]` table. A schema 4 file is refused
+with `unsupported calibration schema_version 4`; collect it again. The bytes a
+robot receives are unchanged, so no reflash is needed, but every calibration
+gets a new id: push it once and each robot reports the new id.
 
 ## Upgrading from schema 3
 
-Calibration files are schema 4: each station carries its own rectangle, and
-robots hold stations by a 16-bit station mask. A schema 3 file, written before
+Schema 4 gave each station its own rectangle, and robots hold stations by a
+16-bit station mask. A schema 3 file, written before
 PyDotBot 0.34.0, is refused with `unsupported calibration schema_version 3`,
 and robots need the matching firmware: swarmit 0.12.0 and DotBot-firmware
 1.26.0. In order:
 
 1. **Collect the calibration again.** A schema 3 file does not re-solve into
-   schema 4.
+   schema 5.
 2. **Reflash each robot by cable**, both cores and the calibration at once:
-   `dotbot device flash swarmit-sandbox --lh2-calibration <schema 4 file>`.
+   `dotbot device flash swarmit-sandbox --lh2-calibration <schema 5 file>`.
    Never flash the new bootloader alone over an old network core.
 3. **Over the air**, flash every sandbox app again from DotBot-firmware 1.26.0
    (`dotbot swarm flash <app> -ys`), then check positions. Never flash the
    apps first: a 1.26.0 app calls the wrong functions on an old bootloader,
    and a 1.25.0 app does not run on the new one.
 
-A reflashed robot reports no position until it holds a schema 4 calibration.
+A reflashed robot reports no position until it holds a calibration.
 
 ## `collect` flags
 
@@ -257,6 +279,8 @@ See `dotbot swarm calibrate-lh2 collect --help` for the full list.
   Calibrate over the whole field rather than `--square` or `--over`.
 - **The controller refuses the calibration** - it was made in another site.
   Select that site with `--site`, or calibrate this one.
+- **`unsupported calibration schema_version 4`** - the file predates schema
+  5; see [Upgrading from schema 4](#upgrading-from-schema-4).
 - **`unsupported calibration schema_version 3`** - the file predates schema
   4; see [Upgrading from schema 3](#upgrading-from-schema-3).
 - **`push` refuses robots and asks for a reflash** - their sandbox firmware

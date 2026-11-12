@@ -215,12 +215,14 @@ def capture_spins(
     echo: Callable[[str], None] = print,
     clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
+    on_progress: Callable[[dict[str, Spin]], None] | None = None,
 ) -> dict[str, Spin]:
     """Start the calibrate-spin app on `robots`, collect each one's spin, stop them.
 
     A robot already in its app is stopped first, so every robot spins anew.
     Returns each robot's spin as far as it arrived; a robot that sent
-    nothing is absent. Every robot is stopped again before returning, also
+    nothing is absent. `on_progress` gets the spins so far after each poll
+    that saw a new chunk. Every robot is stopped again before returning, also
     on an error or an interrupt. Raises RuntimeError when the log events
     cannot be followed or a robot does not stop.
     """
@@ -254,6 +256,7 @@ def capture_spins(
     sleep(SPIN_POLL_INTERVAL)
     wanted = set(devices)
     reported: set[str] = set()
+    seen_chunk: float | None = None
     try:
         client.start(devices)
         echo(
@@ -269,6 +272,11 @@ def capture_spins(
                 quiet = (
                     bool(last_chunk) and clock() - last_chunk[0] > SPIN_QUIET_TIMEOUT
                 )
+                fresh = bool(last_chunk) and last_chunk[0] != seen_chunk
+                if fresh:
+                    seen_chunk = last_chunk[0]
+            if fresh and on_progress is not None:
+                on_progress(spins)
             for device, spin in sorted(spins.items()):
                 if spin.complete and device not in reported:
                     reported.add(device)

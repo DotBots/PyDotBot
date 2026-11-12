@@ -88,3 +88,32 @@ describe("the calibrated span on the map", () => {
     expect(screen.queryByTestId("calibration-span")).toBeNull();
   });
 });
+
+describe("the spin circles on the map", () => {
+  const SPIN: Site = {
+    ...SITE,
+    calibration: {
+      ...SITE.calibration!,
+      placements: [],
+      circles: [
+        { station: 0, name: "2C7AF5327B9455E2", x: 500, y: 600, radius_mm: 51.4 },
+        { station: 1, name: "2C7AF5327B9455E2", x: 501, y: 600, radius_mm: 51.4 },
+      ],
+    },
+  };
+
+  it("rings each spin once, in the colours of every station that saw it, in place of the span", () => {
+    renderMap(SPIN);
+    expect(screen.getByTestId("spin-circles")).toBeTruthy();
+    expect(screen.queryByTestId("spin-circle-1")).toBeNull();
+    const rings = screen.getByTestId("spin-circle-0").querySelectorAll("ellipse");
+    expect([...rings].map((r) => r.getAttribute("stroke"))).toEqual(["var(--st-0)", "var(--st-1)"]);
+    expect(rings[0].textContent).toContain("S0 and S1 saw …55E2");
+    expect(screen.queryByTestId("calibration-span")).toBeNull();
+  });
+
+  it("draws none with the layer off", () => {
+    renderMap(SPIN, { ...LAYERS, calibratedSpan: false });
+    expect(screen.queryByTestId("spin-circles")).toBeNull();
+  });
+});

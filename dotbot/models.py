@@ -9,6 +9,7 @@
 
 # pylint: disable=too-few-public-methods,no-name-in-module
 
+import math
 from enum import IntEnum
 from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
@@ -18,7 +19,7 @@ from dotbot.area import Area, Role
 from dotbot.calibration.points import PointsKind
 from dotbot.protocol import ApplicationType, ControlModeType, WaypointsStatus
 from dotbot.robots import ROBOT_DEFAULT, BodyPose
-from dotbot.site import Site
+from dotbot.site import Obstacle, Site, SiteObject, Wall
 
 # Points of trail the controller keeps per robot
 MAX_TRAIL_SIZE = 1000
@@ -196,6 +197,24 @@ class DotBotAreaModel(BaseModel):
     role: Optional[Role] = None
 
 
+class DotBotBarrierModel(BaseModel):
+    """A wall (a polyline) or an obstacle (a closed polygon), in frame mm."""
+
+    name: str = ""
+    points: List[List[int]]
+
+
+class DotBotSiteObjectModel(BaseModel):
+    """A thing on the floor at a pose, frame mm: a charger, a dock, a
+    landmark or a camera."""
+
+    name: str
+    kind: str
+    x: int
+    y: int
+    heading_deg: float = 0.0
+
+
 class DotBotPointsFromModel(BaseModel):
     """How a placement's points were chosen: the field's corners, the corners
     of `area`, a `side_mm` square centred in the field, or given by hand."""
@@ -212,14 +231,65 @@ class DotBotPlacementSpanModel(BaseModel):
     points_from: Optional[DotBotPointsFromModel] = None
 
 
+class DotBotServedStationModel(BaseModel):
+    """One station of the loaded calibration: its fit and its box, frame mm."""
+
+    index: int
+    # None when the file records no finite residual
+    residual_mm: Optional[float] = None
+    box: List[int]
+
+
+class DotBotSpinCircleModel(BaseModel):
+    """Where one robot spun, as one station saw it, frame mm."""
+
+    station: int
+    name: str
+    x: float
+    y: float
+    radius_mm: float
+
+
+# Spin circles by calibration id: fitting them reads every track
+_SPIN_CIRCLES: Dict[str, List[DotBotSpinCircleModel]] = {}
+
+
+def _spin_circles(calibration: Any) -> List[DotBotSpinCircleModel]:
+    if not getattr(calibration, "tracks", None):
+        return []
+    cached = _SPIN_CIRCLES.get(calibration.id)
+    if cached is None:
+        from dotbot.calibration.placement import spin_centres
+
+        cached = [
+            DotBotSpinCircleModel(
+                station=station,
+                name=c["name"],
+                x=round(float(c["x"]), 1),
+                y=round(float(c["y"]), 1),
+                radius_mm=round(float(c["radius_mm"]), 1),
+            )
+            for station, circles in sorted(spin_centres(calibration).items())
+            for c in circles
+        ]
+        _SPIN_CIRCLES[calibration.id] = cached
+    return cached
+
+
 class DotBotCalibrationSpanModel(BaseModel):
-    """The loaded LH2 calibration's placements, which span the part of the
-    site it was fitted over; positions outside them are extrapolated."""
+    """The loaded LH2 calibration: its placements, which span the part of the
+    site a corner calibration was fitted over, its stations and boxes, and
+    the circles robots spun for a spin calibration. `site` and `anchor` are
+    the frame it records."""
 
     id: str
     tag: str = ""
     created_at: str = ""
+    site: str = ""
+    anchor: str = ""
     placements: List[DotBotPlacementSpanModel] = []
+    stations: List[DotBotServedStationModel] = []
+    circles: List[DotBotSpinCircleModel] = []
 
     @classmethod
     def from_calibration(cls, calibration: Any) -> "DotBotCalibrationSpanModel":
@@ -227,6 +297,21 @@ class DotBotCalibrationSpanModel(BaseModel):
             id=calibration.id,
             tag=calibration.tag,
             created_at=calibration.created_at,
+            site=calibration.site.name,
+            anchor=calibration.site.anchor,
+            stations=[
+                DotBotServedStationModel(
+                    index=st.index,
+                    residual_mm=(
+                        round(float(st.residual_mm), 2)
+                        if math.isfinite(st.residual_mm)
+                        else None
+                    ),
+                    box=[int(v) for v in st.coverage_mm],
+                )
+                for st in sorted(calibration.stations, key=lambda s: s.index)
+            ],
+            circles=_spin_circles(calibration),
             placements=[
                 DotBotPlacementSpanModel(
                     points_mm=[list(point) for point in placement.points_mm],
@@ -250,7 +335,9 @@ class DotBotSiteModel(BaseModel):
     area experiments and calibration default to (`Site.field`): an area's
     name, an `x,y,w,h` literal for a site with an extent and no areas, or
     None for a site that declares neither. `calibration` is the LH2
-    calibration the controller loaded, if any.
+    calibration the controller loaded, if any. `walls` (polylines) and
+    `obstacles` (closed polygons) are where robots cannot go; `objects` are
+    the things on the floor, such as chargers.
     """
 
     name: str
@@ -260,6 +347,10 @@ class DotBotSiteModel(BaseModel):
     field: Optional[str] = None
     calibration: Optional[DotBotCalibrationSpanModel] = None
     spin_radius_mm: Optional[float] = None
+    lh2_error_limit_mm: Optional[float] = None
+    walls: List[DotBotBarrierModel] = []
+    obstacles: List[DotBotBarrierModel] = []
+    objects: List[DotBotSiteObjectModel] = []
 
     @classmethod
     def from_site(cls, site: Site, calibration: Any = None) -> "DotBotSiteModel":
@@ -271,6 +362,21 @@ class DotBotSiteModel(BaseModel):
             areas=[DotBotAreaModel(**a.as_dict()) for a in site.areas.values()],
             field=field.name if field is not None else None,
             spin_radius_mm=site.spin_radius_mm,
+            lh2_error_limit_mm=site.lh2_error_limit_mm,
+            walls=[
+                DotBotBarrierModel(name=w.name, points=[list(p) for p in w.points])
+                for w in site.walls
+            ],
+            obstacles=[
+                DotBotBarrierModel(name=o.name, points=[list(p) for p in o.points])
+                for o in site.obstacles
+            ],
+            objects=[
+                DotBotSiteObjectModel(
+                    name=o.name, kind=o.kind, x=o.x, y=o.y, heading_deg=o.heading_deg
+                )
+                for o in site.objects.values()
+            ],
             calibration=(
                 DotBotCalibrationSpanModel.from_calibration(calibration)
                 if calibration is not None
@@ -289,6 +395,16 @@ class DotBotSiteModel(BaseModel):
                 a.name: Area(a.x, a.y, a.w, a.h, a.name, a.role) for a in self.areas
             },
             spin_radius_mm=self.spin_radius_mm,
+            lh2_error_limit_mm=self.lh2_error_limit_mm,
+            walls=[Wall(tuple(tuple(p) for p in w.points), w.name) for w in self.walls],
+            obstacles=[
+                Obstacle(tuple(tuple(p) for p in o.points), o.name)
+                for o in self.obstacles
+            ],
+            objects={
+                o.name: SiteObject(o.name, o.kind, o.x, o.y, o.heading_deg)
+                for o in self.objects
+            },
         )
 
 
@@ -479,6 +595,24 @@ class DotBotCalibrationPushModel(BaseModel):
     """The robots to push to; empty pushes to the whole swarm."""
 
     devices: List[str] = []
+
+
+class DotBotCalibrationSpinModel(BaseModel):
+    """A spin: the robots (none is every robot that can spin), a tag, and
+    a free-mode calibration to add this round to."""
+
+    devices: List[str] = []
+    tag: str = ""
+    append: Optional[str] = None
+    radius_mm: Optional[float] = None
+
+
+class DotBotCalibrationFilePushModel(BaseModel):
+    """A saved calibration, by id, tag or path, and the robots to push it to;
+    at least one robot, since nothing is pushed to a fleet unticked."""
+
+    calibration: str
+    devices: List[str]
 
 
 class DotBotCalibrationSavedModel(BaseModel):

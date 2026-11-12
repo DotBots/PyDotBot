@@ -33,7 +33,7 @@ import re
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated, Any, Mapping, Optional
+from typing import Annotated, Any, Literal, Mapping, Optional
 
 from pydantic import (
     AfterValidator,
@@ -168,6 +168,47 @@ class AreaSection(_Strict):
     role: Role | None = None
 
 
+class WallSection(_Strict):
+    """One `[[walls]]` entry: a polyline robots cannot cross, in frame mm."""
+
+    name: str | None = None
+    points: list[tuple[int, int]] = Field(min_length=2)
+
+
+class ObstacleSection(_Strict):
+    """One `[[obstacles]]` entry: a polygon robots cannot enter, in frame mm.
+
+    The last point joins the first.
+    """
+
+    name: str | None = None
+    points: list[tuple[int, int]] = Field(min_length=3)
+
+
+class AnchorSpotSection(_Strict):
+    """One `[[anchor_spots]]` entry: a tape-measured spot the frame was
+    anchored on, in frame mm, and how far the robot read there stayed from
+    it once anchored."""
+
+    at_mm: tuple[float, float]
+    error_mm: float = Field(ge=0.0)
+
+
+ObjectKind = Literal["charger", "dock", "landmark", "camera"]
+
+
+class ObjectSection(_Strict):
+    """One `[objects.<name>]` table: a thing on the floor at a pose, frame mm.
+
+    `heading_deg` follows the robots' convention.
+    """
+
+    kind: ObjectKind
+    x: int
+    y: int
+    heading_deg: float = 0.0
+
+
 def _is_simulator(conn: str) -> bool:
     return conn.strip().lower() in ("simulator", "sim")
 
@@ -215,6 +256,8 @@ class SiteSection(_Strict):
     """
 
     anchor: str | None = None
+    # The frame's id, 8 hex digits; absent, it is derived from name and anchor
+    frame: str | None = Field(default=None, pattern=r"^[0-9a-f]{8}$")
     extent_mm: tuple[int, int] | None = None
     connection: ConnectionSection | None = None
     areas: dict[str, AreaSection] = Field(default_factory=dict)
@@ -222,6 +265,12 @@ class SiteSection(_Strict):
     stations: dict[str, int] = Field(default_factory=dict)
     # The photodiode's circle when a robot spins in place on this floor
     spin_radius_mm: float | None = Field(default=None, ge=1.0, le=200.0)
+    # The predicted LH2 error a calibration must stay under, mm
+    lh2_error_limit_mm: float | None = Field(default=None, gt=0.0, le=1000.0)
+    walls: list[WallSection] = Field(default_factory=list)
+    obstacles: list[ObstacleSection] = Field(default_factory=list)
+    objects: dict[str, ObjectSection] = Field(default_factory=dict)
+    anchor_spots: list[AnchorSpotSection] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _stations(self) -> SiteSection:
@@ -256,6 +305,28 @@ class SiteSection(_Strict):
                 'are both one; give all but one another role (role = "staging" '
                 'or "corner") or another name'
             )
+        return self
+
+    @model_validator(mode="after")
+    def _field_and_staging_apart(self) -> SiteSection:
+        def of(role: str) -> list[tuple[str, AreaSection]]:
+            return [
+                (name, area)
+                for name, area in self.areas.items()
+                if area_role(name, area.role) == role
+            ]
+
+        for fname, f in of("field"):
+            for sname, s in of("staging"):
+                w = min(f.x + f.w, s.x + s.w) - max(f.x, s.x)
+                h = min(f.y + f.h, s.y + s.h) - max(f.y, s.y)
+                if w > 0 and h > 0:
+                    raise ValueError(
+                        f'the field area "{fname}" and the staging area "{sname}" '
+                        f"overlap by {w} x {h} "
+                        "mm; a point is in one or the other, so shrink one until "
+                        "they only touch (a corner may overlap anything)"
+                    )
         return self
 
 

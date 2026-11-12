@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from dotbot.calibration import station_rule
 from dotbot.calibration.conics import (
     TRACK_AXIS_RATIO_MIN,
     CircleKey,
@@ -120,10 +121,14 @@ class StationGraph:
 
 @dataclass
 class ErrorMap:
-    """Predicted 1-sigma position error on a floor grid, mm.
+    """Predicted 1-sigma position error on a floor grid, mm, of the station
+    a robot keeps there (`station_rule`).
 
     Cell (row, col) is centred on `origin_mm + (col + 0.5, row + 0.5) *
-    cell_mm`; NaN where no station's rectangle covers it.
+    cell_mm`; NaN where no station's rectangle covers it. Where `undecided`,
+    the boxes do not pick the station and the cell holds the worse of the
+    candidates, a bound. `fused_mm` combines every covering station, which
+    no robot does.
     """
 
     origin_mm: tuple[float, float]
@@ -131,6 +136,21 @@ class ErrorMap:
     sigma_mm: np.ndarray
     worst_mm: float
     cells_over_10mm: int
+    fused_mm: np.ndarray | None = None
+    undecided: np.ndarray | None = None
+
+    @property
+    def fused_worst_mm(self) -> float:
+        if self.fused_mm is None or np.all(np.isnan(self.fused_mm)):
+            return float("nan")
+        return float(np.nanmax(self.fused_mm))
+
+    @property
+    def worst_is_bound(self) -> bool:
+        """Whether the worst cell is one where the boxes do not decide."""
+        if self.undecided is None or np.all(np.isnan(self.sigma_mm)):
+            return False
+        return bool(self.undecided.ravel()[np.nanargmax(self.sigma_mm)])
 
     def centre(self, row: int, col: int) -> tuple[float, float]:
         return (
@@ -157,7 +177,7 @@ class JointSolution:
     homographies: dict[int, np.ndarray]
     centres: dict[CircleKey, np.ndarray]
     rectangles: dict[int, tuple[int, int, int, int]]
-    valid_mm: tuple[int, int, int, int]
+    coverage_mm: tuple[int, int, int, int]
     field_mm: tuple[int, int]
     graph: StationGraph
     loops: list[tuple[list[int], float]]
@@ -614,17 +634,27 @@ def _error_map(
     x: np.ndarray,
     rectangles: Mapping[int, Sequence[int]],
     cell_mm: float = ERROR_MAP_CELL_MM,
+    cov: np.ndarray | None = None,
+    region: Sequence[float] | None = None,
 ) -> ErrorMap:
-    cov = _covariance(problem, x)
+    """The map over the rectangles' union, or over `region` when given;
+    `cov` is the problem's covariance when already computed."""
+    if cov is None:
+        cov = _covariance(problem, x)
     H, _ = problem.unpack(x)
-    x0, y0, x1, y1 = union_rect(rectangles.values())
+    x0, y0, x1, y1 = region if region is not None else union_rect(rectangles.values())
     cols = max(1, int(math.ceil((x1 - x0) / cell_mm)))
     rows = max(1, int(math.ceil((y1 - y0) / cell_mm)))
     gx = x0 + (np.arange(cols) + 0.5) * cell_mm
     gy = y0 + (np.arange(rows) + 0.5) * cell_mm
     XX, YY = np.meshgrid(gx, gy)
     info = np.zeros((rows, cols))
-    for s, (rx0, ry0, rx1, ry1) in rectangles.items():
+    # Per station: its own sigma, and its squared distance to its box's
+    # centre, inf where its box does not hold the cell
+    own: dict[int, np.ndarray] = {}
+    d2: dict[int, np.ndarray] = {}
+    for s, rect in rectangles.items():
+        rx0, ry0, rx1, ry1 = rect
         inside = (XX >= rx0) & (XX <= rx1) & (YY >= ry0) & (YY <= ry1)
         if not inside.any():
             continue
@@ -636,9 +666,23 @@ def _error_map(
         var = np.einsum("nij,jk,nik->n", G, S, G)
         var = np.maximum(var, 1e-12)
         info[inside] += 1.0 / var
-    sigma = np.full((rows, cols), np.nan)
+        own[s] = np.full((rows, cols), np.nan)
+        own[s][inside] = np.sqrt(var)
+        cx, cy = station_rule.centre(rect)
+        d2[s] = np.where(inside, (XX - cx) ** 2 + (YY - cy) ** 2, np.inf)
+    fused = np.full((rows, cols), np.nan)
     covered = info > 0
-    sigma[covered] = 1.0 / np.sqrt(info[covered])
+    fused[covered] = 1.0 / np.sqrt(info[covered])
+    sigma = np.full((rows, cols), np.nan)
+    undecided = np.zeros((rows, cols), dtype=bool)
+    if own:
+        stations = sorted(own)
+        dist = np.stack([d2[s] for s in stations])
+        errs = np.stack([own[s] for s in stations])
+        least = dist.min(axis=0)
+        kept = (dist == least) & np.isfinite(least)
+        undecided = kept.sum(axis=0) > 1
+        sigma = np.where(covered, np.max(np.where(kept, errs, -np.inf), axis=0), np.nan)
     worst = float(np.nanmax(sigma)) if covered.any() else float("nan")
     return ErrorMap(
         origin_mm=(float(x0), float(y0)),
@@ -646,6 +690,8 @@ def _error_map(
         sigma_mm=sigma,
         worst_mm=worst,
         cells_over_10mm=int(np.sum(sigma[covered] > ERROR_MAP_LIMIT_MM)),
+        fused_mm=fused,
+        undecided=undecided,
     )
 
 
@@ -753,7 +799,7 @@ def _single(
         homographies={station: H},
         centres=centres,
         rectangles={station: rect},
-        valid_mm=rect,
+        coverage_mm=rect,
         field_mm=solution.field_mm,
         graph=graph,
         loops=[],
@@ -938,7 +984,7 @@ def _solve_free(
         homographies=H,
         centres=centres_out,
         rectangles=rectangles,
-        valid_mm=union_rect(rectangles.values()),
+        coverage_mm=union_rect(rectangles.values()),
         field_mm=field,
         graph=final_graph,
         loops=loops,
@@ -996,10 +1042,10 @@ def _anchored(
                 f"site's zero, leaving the rectangle {list(rect)}; check the "
                 "anchors' points"
             )
-    valid = union_rect(rectangles.values())
+    coverage = union_rect(rectangles.values())
     warnings = list(joint.warnings)
     span = _spread(want)
-    diagonal = math.hypot(valid[2] - valid[0], valid[3] - valid[1])
+    diagonal = math.hypot(coverage[2] - coverage[0], coverage[3] - coverage[1])
     if span < ANCHOR_SPAN_SHARE * diagonal:
         warnings.append(
             f"the anchors span {span:.0f} mm, under half the fence's "
@@ -1015,7 +1061,7 @@ def _anchored(
         homographies=H,
         centres=centres,
         rectangles=rectangles,
-        valid_mm=valid,
+        coverage_mm=coverage,
         field_mm=joint.field_mm,
         graph=joint.graph,
         loops=joint.loops,
@@ -1032,14 +1078,32 @@ def _anchored(
     )
 
 
-def _map_from(
-    H: Mapping[int, np.ndarray],
-    kept: Mapping[int, Sequence[Track]],
-    rectangles: Mapping[int, Sequence[int]],
-    cell_mm: float = ERROR_MAP_CELL_MM,
-) -> ErrorMap:
-    """The error map of homographies `H` over the kept tracks, every circle
-    seen by several stations tying them."""
+@dataclass
+class CoverageModel:
+    """A spin calibration's solve, kept so its error map can be drawn for
+    any boxes without solving again."""
+
+    problem: _Problem
+    x: np.ndarray
+    cov: np.ndarray
+
+    @property
+    def stations(self) -> list[int]:
+        return list(self.problem.stations)
+
+    def error_map(
+        self,
+        rectangles: Mapping[int, Sequence[int]],
+        cell_mm: float = ERROR_MAP_CELL_MM,
+        region: Sequence[float] | None = None,
+    ) -> ErrorMap:
+        kept = {s: r for s, r in rectangles.items() if s in self.problem.s_col}
+        return _error_map(self.problem, self.x, kept, cell_mm, self.cov, region)
+
+
+def _problem_from(
+    H: Mapping[int, np.ndarray], kept: Mapping[int, Sequence[Track]]
+) -> tuple[_Problem, np.ndarray]:
     world = {
         s: {t.key: _circle_fit(apply(H[s], t.points))[0] for t in kept[s]} for s in kept
     }
@@ -1048,7 +1112,18 @@ def _map_from(
         for k in centres:
             tied.setdefault(k, set()).add(s)
     root = min(kept, key=lambda s: (-len(kept[s]), s))
-    problem, x = _build_problem(kept, world, tied, dict(H), root)
+    return _build_problem(kept, world, tied, dict(H), root)
+
+
+def _map_from(
+    H: Mapping[int, np.ndarray],
+    kept: Mapping[int, Sequence[Track]],
+    rectangles: Mapping[int, Sequence[int]],
+    cell_mm: float = ERROR_MAP_CELL_MM,
+) -> ErrorMap:
+    """The error map of homographies `H` over the kept tracks, every circle
+    seen by several stations tying them."""
+    problem, x = _problem_from(H, kept)
     return _error_map(problem, x, rectangles, cell_mm)
 
 
@@ -1135,6 +1210,29 @@ def tracks_by_station(samples: Sequence[TrackSample]) -> dict[int, list[Track]]:
     return by_station
 
 
+def coverage_model(calibration: Calibration) -> CoverageModel | None:
+    """A spin calibration's solve, from its file alone, as
+    `error_map_from_calibration` makes it; None when the file holds no
+    spin-solved station."""
+    stations = {
+        st.index: st
+        for st in calibration.stations
+        if st.solved_from.startswith("conics")
+    }
+    by_station = {
+        s: t for s, t in tracks_by_station(calibration.tracks).items() if s in stations
+    }
+    kept = {}
+    for s, tracks in by_station.items():
+        gate = health_gate(tracks, stations[s].matrix)
+        kept[s] = [t for t in tracks if t not in gate and len(t.points) >= 6]
+    kept = {s: t for s, t in kept.items() if t}
+    if not kept:
+        return None
+    problem, x = _problem_from({s: stations[s].matrix for s in kept}, kept)
+    return CoverageModel(problem, x, _covariance(problem, x))
+
+
 def error_map_from_calibration(
     calibration: Calibration, cell_mm: float = ERROR_MAP_CELL_MM
 ) -> ErrorMap | None:
@@ -1163,7 +1261,7 @@ def error_map_from_calibration(
     if not kept:
         return None
     H = {s: stations[s].matrix for s in kept}
-    rectangles = {s: stations[s].valid_mm for s in kept}
+    rectangles = {s: stations[s].coverage_mm for s in kept}
     return _map_from(H, kept, rectangles, cell_mm)
 
 
@@ -1353,9 +1451,12 @@ def _error_map_lines(error_map: ErrorMap | None) -> list[str]:
     if error_map is None or error_map.covered == 0:
         return []
     worst = error_map.worst_cell
+    bound = (
+        ", a bound: the boxes do not decide there" if error_map.worst_is_bound else ""
+    )
     return [
-        f"predicted error ({error_map.cell_mm:.0f} mm cells): worst "
-        f"{error_map.worst_mm:.1f} mm near ({worst[0]:.0f}, {worst[1]:.0f}) mm, "
+        f"predicted error ({error_map.cell_mm:.0f} mm cells), station kept: worst "
+        f"{error_map.worst_mm:.1f} mm near ({worst[0]:.0f}, {worst[1]:.0f}) mm{bound}, "
         f"{error_map.cells_over_10mm} of {error_map.covered} cells over "
         f"{ERROR_MAP_LIMIT_MM:.0f} mm"
     ]
@@ -1374,7 +1475,7 @@ def multi_station_report(
     for track in calibration.tracks:
         circles[track.station] = circles.get(track.station, 0) + 1
     for st in sorted(calibration.stations, key=lambda s: s.index):
-        rect = list(st.valid_mm)
+        rect = list(st.coverage_mm)
         if joint is not None and st.index in joint.solutions:
             sol = joint.solutions[st.index]
             kept = f"{len(sol.tracks)} kept, {len(sol.dropped)} dropped circles"

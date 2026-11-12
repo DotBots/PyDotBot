@@ -2,6 +2,8 @@ import React, { useCallback, useId, useMemo, useRef, useState } from "react";
 
 import { cameraStreamUrl } from "./api";
 import { areaColor } from "./areaColor";
+import { ringDash, spinRings } from "./shared/spinRings";
+import { OBJECT_COLOUR, OBJECT_SIZE_MM, facing } from "./siteObjects";
 import { CalibrationLayer } from "./CalibrationLayer";
 import { calibrationSpans, hatchBox, spanTitle } from "./calibrationSpan";
 import {
@@ -1209,6 +1211,67 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                 <title>{a.name}</title>
               </rect>
             ))}
+            {/* The site's walls and obstacles, solid: they are the floor's,
+                not a view of it. */}
+            {(props.site?.obstacles ?? []).map((o, i) => (
+              <polygon
+                key={`obstacle-${i}`}
+                data-testid={`obstacle-${o.name || i}`}
+                points={pointsPx(o.points)}
+                fill="var(--muted)"
+                fillOpacity={0.35}
+                stroke="var(--text)"
+                strokeWidth={chrome}
+              >
+                <title>{o.name || "obstacle"}</title>
+              </polygon>
+            ))}
+            {(props.site?.walls ?? []).map((w, i) => (
+              <polyline
+                key={`wall-${i}`}
+                data-testid={`wall-${w.name || i}`}
+                points={pointsPx(w.points)}
+                fill="none"
+                stroke="var(--text)"
+                strokeWidth={3 * chrome}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <title>{w.name || "wall"}</title>
+              </polyline>
+            ))}
+            {(props.site?.objects ?? []).map((o) => {
+              const { fx, fy } = areaToFraction({ x: o.x, y: o.y }, props.viewport);
+              const cx = fx * boxW;
+              const cy = fy * boxH;
+              const r = (OBJECT_SIZE_MM / 2) * (boxW / props.viewport.w);
+              const [dx, dy] = facing(o.heading_deg);
+              return (
+                <g key={`object-${o.name}`} data-testid={`object-${o.name}`}>
+                  <rect
+                    x={cx - r}
+                    y={cy - r}
+                    width={2 * r}
+                    height={2 * r}
+                    rx={r / 3}
+                    fill={OBJECT_COLOUR[o.kind]}
+                    fillOpacity={0.25}
+                    stroke={OBJECT_COLOUR[o.kind]}
+                    strokeWidth={chrome * 1.5}
+                  >
+                    <title>{`${o.name} (${o.kind})`}</title>
+                  </rect>
+                  <line
+                    x1={cx}
+                    y1={cy}
+                    x2={cx + dx * r}
+                    y2={cy + dy * r}
+                    stroke={OBJECT_COLOUR[o.kind]}
+                    strokeWidth={chrome * 1.5}
+                  />
+                </g>
+              );
+            })}
             {/* The loaded calibration: each placement's span outlined, and
                 the rest of the site hatched, where positions are
                 extrapolated. The hatch is the site masked by the spans, so
@@ -1263,6 +1326,47 @@ export const MapView: React.FC<MapViewProps> = (props) => {
                     <title>{spanTitle(calibration, span)}</title>
                   </polygon>
                 ))}
+              </g>
+            )}
+            {/* Where robots spun to measure the stations, ringed in each
+                station's colour, as the editor draws them. */}
+            {calibration && (calibration.circles ?? []).length > 0 && (
+              <g data-testid="spin-circles">
+                {spinRings(calibration.circles ?? []).map((c, i) => {
+                  const box = rectPx({
+                    x: c.x - c.radius_mm,
+                    y: c.y - c.radius_mm,
+                    w: 2 * c.radius_mm,
+                    h: 2 * c.radius_mm,
+                  });
+                  const rx = box.width / 2;
+                  const label = `${c.stations.map((s) => `S${s}`).join(" and ")} saw …${c.name.slice(-4)} spin here`;
+                  return (
+                    <g key={`spin-${i}`} data-testid={`spin-circle-${i}`}>
+                      {c.stations.map((st, k) => {
+                        const dash = ringDash(k, c.stations.length, 2 * Math.PI * rx);
+                        return (
+                          <ellipse
+                            key={st}
+                            cx={box.x + rx}
+                            cy={box.y + box.height / 2}
+                            rx={rx}
+                            ry={box.height / 2}
+                            fill="none"
+                            stroke={`var(--st-${st % 2})`}
+                            strokeOpacity={0.85}
+                            strokeWidth={chrome}
+                            strokeDasharray={dash.dasharray}
+                            strokeDashoffset={dash.offset}
+                          >
+                            <title>{label}</title>
+                          </ellipse>
+                        );
+                      })}
+                      <circle cx={box.x + rx} cy={box.y + box.height / 2} r={1.5 * chrome} fill="var(--muted)" />
+                    </g>
+                  );
+                })}
               </g>
             )}
           </svg>

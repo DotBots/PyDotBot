@@ -254,7 +254,7 @@ def test_free_mode_calibration_file_round_trips(tmp_path):
     )
     assert calibration.stations[0].solved_from == "conics-free"
     assert calibration.site.anchor == conics.FREE_FRAME_ANCHOR
-    assert calibration.valid_mm[:2] == (0, 0)
+    assert calibration.coverage_mm[:2] == (0, 0)
     path = tmp_path / "cal.toml"
     path.write_text(render_calibration(calibration))
     back = read_calibration_file(path)
@@ -284,8 +284,8 @@ def test_a_self_defined_site_centres_the_field():
     staging = site.areas["staging"]
     assert (staging.x, staging.y, staging.w) == (field.x, field.y_max, field.w)
     assert staging.y_max <= 4000
-    assert placed.stations[0].valid_mm == (0, 0, 3000, 4000)
-    assert placed.valid_mm == placed.stations[0].valid_mm
+    assert placed.stations[0].coverage_mm == (0, 0, 3000, 4000)
+    assert placed.coverage_mm == placed.stations[0].coverage_mm
     assert (
         placed.site.anchor
         == site.anchor
@@ -315,7 +315,7 @@ def test_a_self_defined_site_is_the_starter_site_around_the_field():
     assert site.extent_mm == (field_w + 3000, field_h + 3000)
     assert (site.field.x, site.field.y) == (1500, 1500)
     assert site.staging.y == site.field.y_max
-    assert placed.valid_mm == (0, 0, *site.extent_mm)
+    assert placed.coverage_mm == (0, 0, *site.extent_mm)
 
 
 def test_a_self_defined_site_must_hold_the_staging_strip_too():

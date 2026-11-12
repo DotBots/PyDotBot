@@ -2100,3 +2100,52 @@ async def test_a_direct_command_drops_a_held_batch(controller, clock):
     controller.send_payload(BOT, PayloadCommandMoveRaw(left_y=50, right_y=50))
     assert not controller.held_batches
     assert not controller.dotbots[address].waypoints_awaiting_heading
+
+
+def _homographies_sent(controller, held_id):
+    """The homography payloads a robot missing a station gets when it
+    reports `held_id` (None: never read)."""
+    from dotbot.protocol import PayloadLh2CalibrationHomography
+
+    if held_id is not None:
+        controller.note_held_calibrations({addr_to_hex(BOT): held_id})
+    sent = []
+    controller.send_payload = lambda dest, payload: sent.append(payload)
+    controller.handle_received_frame(
+        _advertised(BOT, calibrated=0, direction=90, pos_x=1000, pos_y=1000)
+    )
+    return [p for p in sent if isinstance(p, PayloadLh2CalibrationHomography)]
+
+
+def test_a_robot_reporting_another_calibration_gets_no_homography(
+    tmp_path, serial_mock
+):
+    controller = Controller(
+        _old_calibration_settings(tmp_path, lh2_calibration_max_age_days=0)
+    )
+    with capture_logs() as logs:
+        assert _homographies_sent(controller, "a1b41f12d20eac3c") == []
+    (warning,) = (e for e in logs if e["log_level"] == "warning")
+    assert warning["held"] == "a1b41f12"
+
+
+def test_a_robot_reporting_the_served_calibration_gets_no_homography(
+    tmp_path, serial_mock
+):
+    controller = Controller(
+        _old_calibration_settings(tmp_path, lh2_calibration_max_age_days=0)
+    )
+    assert _homographies_sent(controller, controller.calibration.id) == []
+
+
+@pytest.mark.parametrize("held_id", [None, ""])
+def test_a_robot_reporting_no_calibration_still_gets_the_homographies(
+    tmp_path, serial_mock, held_id
+):
+    controller = Controller(
+        _old_calibration_settings(tmp_path, lh2_calibration_max_age_days=0)
+    )
+    sent = _homographies_sent(controller, held_id)
+    assert sorted(p.index for p in sent) == sorted(
+        s.index for s in controller.lh2_calibration
+    )

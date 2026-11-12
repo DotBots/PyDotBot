@@ -233,6 +233,33 @@ export interface CalibrationSession {
   error: string;
 }
 
+// A spin calibration run by the controller: robots turn in place, the
+// circles their sensors trace are solved into a calibration in its own frame.
+export interface SpinRun {
+  id: string;
+  site: string;
+  robots: string[];
+  radius_mm: number;
+  tag: string;
+  append: string | null;
+  round: number;
+  phase: "spinning" | "solving" | "saved" | "failed";
+  // Per robot: chunks received, chunks the spin has
+  progress: Record<string, [number, number]>;
+  error: string;
+  result: {
+    id?: string;
+    id8?: string;
+    path?: string;
+    field_mm?: [number, number];
+    stations?: { index: number; residual_mm: number; kept: number }[];
+    left_out?: { station: number; robot: string; why: string }[];
+    missing?: string[];
+    report: string[];
+  } | null;
+  started_at: number;
+}
+
 // What a session over one points specification would open on, resolved by the
 // controller without opening one.
 export interface CalibrationPreview {
@@ -444,6 +471,28 @@ export interface Site {
   areas: Area[];
   field?: string | null;
   calibration?: SiteCalibration | null;
+  walls?: Barrier[];
+  obstacles?: Barrier[];
+  objects?: SiteObject[];
+}
+
+// A thing on the floor at a pose in frame mm; `heading_deg` follows the
+// robots' convention (0 faces +y).
+export type SiteObjectKind = "charger" | "dock" | "landmark" | "camera";
+
+export interface SiteObject {
+  name: string;
+  kind: SiteObjectKind;
+  x: number;
+  y: number;
+  heading_deg: number;
+}
+
+// Where robots cannot go, in frame mm: a wall is a polyline, an obstacle a
+// polygon whose last point joins its first.
+export interface Barrier {
+  name: string;
+  points: [number, number][];
 }
 
 // The LH2 calibration the controller loaded: each placement's points in
@@ -460,7 +509,22 @@ export interface SiteCalibration {
   id: string;
   tag: string;
   created_at: string;
+  /** The frame it records: its site's name and anchor. */
+  site?: string;
+  anchor?: string;
   placements: { points_mm: [number, number][]; points_from: PointsFrom | null }[];
+  /** Each station's fit and box, frame mm. */
+  stations?: { index: number; residual_mm: number | null; box: [number, number, number, number] }[];
+  /** Where robots spun to measure the stations, one per station that saw it. */
+  circles?: SpinCircle[];
+}
+
+export interface SpinCircle {
+  station: number;
+  name: string;
+  x: number;
+  y: number;
+  radius_mm: number;
 }
 
 // GET /controller/cameras - one registered camera, one area. `width` and

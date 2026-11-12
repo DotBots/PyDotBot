@@ -11,6 +11,7 @@ from typing import Annotated, Callable, Dict, List, Optional
 
 import httpx
 from fastapi import (
+    Depends,
     FastAPI,
     HTTPException,
     Path,
@@ -35,12 +36,14 @@ from dotbot.models import (
     DotBotBackgroundMapModel,
     DotBotBodyModel,
     DotBotBuildModel,
+    DotBotCalibrationFilePushModel,
     DotBotCalibrationPreviewModel,
     DotBotCalibrationPushedModel,
     DotBotCalibrationPushModel,
     DotBotCalibrationSavedModel,
     DotBotCalibrationSaveModel,
     DotBotCalibrationSessionModel,
+    DotBotCalibrationSpinModel,
     DotBotCalibrationStartModel,
     DotBotCameraDetectionModel,
     DotBotCameraModel,
@@ -76,6 +79,7 @@ from dotbot.protocol import (
     PayloadLH2Waypoints,
     PayloadWaypointHeading,
 )
+from dotbot.same_origin import same_origin
 from dotbot.stream import StreamOptions, encode, robot_object
 from dotbot.swarm_client import conn_string
 from dotbot.ws_clients import TransportScope
@@ -632,6 +636,7 @@ async def camera_stream(area: str):
 
 @api.post(
     path="/controller/calibration/session",
+    dependencies=[Depends(same_origin)],
     response_model=DotBotCalibrationSessionModel,
     summary="Open a calibration session over a set of resolved points",
     tags=["calibration"],
@@ -647,6 +652,7 @@ async def calibration_session_start(request: DotBotCalibrationStartModel):
 
 @api.get(
     path="/controller/calibration/session/preview",
+    dependencies=[Depends(same_origin)],
     response_model=DotBotCalibrationPreviewModel,
     summary="Resolve a set of points without opening a session over them",
     tags=["calibration"],
@@ -661,6 +667,7 @@ async def calibration_session_preview(points: Annotated[List[str], Query()]):
 
 @api.get(
     path="/controller/calibration/session/state",
+    dependencies=[Depends(same_origin)],
     response_model=Optional[DotBotCalibrationSessionModel],
     summary="Return the calibration session, or null when there is none",
     tags=["calibration"],
@@ -672,6 +679,7 @@ async def calibration_session_state():
 
 @api.post(
     path="/controller/calibration/session/redo",
+    dependencies=[Depends(same_origin)],
     response_model=DotBotCalibrationSessionModel,
     summary="Discard the last captured point's reads and re-open it",
     tags=["calibration"],
@@ -683,6 +691,7 @@ async def calibration_session_redo():
 
 @api.post(
     path="/controller/calibration/session/save",
+    dependencies=[Depends(same_origin)],
     response_model=DotBotCalibrationSavedModel,
     summary="Solve the session and write its schema 3 calibration file",
     tags=["calibration"],
@@ -694,6 +703,7 @@ async def calibration_session_save(request: DotBotCalibrationSaveModel):
 
 @api.post(
     path="/controller/calibration/session/push",
+    dependencies=[Depends(same_origin)],
     response_model=DotBotCalibrationPushedModel,
     summary="Send the saved calibration to the robots over the air",
     tags=["calibration"],
@@ -706,14 +716,74 @@ async def calibration_session_push(
     return await _calibration(api.controller.calibration_session.push(devices=devices))
 
 
+@api.post(
+    path="/controller/calibration/push",
+    dependencies=[Depends(same_origin)],
+    response_model=DotBotCalibrationPushedModel,
+    summary="Send a saved calibration file to the named robots over the air",
+    tags=["calibration"],
+)
+async def calibration_file_push(request: DotBotCalibrationFilePushModel):
+    """Push a saved calibration, not the session's, to the robots named."""
+    from dotbot.controller import load_calibration
+
+    controller = api.controller
+    try:
+        calibration = load_calibration(request.calibration, site=controller.site)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return await _calibration(
+        controller.calibration_session.push_file(calibration, request.devices)
+    )
+
+
 @api.delete(
     path="/controller/calibration/session",
+    dependencies=[Depends(same_origin)],
     summary="Abandon the calibration session without writing anything",
     tags=["calibration"],
 )
 async def calibration_session_abandon():
     """Calibration-session HTTP DELETE handler."""
     return await api.controller.calibration_session.abandon()
+
+
+@api.get(
+    path="/controller/calibration/spin",
+    dependencies=[Depends(same_origin)],
+    summary="Return the spin calibration run, or null when there is none",
+    tags=["calibration"],
+)
+async def calibration_spin_state():
+    """Spin state HTTP GET handler."""
+    return api.controller.calibration_session.spin_state()
+
+
+@api.post(
+    path="/controller/calibration/spin",
+    dependencies=[Depends(same_origin)],
+    summary="Spin robots in place, solve their circles and save a calibration",
+    tags=["calibration"],
+)
+async def calibration_spin_start(request: DotBotCalibrationSpinModel):
+    """Spin start HTTP POST handler: returns once the robots are checked;
+    the run goes on in the background as `calibration_spin` events."""
+    return await _calibration(
+        api.controller.calibration_session.start_spin(
+            request.devices, request.tag, request.append, request.radius_mm
+        )
+    )
+
+
+@api.delete(
+    path="/controller/calibration/spin",
+    dependencies=[Depends(same_origin)],
+    summary="Forget a finished spin run; its saved file stays",
+    tags=["calibration"],
+)
+async def calibration_spin_dismiss():
+    """Spin dismiss HTTP DELETE handler."""
+    return await _calibration(api.controller.calibration_session.dismiss_spin())
 
 
 async def _calibration(awaitable):
@@ -946,6 +1016,101 @@ async def mrta_proxy(path: str, request: Request):
 async def root():
     """Send a browser landing on the bare host to the console."""
     return RedirectResponse(url="/console/")
+
+
+def _on_loop(loop, fn, *args):
+    """`fn(*args)` run on the controller's loop from a worker thread, its
+    result or its exception handed back."""
+    import concurrent.futures
+
+    done: concurrent.futures.Future = concurrent.futures.Future()
+
+    def call():
+        try:
+            done.set_result(fn(*args))
+        except Exception as exc:  # noqa: BLE001
+            done.set_exception(exc)
+
+    loop.call_soon_threadsafe(call)
+    return done.result(timeout=10)
+
+
+class SiteEditorMount:
+    """The site editor's JSON routes over the controller's site pack, for the
+    console's panel: built on first use, and only for a site read from a pack."""
+
+    def __init__(self):
+        self._app = None
+        self._key = None
+        self._lobby = None
+        self._lobby_key = None
+
+    async def __call__(self, scope, receive, send):
+        import asyncio
+        from pathlib import Path
+
+        from fastapi.responses import JSONResponse
+
+        from dotbot.calibration.lighthouse2 import calibration_root
+        from dotbot.site_editor import EDITOR_DIR, EditorState, create_app
+        from dotbot.site_packs import PACK_FILE
+
+        controller = getattr(api, "controller", None)
+        site = controller.site if controller is not None else None
+        pack = Path(site.pack) if site is not None and site.pack else None
+        if pack is not None and not (pack / PACK_FILE).is_file():
+            pack = None
+        if controller is None:
+            response = JSONResponse({"detail": "no controller"}, status_code=404)
+            await response(scope, receive, send)
+            return
+        path = scope.get("path", "")
+        root = scope.get("root_path", "")
+        if path.startswith(root):
+            path = path[len(root) :]
+        if pack is None or path.startswith("/api/sites"):
+            if self._lobby is None or self._lobby_key != id(controller):
+                from dotbot.site_editor import create_lobby_app
+
+                loop = asyncio.get_running_loop()
+
+                def current():
+                    s = controller.site
+                    p = Path(s.pack) if s is not None and s.pack else None
+                    return (
+                        s.name if s is not None else "",
+                        p if p and (p / PACK_FILE).is_file() else None,
+                    )
+
+                self._lobby = create_lobby_app(
+                    current,
+                    use=lambda name, folder, persist: _on_loop(
+                        loop, controller.use_site, name, folder, persist
+                    ),
+                    context=controller.editor_context,
+                    page_dir=EDITOR_DIR,
+                )
+                self._lobby_key = id(controller)
+            await self._lobby(scope, receive, send)
+            return
+        if self._app is None or self._key != (id(controller), pack):
+            state = EditorState(site.name, pack, [calibration_root() / site.name])
+            # A save runs on a worker thread; the reload belongs on the loop
+            loop = asyncio.get_running_loop()
+            self._app = create_app(
+                state,
+                page_dir=EDITOR_DIR,
+                on_saved=lambda: loop.call_soon_threadsafe(controller.reload_site),
+                context=controller.editor_context,
+                serve=lambda spec, persist: _on_loop(
+                    loop, controller.serve, spec, persist
+                ),
+            )
+            self._key = (id(controller), pack)
+        await self._app(scope, receive, send)
+
+
+api.mount("/controller/site-editor", SiteEditorMount(), name="site-editor")
 
 
 # The console is the web UI. Mounted after all routes so they take precedence.

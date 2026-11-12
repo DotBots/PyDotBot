@@ -55,16 +55,20 @@ export const TestbedControls: React.FC<{
   armed?: TestbedAction | null;
   /** How many robots the armed action would reach. */
   armedCount?: number;
-  onStart: () => void;
+  /** Without it there is no Start: the site editor carries Stop alone. */
+  onStart?: () => void;
   onStop: () => void;
   onSelectIds: (ids: string[]) => void;
-}> = ({ selected, busy, outcome, armed = null, armedCount = 0, onStart, onStop, onSelectIds }) => {
+  /** Without it the target is named only in the buttons' tooltips. */
+  caption?: boolean;
+}> = ({ selected, busy, outcome, armed = null, armedCount = 0, onStart, onStop, onSelectIds, caption = true }) => {
   const target = selected ? `${selected} selected` : "whole fleet";
   const tone = outcome ? toneOf(outcome) : null;
   const label = (action: TestbedAction, idle: string, working: string) =>
     armed === action ? `${idle} all ${armedCount}?` : busy === action ? working : idle;
   return (
     <div role="group" style={{ display: "flex", alignItems: "center", gap: 6 }} aria-label="Testbed controls">
+      {(armed || caption) && (
       <span role="status" style={{ fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap" }}>
         {armed ? (
           <span data-testid="testbed-confirm" style={{ color: "var(--text)" }}>
@@ -76,6 +80,8 @@ export const TestbedControls: React.FC<{
           </>
         )}
       </span>
+      )}
+      {onStart && (
       <button
         type="button"
         onClick={busy === "start" && armed !== "start" ? undefined : onStart}
@@ -86,6 +92,7 @@ export const TestbedControls: React.FC<{
       >
         &#9654; {label("start", "Start", "Starting…")} <span style={kbd}>{ACTION_KEY.start}</span>
       </button>
+      )}
       <button
         type="button"
         onClick={onStop}
