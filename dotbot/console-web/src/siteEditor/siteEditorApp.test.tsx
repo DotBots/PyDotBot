@@ -882,6 +882,43 @@ describe("a move of the origin in the draft", () => {
     await waitFor(() => expect(screen.getByTestId("status-unsaved").textContent).toContain("1 unsaved change"));
     expect((screen.getByLabelText("x") as HTMLInputElement).value).toBe("500");
   });
+
+  const drafted = async () => {
+    render(<SiteEditorApp />);
+    await toPlan();
+    keyDown("1");
+    keyDown("t");
+    for (const label of ["shift x", "shift y"]) {
+      const f = screen.getByLabelText(label);
+      fireEvent.change(f, { target: { value: "20" } });
+      fireEvent.keyDown(f, { key: "Enter" });
+    }
+    fireEvent.click(await screen.findByTestId("frame-apply"));
+    await waitFor(() => expect(screen.getByTestId("status-unsaved").textContent).toContain("1 unsaved change"));
+  };
+  const shiftShown = () => ["shift x", "shift y"].map((l) => (screen.getByLabelText(l) as HTMLInputElement).value);
+
+  it("starts the turn panel from no move again after a Save, so the shift is not drafted twice", async () => {
+    stubFetch({
+      "api/frame": () => new Response(JSON.stringify(moved), { status: 200 }),
+      "api/apply": () => new Response(JSON.stringify({ ...SITE, revision: "r2", text: TEXT, ok: true, steps: [] }), { status: 200 }),
+    });
+    await drafted();
+    keyDown("s", { ctrlKey: true });
+    await waitFor(() => expect((screen.getByTestId("review-save") as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(screen.getByTestId("review-save"));
+    await waitFor(() => expect(screen.getByTestId("unsaved").textContent).toBe("saved"));
+    await waitFor(() => expect(shiftShown()).toEqual(["0", "0"]));
+  });
+
+  it("starts the turn panel from no move again after a Discard", async () => {
+    stubFetch({ "api/frame": () => new Response(JSON.stringify(moved), { status: 200 }) });
+    await drafted();
+    fireEvent.click(screen.getByLabelText("More"));
+    fireEvent.click(screen.getByTestId("discard-all"));
+    await waitFor(() => expect(screen.getByTestId("unsaved").textContent).toBe("saved"));
+    await waitFor(() => expect(shiftShown()).toEqual(["0", "0"]));
+  });
 });
 
 /** Where frame mm `p` lands on the plan, as a pointer event's client point. */

@@ -1160,10 +1160,19 @@ export const SiteEditorApp: React.FC = () => {
     });
   }, []);
 
+  /** No move typed or parked: the frame tools start again from the saved origin. */
+  const resetFrameMove = useCallback((doc: Doc) => {
+    parkedMoves.current = {};
+    const [w, h] = doc.extent_mm ?? [0, 0];
+    setFrameMove(w ? { ...NO_MOVE, pivot: [Math.round(w / 2), Math.round(h / 2)] } : NO_MOVE);
+  }, []);
+
   const onSaved = useCallback((p: SitePayload) => {
     forget(storage(), p.name);
     setPayload(p);
-    setDraft(newDraft(p.name, p.revision, null, docFromPayload(p)));
+    const doc = docFromPayload(p);
+    setDraft(newDraft(p.name, p.revision, null, doc));
+    resetFrameMove(doc);
     setConflicts([]);
     setNotice(null);
     setChecksRefresh((n) => n + 1);
@@ -1173,7 +1182,9 @@ export const SiteEditorApp: React.FC = () => {
   const discardAll = useCallback(() => {
     if (!payload) return;
     forget(storage(), payload.name);
-    setDraft(newDraft(payload.name, payload.revision, null, docFromPayload(payload)));
+    const doc = docFromPayload(payload);
+    setDraft(newDraft(payload.name, payload.revision, null, doc));
+    resetFrameMove(doc);
     setConflicts([]);
     setNotice(null);
   }, [payload]);
