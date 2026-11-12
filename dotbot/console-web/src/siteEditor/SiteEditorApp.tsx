@@ -43,7 +43,7 @@ import "./editor.css";
 import { EditorFleet } from "./EditorFleet";
 import { SitesSheet, StartScreen } from "./SitesSheet";
 import { dismissSpin } from "../api";
-import { fetchOverlay } from "./api";
+import { fetchOverlay, putServed } from "./api";
 import { mountOverlay, NewRoomPanel, placeOverlay, type PlacePreview } from "./NewRoomPanel";
 import { KV } from "./fields";
 import { FileView } from "./FileView";
@@ -1316,6 +1316,22 @@ export const SiteEditorApp: React.FC = () => {
         />
       )}
       <div className="acts">
+        {live && editable && context.served && context.persist_path && status.untilRestart && (
+          <button
+            type="button"
+            className="btn xs primary"
+            data-testid="keep-after-restart"
+            title={`Writes lh2_calibration = "${context.served.id8}" under [run.controller] in ${context.persist_path}`}
+            onClick={() =>
+              putServed(context.served!.id8, true, context.served!.id).then(
+                (ctx) => setContext({ ...context, ...ctx }),
+                (e: Error) => setNotice({ tone: "err", text: `Not kept: ${e.message.replace(/^\d+: /, "")}` }),
+              )
+            }
+          >
+            Keep after restart
+          </button>
+        )}
         <button
           type="button"
           className="btn xs"

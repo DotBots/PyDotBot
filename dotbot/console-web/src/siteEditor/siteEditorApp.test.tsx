@@ -1092,3 +1092,34 @@ describe("the extent resized on the plan", () => {
     await waitFor(() => expect(screen.getByTestId("floor").parentElement!.textContent).toContain("extent 1060 × 1230 mm"));
   });
 });
+
+describe("keeping the calibration in use after a restart", () => {
+  const forRun = { ...CONTEXT, served: { ...CONTEXT.served, source: "the site editor, for this run" }, next_start: { spec: "0ac36f3e", source: "dotbot.local.toml" }, persist_path: "/project/dotbot.local.toml" };
+
+  it("writes it for the next start from the card, then says so and drops the button", async () => {
+    const calls = stubFetch({
+      "api/context": () => new Response(JSON.stringify(forRun), { status: 200 }),
+      "api/served": () => new Response(JSON.stringify({ ...forRun, served: { ...forRun.served, source: "the site editor" }, next_start: { spec: "4640cfde", source: "/project/dotbot.local.toml" } }), { status: 200 }),
+    });
+    render(<SiteEditorApp />);
+    const keep = await screen.findByTestId("keep-after-restart");
+    expect(screen.getByTestId("serving-card").textContent).toContain("until the controller restarts");
+    fireEvent.click(keep);
+    await waitFor(() => expect(screen.queryByTestId("keep-after-restart")).toBeNull());
+    expect(screen.getByTestId("serving-card").textContent).toContain("Chosen here, and kept for the next start.");
+    const body = JSON.parse(calls.find((c) => c.url === "api/served")!.init!.body as string);
+    expect(body).toEqual({ spec: "4640cfde", persist: true, expected: served.id });
+  });
+
+  it("offers nothing when the next start already uses it, or there is no file to write", async () => {
+    stubFetch({ "api/context": () => new Response(JSON.stringify({ ...forRun, next_start: { spec: "4640cfde", source: "x" } }), { status: 200 }) });
+    const { unmount } = render(<SiteEditorApp />);
+    await waitFor(() => expect(screen.getByTestId("serving-card")).toBeTruthy());
+    expect(screen.queryByTestId("keep-after-restart")).toBeNull();
+    unmount();
+    stubFetch({ "api/context": () => new Response(JSON.stringify({ ...forRun, persist_path: null }), { status: 200 }) });
+    render(<SiteEditorApp />);
+    await waitFor(() => expect(screen.getByTestId("serving-card").textContent).toContain("until the controller restarts"));
+    expect(screen.queryByTestId("keep-after-restart")).toBeNull();
+  });
+});

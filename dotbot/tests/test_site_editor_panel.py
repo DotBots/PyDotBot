@@ -404,3 +404,27 @@ def test_a_switch_reports_its_own_frame_change(monkeypatch):
         "to_frame": "f2",
     }
     assert serve(c, "a")["frame_change"] is None
+
+
+def test_keep_after_restart_writes_where_config_set_would(monkeypatch, tmp_path):
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from dotbot import config as _config
+    from dotbot.cli._config_write import set_value
+    from dotbot.controller_app import _persist_path
+
+    user = tmp_path / "home" / "dotbot.toml"
+    monkeypatch.setattr(_config, "USER_CONFIG_PATH", user)
+    project = tmp_path / "project" / "dotbot.toml"
+    with_project = SimpleNamespace(
+        obj={"config": SimpleNamespace(project_path=str(project))}
+    )
+    path = _persist_path(with_project)
+    assert path == str(project.with_name("dotbot.local.toml"))
+    assert _persist_path(SimpleNamespace(obj={})) == str(user)
+
+    set_value(Path(path), ("run", "controller", "lh2_calibration"), "4640cfde")
+    text = Path(path).read_text()
+    assert "[run.controller]" in text and 'lh2_calibration = "4640cfde"' in text
+    assert not project.exists()
