@@ -83,6 +83,13 @@ describe("the rows", () => {
     expect(sub(inputs([], { drawn }), "coverage").action).toBeUndefined();
   });
 
+  it("reads the accuracy of the calibration in use, and says so while it has not arrived", () => {
+    const i = inputs([]);
+    expect(sub({ ...i, coverage: null }, "accuracy")).toMatchObject({ state: "unknown", text: "accuracy: reading it…" });
+    expect(sub({ ...i, coverage: { ...i.coverage!, id: "another" } }, "accuracy").text).toBe("accuracy: reading it…");
+    expect(sub({ ...i, coverage: { ...i.coverage!, headline: null } }, "accuracy").text).toBe("accuracy unknown: this calibration was not measured by spinning");
+  });
+
   it("states accuracy against the limit, with Show where only over it", () => {
     expect(sub(inputs([]), "accuracy")).toMatchObject({ state: "ok", text: "accurate within 1.5 mm everywhere (limit 2 mm)" });
     expect(sub(inputs([]), "accuracy").action).toBeUndefined();

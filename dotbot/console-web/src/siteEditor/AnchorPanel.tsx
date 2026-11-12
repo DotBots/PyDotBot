@@ -447,7 +447,7 @@ export const AnchorPanel: React.FC<AnchorPanelProps> = (props) => {
       <div className="ins-h">
         <span className="kind">Anchor</span>
         <span className="name" style={{ fontFamily: "var(--font-ui)" }}>
-          {work.mode === "anchor" ? "Anchor the frame" : "Check the anchor again"}
+          {work.mode === "anchor" ? "Anchor the frame" : props.kept.length ? "Check the anchor" : "Check a spot, not anchored yet"}
         </span>
         <span className="sp" />
         <button type="button" className="btn icon ghost" aria-label="Close" onClick={props.onClose} style={{ height: 22, width: 22 }}>

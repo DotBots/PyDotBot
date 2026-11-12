@@ -358,3 +358,49 @@ async def test_a_frame_change_is_named_until_robots_hold_it(served):
     assert context["served"]["id"] == body["calibration"]["id"]
     assert context["frame_change"]["to_frame"] == body["frame"]
     assert context["frame_change"]["from_id"] == cal.id
+
+
+def test_a_switch_reports_its_own_frame_change(monkeypatch):
+    from types import SimpleNamespace
+
+    import dotbot.calibration.lighthouse2 as lighthouse2
+    import dotbot.controller as controller_module
+
+    def cal(cid, frame):
+        return SimpleNamespace(
+            id=cid,
+            id8=cid[:8],
+            path=None,
+            stations=[],
+            site=SimpleNamespace(frame_id=frame),
+        )
+
+    files = {"a": cal("a" * 16, "f1"), "b": cal("b" * 16, "f2")}
+    files["c"] = cal("c" * 16, "f2")
+    monkeypatch.setattr(controller_module, "load_calibration", lambda s, site: files[s])
+    monkeypatch.setattr(lighthouse2, "check_calibration_site", lambda *a: None)
+    monkeypatch.setattr(
+        controller_module.DotBotSiteModel,
+        "from_site",
+        lambda *a: SimpleNamespace(model_dump=lambda **k: {}),
+    )
+    c = SimpleNamespace(
+        calibration=files["a"],
+        site=None,
+        settings=SimpleNamespace(),
+        logger=SimpleNamespace(info=lambda *a, **k: None),
+        _held_warned=set(),
+        set_event=lambda *a: None,
+    )
+    c.editor_context = lambda: {"frame_change": c._frame_change}
+    serve = controller_module.Controller.serve
+
+    assert serve(c, "b")["frame_change"]["to_id"] == "b" * 16
+    switched = serve(c, "c")["frame_change"]
+    assert switched == {
+        "from_id": "a" * 16,
+        "to_id": "c" * 16,
+        "from_frame": "f1",
+        "to_frame": "f2",
+    }
+    assert serve(c, "a")["frame_change"] is None

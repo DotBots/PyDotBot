@@ -130,6 +130,15 @@ describe("one robot moved through four spots", () => {
 });
 
 describe("checking the anchor again", () => {
+  it("does not call a check on a never-anchored site checking the anchor again", () => {
+    render(<Harness bots={[bot(14, 0)]} mode="check" />);
+    expect(screen.queryByText(/Check the anchor/)).toBeNull();
+    expect(screen.getByText("Check a spot, not anchored yet")).toBeTruthy();
+  });
+  it("calls it checking the anchor on an anchored site", () => {
+    render(<Harness bots={[bot(14, 0)]} mode="check" kept={[{ at: [0, 0], error_mm: 0.5 }]} />);
+    expect(screen.getByText("Check the anchor")).toBeTruthy();
+  });
   it("records how far off a spot reads, moves nothing, and offers to re-anchor past 10 mm", async () => {
     render(<Harness bots={[bot(14, 0)]} mode="check" kept={[{ at: [0, 0], error_mm: 0.5 }]} />);
     fireEvent.click(screen.getByRole("button", { name: "spot 1 (0, 0)" }));

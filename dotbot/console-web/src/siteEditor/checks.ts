@@ -192,7 +192,8 @@ export function goals(i: GoalInputs): Goal[] {
     const inUse = i.served.stations.map((s) => ({ index: s.index, rect: s.box }));
     const shared = inUse.length > 1 && new Set(inUse.map((b) => b.rect.join())).size === 1;
     const said = coverageSay(i.drawn ?? inUse, inUse);
-    const h = i.coverage?.headline;
+    const read = !!i.coverage && i.coverage.id === i.served.id;
+    const h = read ? i.coverage?.headline : null;
     const subs: GoalSub[] = [
       {
         id: "coverage",
@@ -207,7 +208,9 @@ export function goals(i: GoalInputs): Goal[] {
           ? h.worst_mm <= limit
             ? `accurate within ${h.worst_mm.toFixed(1)} mm everywhere (limit ${limit} mm)`
             : `up to ${h.worst_mm.toFixed(1)} mm off, over the ${limit} mm limit`
-          : "accuracy unknown: this calibration was not measured by spinning",
+          : read || !i.served.in_frame
+            ? "accuracy unknown: this calibration was not measured by spinning"
+            : "accuracy: reading it…",
         action: h && h.worst_mm > limit ? { label: "Show where", go: { kind: "stations", mode: "error" } } : undefined,
       },
     ];
