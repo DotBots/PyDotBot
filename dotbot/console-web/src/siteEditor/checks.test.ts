@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { PAGE_NAME } from "../shared/pageName";
 import type { UnifiedBot } from "../types";
 import { goals, verdict, type CheckRecord, type GoalInputs } from "./checks";
 import { docFromSite } from "./model";
@@ -116,7 +117,7 @@ describe("the Anchor row", () => {
     expect(goal(inputs([]), "anchor")).toMatchObject({ state: "warn", action: { label: "Anchor with a robot…", go: { anchor: "anchor" } } });
     const standalone = goal(inputs([], { live: false }), "anchor");
     expect(standalone.action).toBeUndefined();
-    expect(standalone.detail).toContain("open the editor from a controller");
+    expect(standalone.detail).toContain(`open ${PAGE_NAME} from a controller`);
   });
 
   it("says how many spots and the worst once anchored, and offers Check again", () => {

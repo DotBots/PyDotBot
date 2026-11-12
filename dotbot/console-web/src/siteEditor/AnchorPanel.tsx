@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 
 import { Badge } from "../shared/Badge";
+import { PAGE_NAME } from "../shared/pageName";
 import type { UnifiedBot } from "../types";
 import { postAnchor, postCheck, type FrameAnswer, type FrameMoved } from "./api";
 import { ANCHOR_NEEDS, checkPasses, NO_ROBOT_POSITION, REANCHOR_MM, type CheckRecord } from "./checks";
@@ -460,7 +461,7 @@ export const AnchorPanel: React.FC<AnchorPanelProps> = (props) => {
       </div>
       {!props.live ? (
         <div className="callout" style={{ marginTop: 10 }}>
-          Open the editor from a controller to read its robots; or turn or shift the origin by hand in Extent.
+          Open {PAGE_NAME} from a controller to read its robots; or turn or shift the origin by hand in Extent.
         </div>
       ) : located.length === 0 ? (
         <div className="note" style={{ marginTop: 10 }} data-testid="anchor-no-robot">

@@ -9,6 +9,7 @@ vi.mock("../useOrchestration", () => {
   return { useOrchestration: () => orch };
 });
 
+import { PAGE_NAME } from "../shared/pageName";
 import { filtered, groupTitle } from "./library";
 import { docFromSite } from "./model";
 import { SiteEditorApp } from "./SiteEditorApp";
@@ -269,6 +270,15 @@ describe("the anchor flow from the page", () => {
     await waitFor(() => expect(screen.getByTestId("anchor-panel")).toBeTruthy());
     expect(screen.queryByTestId("new-room")).toBeNull();
     expect(screen.getByRole("tab", { name: /^Anchor/ }).getAttribute("aria-selected")).toBe("true");
+  });
+});
+
+describe("the page's name", () => {
+  it("names the page with its site, in the title bar and the browser's tab", async () => {
+    stubFetch();
+    render(<SiteEditorApp />);
+    await waitFor(() => expect(screen.getByTestId("page-title").textContent).toBe(`${PAGE_NAME}·inria-2lh`));
+    expect(document.title).toBe(`${PAGE_NAME} · inria-2lh`);
   });
 });
 

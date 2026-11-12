@@ -1,4 +1,5 @@
 import { firmwareTooOld, heldCalibrationId } from "../botFacts";
+import { PAGE_NAME } from "../shared/pageName";
 import type { UnifiedBot } from "../types";
 import { nameOf, shortWhen } from "./library";
 import type { EditorContext, LibraryRow } from "./types";
@@ -56,6 +57,15 @@ export function restartOf(context: EditorContext): string {
   return context.next_start?.spec ?? started?.spec ?? "none";
 }
 
+/** How the controller names a calibration served from this page; it is
+ * shown under the page's name. */
+export const SERVED_HERE = "the site editor";
+
+/** A served calibration's source, in the words the page uses. */
+export function sourceText(source: string): string {
+  return source.startsWith(SERVED_HERE) ? `${PAGE_NAME}${source.slice(SERVED_HERE.length)}` : source;
+}
+
 /** Where the calibration in use came from, without paths. */
 export function reasonOf(context: EditorContext, label: (spec: string) => string = (spec) => spec): string {
   if (context.mode !== "controller") {
@@ -65,7 +75,7 @@ export function reasonOf(context: EditorContext, label: (spec: string) => string
   }
   const s = context.served;
   if (!s) return "The controller uses no calibration: robots keep whatever they hold.";
-  if (s.source.startsWith("the site editor")) {
+  if (s.source.startsWith(SERVED_HERE)) {
     if (!s.source.endsWith("for this run")) return "Chosen here, and kept for the next start.";
     const after = restartOf(context);
     // A restart that starts with this same calibration takes nothing back

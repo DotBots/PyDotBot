@@ -2,6 +2,7 @@ import React from "react";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
+import { PAGE_NAME } from "./shared/pageName";
 import { SiteCard } from "./SiteCard";
 import type { Site } from "./types";
 
@@ -22,6 +23,7 @@ describe("the Site card in Layers", () => {
     const link = screen.getByTestId("edit-site");
     expect(link.getAttribute("href")).toBe("/controller/site-editor/");
     expect(link.getAttribute("target")).toBe("dotbot-site-editor");
+    expect(link.textContent).toBe(`Open ${PAGE_NAME} ↗`);
   });
 
   it("says when nothing is served", () => {

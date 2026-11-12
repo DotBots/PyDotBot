@@ -1,6 +1,7 @@
 import React from "react";
 
 import { CalibrationChip } from "./shared/CalibrationChip";
+import { PAGE_NAME } from "./shared/pageName";
 import { servedChip, SITE_EDITOR_PATH } from "./shared/served";
 import type { Site } from "./types";
 
@@ -30,10 +31,10 @@ export const SiteCard: React.FC<{ site: Site | null }> = ({ site }) => (
         href={SITE_EDITOR_PATH}
         target="dotbot-site-editor"
         rel="noopener"
-        title="Open the site editor in a new tab; the console and its Stop stay here"
+        title={`Open ${PAGE_NAME} in a new tab; the console and its Stop stay here`}
         style={{ fontSize: 12, fontWeight: 600 }}
       >
-        Edit site ↗
+        Open {PAGE_NAME} ↗
       </a>
     </div>
     <CalibrationChip chip={servedChip(site?.calibration)} />

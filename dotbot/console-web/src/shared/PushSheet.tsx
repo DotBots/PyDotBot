@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { pushCalibrationFile } from "../api";
 import type { UnifiedBot } from "../types";
 import { Badge } from "./Badge";
+import { PAGE_NAME } from "./pageName";
 import { confirmLabel, pushRows, pushTitle, pushTwin, type PushRow } from "./pushRows";
 
 // The console's push sheet: one saved calibration, the robots it could go
@@ -155,7 +156,7 @@ export const PushSheet: React.FC<{
         )}
         <div style={{ fontSize: 11.5, color: "var(--muted)", lineHeight: 1.45, border: "1px solid var(--hairline)", borderRadius: 8, padding: "8px 10px", marginTop: 12, background: "var(--canvas)" }}>
           Robots on firmware older than this host, or reporting another site, are refused as <span style={mono}>calibrate-lh2 push</span> refuses them. Pushing changes
-          what robots compute with; what this controller serves is set in the site editor.
+          what robots compute with; what this controller serves is set in {PAGE_NAME}.
         </div>
         <div style={{ fontSize: 10, letterSpacing: ".5px", textTransform: "uppercase", color: "var(--muted)", margin: "12px 0 5px" }}>Same from a terminal</div>
         <div style={{ ...mono, fontSize: 11, background: "var(--canvas)", border: "1px solid var(--hairline)", borderRadius: 7, padding: "8px 10px", overflowWrap: "anywhere" }}>

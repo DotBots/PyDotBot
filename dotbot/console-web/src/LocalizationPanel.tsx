@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 
+import { PAGE_NAME } from "./shared/pageName";
 import { PushSheet } from "./shared/PushSheet";
 import { SpinCard } from "./SpinCard";
 import {
@@ -212,7 +213,7 @@ export const LocalizationPanel: React.FC<LocalizationPanelProps> = ({
           </div>
           <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 3 }}>
             {coverage.unknown
-              ? "the controller serves none; serve one in the site editor, or calibrate below, to compare the fleet against it"
+              ? `the controller serves none; serve one in ${PAGE_NAME}, or calibrate below, to compare the fleet against it`
               : coverageLabel(coverage)}
           </div>
           {coverage.stale.length > 0 && (

@@ -1,6 +1,7 @@
 import React from "react";
 
 import { areaColor } from "../areaColor";
+import { PAGE_NAME } from "../shared/pageName";
 import type { UnifiedBot } from "../types";
 import { Icon, type IconName } from "./icons";
 import { KIND_KEY, type EditKind } from "./keys";
@@ -148,7 +149,7 @@ export const OutlinePane: React.FC<{
         ))}
       </Group>
       <Group title="Robots" icon="robot" count={robots.length} active={false}>
-        {robots.length === 0 && empty(live ? "None reporting to this controller." : "Open the editor from a controller to see its robots.")}
+        {robots.length === 0 && empty(live ? "None reporting to this controller." : `Open ${PAGE_NAME} from a controller to see its robots.`)}
         {robots.slice(0, 200).map((r) => {
           const held = heldBy(r, servedId);
           return (

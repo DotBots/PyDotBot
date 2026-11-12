@@ -5,6 +5,7 @@ import { ShortcutsPanel } from "../ShortcutsPanel";
 import { Badge } from "../shared/Badge";
 import { CheckRow } from "../shared/CheckRow";
 import { PushSheet } from "../shared/PushSheet";
+import { PAGE_NAME } from "../shared/pageName";
 import { Tabs } from "../shared/Tabs";
 import { TitleBar } from "../shared/TitleBar";
 import { holds, typingIn } from "../shortcuts";
@@ -54,7 +55,7 @@ import { LibraryPane, type LibraryAction } from "./LibraryPane";
 import { coverageText, nameOf, residuals, when } from "./library";
 import { docFromPayload, docFromSite, movedDoc, siteModel, type AnchorSpot, type Doc, type Point } from "./model";
 import { saveBody } from "./save";
-import { pushOf, statusOf, statusText } from "./status";
+import { pushOf, SERVED_HERE, sourceText, statusOf, statusText } from "./status";
 import { StatusLine, StatusSide } from "./StatusLine";
 import { OutlinePane } from "./OutlinePane";
 import { DEFAULT_LAYERS, extentResized, isWhole, kindOfKey, PlanCanvas, type PlanLayers, type PlanPaint, type StationPose } from "./PlanCanvas";
@@ -325,6 +326,11 @@ export const SiteEditorApp: React.FC = () => {
   useEffect(() => {
     if (spin && (spin.phase === "spinning" || spin.phase === "solving" || spin.phase === "saved")) setNewRoom(true);
   }, [spin?.id, spin?.phase]);
+  // The page is named with its site, in the title bar and the browser's tab
+  const siteName = context?.site ?? payload?.name ?? "";
+  useEffect(() => {
+    document.title = siteName ? `${PAGE_NAME} · ${siteName}` : PAGE_NAME;
+  }, [siteName]);
   useEffect(() => {
     if (!toast) return;
     const t = window.setTimeout(() => setToast(null), 9000);
@@ -539,7 +545,7 @@ export const SiteEditorApp: React.FC = () => {
         problems,
         checks,
         frameChangeOpen: frameOpen,
-        servedHere: (context?.served?.source ?? "").startsWith("the site editor"),
+        servedHere: (context?.served?.source ?? "").startsWith(SERVED_HERE),
         drawn: shown?.in_frame ? boxes : null,
         anchorDrafted: JSON.stringify(draft.doc.anchor_spots) !== JSON.stringify(baseOf(draft).anchor_spots),
         spins: circles.map((c) => [c.x, c.y] as Point),
@@ -1336,7 +1342,7 @@ export const SiteEditorApp: React.FC = () => {
         <summary className="muted">Details</summary>
         <div className="mono muted" style={{ marginTop: 4, overflowWrap: "anywhere" }}>
           {status.id ?? "no id"}
-          {context.served?.source ? ` · from ${context.served.source}` : context.configured?.source ? ` · named in ${context.configured.source}` : ""}
+          {context.served?.source ? ` · from ${sourceText(context.served.source)}` : context.configured?.source ? ` · named in ${context.configured.source}` : ""}
         </div>
       </details>
     </div>
@@ -1650,10 +1656,16 @@ export const SiteEditorApp: React.FC = () => {
   return (
     <div ref={seEl} className={`se${narrow ? " narrow" : ""}${presenting ? " present" : ""}`} data-theme={theme}>
       <TitleBar gap={10}>
-        {headerFold < 7 && <span className="selbl" style={{ fontWeight: 600, fontSize: 13, flex: "none" }}>Site editor</span>}
-        {headerFold < 6 && (
-          <span className="sitesw" title={payload?.path}>
-            {context?.site ?? payload?.name ?? ""}
+        {headerFold < 7 && (
+          <span className="selbl" data-testid="page-title" title={payload?.path} style={{ display: "flex", alignItems: "center", gap: 7, fontWeight: 600, fontSize: 13, flex: "none" }}>
+            <Icon name="plan" size={15} />
+            {PAGE_NAME}
+            {siteName && (
+              <>
+                <span className="muted">·</span>
+                <span className="mono">{siteName}</span>
+              </>
+            )}
           </span>
         )}
         {!noSite && (
@@ -2036,7 +2048,7 @@ export const SiteEditorApp: React.FC = () => {
                 {statusText(status)}
               </span>
               <span className="sp" style={{ flex: 1 }} />
-              <button type="button" className="btn primary" data-testid="present-edit" onClick={stopPresent} title="Leave Present for the editor, in 3D (Esc)">
+              <button type="button" className="btn primary" data-testid="present-edit" onClick={stopPresent} title="Leave Present for editing, in 3D (Esc)">
                 <Icon name="select" /> Edit · <span className="kbd">Esc</span>
               </button>
             </div>

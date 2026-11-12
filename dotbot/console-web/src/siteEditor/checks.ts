@@ -1,3 +1,4 @@
+import { PAGE_NAME } from "../shared/pageName";
 import type { UnifiedBot } from "../types";
 import type { Boxes, Coverage } from "./coverage";
 import { coverageSay, moved, SPLIT_TIP } from "./coverage";
@@ -130,7 +131,7 @@ const worst = (own: GoalState, subs: GoalSub[]): GoalState => subs.reduce<GoalSt
 export const ANCHOR_WITH_ROBOT = "Anchor with a robot…";
 /** What anchoring takes, said where it starts. */
 export const ANCHOR_NEEDS =
-  "Needs a real robot and a tape measure. Put a robot on spots you measured on the floor (one robot moved around, or several at once); the editor lines the frame up with where the robots report themselves.";
+  "Needs a real robot and a tape measure. Put a robot on spots you measured on the floor (one robot moved around, or several at once); the page lines the frame up with where the robots report themselves.";
 /** Why anchoring cannot start. */
 export const NO_ROBOT_POSITION = "No robot is reporting a position. Turn one on inside the coverage.";
 
@@ -237,7 +238,7 @@ export function goals(i: GoalInputs): Goal[] {
       group: "room",
       title: "Anchor",
       state: "warn",
-      detail: `not anchored: the origin is where the spin put it${canRead ? "" : " · open the editor from a controller to read robots"}`,
+      detail: `not anchored: the origin is where the spin put it${canRead ? "" : ` · open ${PAGE_NAME} from a controller to read robots`}`,
       action: canRead ? { label: ANCHOR_WITH_ROBOT, title: "Put robots on spots measured with a tape, so the frame matches the floor", go: { anchor: "anchor" } } : undefined,
       subject: ["anchor"],
     });

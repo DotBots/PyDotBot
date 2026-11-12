@@ -10,10 +10,11 @@ const FORBIDDEN: [string, RegExp][] = [
   ["box", / box(es)?\b/i],
   ["Floor as a label", /^Floor\b/],
   ["valid area", /valid area/i],
+  ["Site editor: the page has its own name", /site editor/i],
 ];
 
 // String literals that are code, not text: class names, test ids, keys
-const ALLOWED = new Set<string>([]);
+const ALLOWED = new Set<string>(["the site editor"]);
 
 const DIR = __dirname;
 

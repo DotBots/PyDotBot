@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 
 import { dismissSpin, startSpin } from "./api";
+import { PAGE_NAME } from "./shared/pageName";
 import type { SpinRun, UnifiedBot } from "./types";
 
 // Spin mode of the Localization tab: robots turn in place where they stand
@@ -126,7 +127,7 @@ export const SpinCard: React.FC<{
         </details>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
           <a href={`/controller/site-editor/?place=${r.id}`} target="dotbot-site-editor" rel="noreferrer" style={button(true, false)} data-testid="spin-place">
-            Place it in the site editor ↗
+            Place it in {PAGE_NAME} ↗
           </a>
           <span role="button" tabIndex={0} style={button(false, busy)} onClick={() => !busy && start(r.id!)} title="Spin the robots again where they now stand, adding a round to this calibration">
             Add a round
