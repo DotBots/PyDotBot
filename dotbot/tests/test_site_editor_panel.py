@@ -265,7 +265,7 @@ async def test_serve_switches_the_controller_for_this_run_only(served):
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["served"]["id"] == cal.id
-    assert body["served"]["source"] == "the site editor, for this run"
+    assert body["served"]["source"] == "the site page, for this run"
     assert (await local.get("/controller/site")).json()["calibration"]["id"] == cal.id
     assert s.controller.settings.lh2_calibration_next is None
 

@@ -53,7 +53,7 @@ describe("the status line", () => {
 
   it("marks a calibration chosen for this run only, with what a restart starts with", () => {
     const s = statusOf({
-      context: context({ served: { id: SERVED_ID, id8: "4640cfde", tag: "r3", created_at: "", spec: "4640cfde", source: "the site editor, for this run" }, next_start: null, started_with: null }),
+      context: context({ served: { id: SERVED_ID, id8: "4640cfde", tag: "r3", created_at: "", spec: "4640cfde", source: "the site page, for this run" }, next_start: null, started_with: null }),
       bots: [],
       looking: null,
       unsaved: 0,
@@ -66,7 +66,7 @@ describe("the status line", () => {
 
   it("does not say a restart goes back to the calibration it already uses", () => {
     const s = statusOf({
-      context: context({ served: { id: SERVED_ID, id8: "4640cfde", tag: "r3", created_at: "", spec: "4640cfde", source: "the site editor, for this run" }, next_start: { spec: "4640cfde", source: "dotbot.toml" } }),
+      context: context({ served: { id: SERVED_ID, id8: "4640cfde", tag: "r3", created_at: "", spec: "4640cfde", source: "the site page, for this run" }, next_start: { spec: "4640cfde", source: "dotbot.toml" } }),
       bots: [],
       looking: null,
       unsaved: 0,

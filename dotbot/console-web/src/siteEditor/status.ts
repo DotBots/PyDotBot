@@ -59,7 +59,7 @@ export function restartOf(context: EditorContext): string {
 
 /** How the controller names a calibration served from this page; it is
  * shown under the page's name. */
-export const SERVED_HERE = "the site editor";
+export const SERVED_HERE = "the site page";
 
 /** A served calibration's source, in the words the page uses. */
 export function sourceText(source: string): string {

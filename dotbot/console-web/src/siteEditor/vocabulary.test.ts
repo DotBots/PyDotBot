@@ -14,7 +14,7 @@ const FORBIDDEN: [string, RegExp][] = [
 ];
 
 // String literals that are code, not text: class names, test ids, keys
-const ALLOWED = new Set<string>(["the site editor"]);
+const ALLOWED = new Set<string>([]);
 
 const DIR = __dirname;
 

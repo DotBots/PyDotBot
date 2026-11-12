@@ -554,7 +554,7 @@ class Controller:
         self._solved_stations = {st.index for st in calibration.stations}
         self._held_warned.clear()
         settings.lh2_calibration = calibration.id8
-        settings.lh2_calibration_source = "the site editor" + (
+        settings.lh2_calibration_source = "the site page" + (
             "" if persist else ", for this run"
         )
         self.logger.info(

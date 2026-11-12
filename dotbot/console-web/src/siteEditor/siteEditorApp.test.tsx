@@ -728,7 +728,7 @@ describe("the Use sheet", () => {
         attempts += 1;
         if (attempts === 1)
           return new Response(JSON.stringify({ detail: { message: "the controller now uses 0ac36f3e, not 4640cfde: look again before switching", served: null } }), { status: 409 });
-        return new Response(JSON.stringify({ ...CONTEXT, served: { ...CONTEXT.served, id: handover.id, id8: "a1b41f12", tag: handover.tag, source: "the site editor, for this run" } }), { status: 200 });
+        return new Response(JSON.stringify({ ...CONTEXT, served: { ...CONTEXT.served, id: handover.id, id8: "a1b41f12", tag: handover.tag, source: "the site page, for this run" } }), { status: 200 });
       },
     });
     render(<SiteEditorApp />);
@@ -1094,12 +1094,12 @@ describe("the extent resized on the plan", () => {
 });
 
 describe("keeping the calibration in use after a restart", () => {
-  const forRun = { ...CONTEXT, served: { ...CONTEXT.served, source: "the site editor, for this run" }, next_start: { spec: "0ac36f3e", source: "dotbot.local.toml" }, persist_path: "/project/dotbot.local.toml" };
+  const forRun = { ...CONTEXT, served: { ...CONTEXT.served, source: "the site page, for this run" }, next_start: { spec: "0ac36f3e", source: "dotbot.local.toml" }, persist_path: "/project/dotbot.local.toml" };
 
   it("writes it for the next start from the card, then says so and drops the button", async () => {
     const calls = stubFetch({
       "api/context": () => new Response(JSON.stringify(forRun), { status: 200 }),
-      "api/served": () => new Response(JSON.stringify({ ...forRun, served: { ...forRun.served, source: "the site editor" }, next_start: { spec: "4640cfde", source: "/project/dotbot.local.toml" } }), { status: 200 }),
+      "api/served": () => new Response(JSON.stringify({ ...forRun, served: { ...forRun.served, source: "the site page" }, next_start: { spec: "4640cfde", source: "/project/dotbot.local.toml" } }), { status: 200 }),
     });
     render(<SiteEditorApp />);
     const keep = await screen.findByTestId("keep-after-restart");
