@@ -38,6 +38,9 @@ export type Tool =
   | "anchor"
   | "measure";
 
+/** What the origin says where it cannot be dragged. */
+export const ORIGIN_HINT = "Edit → Extent to move the origin";
+
 /** Each kind's tools, by the key that picks them. */
 export const TOOLS: Record<EditKind, Partial<Record<string, Tool>>> = {
   view: {},

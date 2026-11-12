@@ -49,7 +49,7 @@ import { FileView } from "./FileView";
 import { useFold } from "./fold";
 import { Icon, type IconName } from "./icons";
 import { Inspector } from "./Inspector";
-import { EDITOR_SHORTCUTS, KIND_KEY, KIND_LABEL, KINDS, keyAction, PRESENT_KEY, SHARED_KEY, TOOL_ICON, TOOL_LABEL, TOOLS, type EditKind, type Tool } from "./keys";
+import { EDITOR_SHORTCUTS, KIND_KEY, KIND_LABEL, KINDS, keyAction, ORIGIN_HINT, PRESENT_KEY, SHARED_KEY, TOOL_ICON, TOOL_LABEL, TOOLS, type EditKind, type Tool } from "./keys";
 import { LibraryPane, type LibraryAction } from "./LibraryPane";
 import { coverageText, nameOf, residuals, when } from "./library";
 import { docFromPayload, docFromSite, movedDoc, siteModel, type AnchorSpot, type Doc, type Point } from "./model";
@@ -1844,6 +1844,7 @@ export const SiteEditorApp: React.FC = () => {
                   setRightTab("inspect");
                 }}
                 selected={selected}
+                onOrigin={editable && !presenting ? () => setToast({ text: ORIGIN_HINT }) : undefined}
               />
             ) : view === "plan" ? (
               <PlanCanvas
@@ -1903,6 +1904,7 @@ export const SiteEditorApp: React.FC = () => {
                     : undefined
                 }
                 onFrameDrag={frameGrabbable ? onFrameDrag : undefined}
+                onOrigin={editable && kind === "view" ? () => setToast({ text: ORIGIN_HINT }) : undefined}
                 onSelect={select}
                 onEdge={setEdge}
                 onEdit={onEdit}

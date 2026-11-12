@@ -986,4 +986,16 @@ describe("the origin moved on the plan", () => {
     expect(screen.queryByTestId("origin-grip")).toBeNull();
     expect(screen.queryByTestId("turn-grip")).toBeNull();
   });
+
+  it("says how to move the origin: its tooltip in Extent edit, a hint from View", async () => {
+    stubFetch();
+    render(<SiteEditorApp />);
+    fireEvent.click(await screen.findByTestId("room-origin"));
+    expect(screen.getByTestId("toast").textContent).toContain("Edit → Extent to move the origin");
+    await toPlan();
+    expect(screen.getByTestId("origin-hint")).toBeTruthy();
+    keyDown("1");
+    expect(screen.queryByTestId("origin-hint")).toBeNull();
+    expect(screen.getByTestId("origin-grip").querySelector("title")!.textContent).toContain("Drag to move the origin; everything on the floor stays put");
+  });
 });

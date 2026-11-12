@@ -8,6 +8,7 @@ import type { Doc, Point } from "./model";
 import { contextBounds, contextStep, FLOOR_FILL, floorStep, lens, stationLabel, roomFit, roomProject, TOP_DOWN, turn, zoomAt, type Insets, type RoomCam, type Size, type Zoom } from "./mapView";
 import type { CoverageMode } from "./StationsPanel";
 import { fixImageCached } from "./StationsLayer";
+import { ORIGIN_HINT } from "./keys";
 
 // The room as a twin: the floor with its areas and origin on a grid, each
 // station on a pole at its estimated height with rays to the corners of its
@@ -141,6 +142,8 @@ export const RoomView: React.FC<{
   onSelectRobot?: (id: string | null) => void;
   /** The selection: an entity's key, or a whole kind as a Checks row picks it. */
   selected?: string[];
+  /** The origin clicked, on a page that can move it. */
+  onOrigin?: () => void;
 }> = (props) => {
   const { doc, extent, geometry, boxes, coverage, mode, bots, shownName, shownId, stationFit, coverageNote, light, large, insets, cam, zoom, onCam, onZoom, selectedStation, onSelectStation } = props;
   const topInset = insets.top;
@@ -607,6 +610,21 @@ export const RoomView: React.FC<{
               </g>
             );
           })}
+          {/* the origin's hit area, over the rays and the floor */}
+          {props.onOrigin && (
+            <circle
+              data-testid="room-origin"
+              cx={o[0]}
+              cy={o[1]}
+              r={10}
+              fill="transparent"
+              style={{ cursor: "pointer", pointerEvents: "all" }}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => (e.stopPropagation(), props.onOrigin?.())}
+            >
+              <title>{ORIGIN_HINT}</title>
+            </circle>
+          )}
           {/* labels last, over everything */}
           {all.map((l) => {
             const at = places.get(l.key);

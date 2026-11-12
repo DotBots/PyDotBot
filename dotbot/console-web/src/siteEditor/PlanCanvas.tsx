@@ -27,7 +27,7 @@ import {
 import { coverageAt, movedHandover, handover as handoverOf } from "./coverage";
 import { contextBounds, contextStep, FLOOR_FILL, floorStep, planViewport, stationLabel } from "./mapView";
 import { Icon } from "./icons";
-import type { EditKind, Tool } from "./keys";
+import { ORIGIN_HINT, type EditKind, type Tool } from "./keys";
 import { freshKey, freshName, numberedName, type Doc, type DocObject, type ObjectKind, type Point } from "./model";
 import {
   canvasToMm,
@@ -183,6 +183,8 @@ interface PlanCanvasProps {
    * and which way its x axis points (degrees, clockwise), to draw the handles
    * that shift and turn it; `readout` labels it during a drag. */
   frameHandles?: { at: Point; deg: number; readout: string | null };
+  /** The origin clicked where it cannot be dragged, on a page that can move it. */
+  onOrigin?: () => void;
   /** The origin ("shift") or the turn handle ("turn") dragged: from the press
    * to each pointer position, plan mm, `done` on release. */
   onFrameDrag?: (what: "shift" | "turn", from: Point, to: Point, keys: { alt: boolean; shift: boolean }, done: boolean) => void;
@@ -900,7 +902,21 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
   // knob at the end of its x axis turns the frame about it
   const frameGrips = (() => {
     const fh = props.frameHandles;
-    if (!fh || !props.onFrameDrag) return null;
+    if (!fh || !props.onFrameDrag)
+      return props.onOrigin ? (
+        <circle
+          data-testid="origin-hint"
+          cx={zx}
+          cy={zy}
+          r={11 * chrome}
+          fill="transparent"
+          style={{ cursor: "pointer", pointerEvents: "all" }}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => (e.stopPropagation(), props.onOrigin?.())}
+        >
+          <title>{ORIGIN_HINT}</title>
+        </circle>
+      ) : null;
     const [ox, oy] = px(fh.at);
     const r = (fh.deg * Math.PI) / 180;
     const [kx, ky] = [ox + Math.cos(r) * axis, oy + Math.sin(r) * axis];
@@ -927,7 +943,7 @@ export const PlanCanvas: React.FC<PlanCanvasProps> = (props) => {
           style={{ cursor: "move", pointerEvents: "all" }}
           onPointerDown={grab("shift")}
         >
-          <title>Drag to shift the origin: snaps to 10 mm, Alt for free. Arrow keys nudge 10 mm, Alt 1 mm.</title>
+          <title>Drag to move the origin; everything on the floor stays put. Snaps to 10 mm, Alt for free; arrow keys nudge 10 mm, Alt 1 mm.</title>
         </circle>
         <circle
           data-testid="turn-grip"
